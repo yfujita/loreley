@@ -9,6 +9,10 @@ if [ -z "$input_name" ]; then
   echo "Error: task name is empty" >&2
   exit 1
 fi
+if [[ ! "$input_name" =~ ^[A-Za-z0-9_-]+$ ]]; then
+  echo "Error: task name may contain only letters, numbers, underscores, and hyphens" >&2
+  exit 1
+fi
 
 root_dir="$(cd "$(dirname "$0")/.." && pwd)"
 task_name="$(date +%Y%m%d)_${input_name}"
