@@ -1,0 +1,230 @@
+{
+  "main": {
+    "id": "f903ba067610114e",
+    "type": "split",
+    "children": [
+      {
+        "id": "96968166be2be8df",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "c94b62d47a40bbf2",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "docs/v0.x/system-design/indexer/indexer-module-structure-v0.3.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "indexer-module-structure-v0.3"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "7916b64e378b6067",
+    "type": "split",
+    "children": [
+      {
+        "id": "ab3aa7f1da6cbc66",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "16dff69f5e9621eb",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-folder-closed",
+              "title": "ファイルエクスプローラ"
+            }
+          },
+          {
+            "id": "ed434380f736534b",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "検索"
+            }
+          },
+          {
+            "id": "916cb9c2c8fa9537",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-bookmark",
+              "title": "ブックマーク"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "c3ef7d1abc1b10bf",
+    "type": "split",
+    "children": [
+      {
+        "id": "fd5ce4e3b55a6709",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "9fee01d04fa1e1e1",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "docs/v0.x/system-design/system-design-v0.2.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "バックリンク"
+            }
+          },
+          {
+            "id": "bfc57acff91de0e5",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "docs/v0.x/system-design/system-design-v0.2.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "アウトゴーイングリンク"
+            }
+          },
+          {
+            "id": "16ca6608f80c4ede",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "タグ"
+            }
+          },
+          {
+            "id": "13cf48426983f1c4",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "すべてのプロパティ"
+            }
+          },
+          {
+            "id": "fa2736e62037327d",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "docs/v0.x/system-design/system-design-v0.2.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "アウトライン"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:クイックスイッチャーを開く": false,
+      "graph:グラフビューを開く": false,
+      "canvas:新規キャンバスを作成": false,
+      "daily-notes:今日のデイリーノートを開く": false,
+      "templates:テンプレートを挿入": false,
+      "command-palette:コマンドパレットを開く": false,
+      "bases:新規ベースを作成": false
+    }
+  },
+  "active": "c94b62d47a40bbf2",
+  "lastOpenFiles": [
+    "docs/v0.x/product-design/product-design-v0.9.md",
+    "agent_tasks/20261109_create_indexer_design/0054-v0.3-minor-clarifications.md",
+    "agent_tasks/20261109_create_indexer_design/0053-create-module-structure-v0.3.md",
+    "docs/v0.x/system-design/indexer/indexer-module-structure-v0.3.md",
+    "agent_tasks/20261109_create_indexer_design/0052-create-module-structure-v0.2.md",
+    "docs/v0.x/system-design/indexer/indexer-module-structure-v0.2.md",
+    "agent_tasks/20261109_create_indexer_design/0051-plan-module-structure-v0.2.md",
+    "agent_tasks/20261109_create_indexer_design/0051-plan-module-structure-v0.2.md.tmp.47276.135fa072315e",
+    "agent_tasks/20261109_create_indexer_design/0050-create-module-structure-doc.md",
+    "docs/v0.x/system-design/indexer/indexer-module-structure-v0.1.md",
+    "agent_tasks/20261109_create_indexer_design/0049-plan-module-structure-doc.md",
+    "agent_tasks/20261110_implement_indexer/0000-requirements-definition.md",
+    "agent_tasks/20261110_implement_indexer",
+    "apps/indexer/Dockerfile",
+    "apps/indexer/tests",
+    "apps/indexer/src",
+    "apps/indexer",
+    "apps",
+    "agent_tasks/20261109_create_indexer_design/0048-task-review-and-completion-v0.9.md",
+    "agent_tasks/20261109_create_indexer_design/0047-v0.9-review-results-and-fix.md",
+    "agent_tasks/20261109_create_indexer_design/0046-create-v0.9-docs.md",
+    "docs/v0.x/test-results/opensearch-performance.md",
+    "docs/v0.x/test-results",
+    "docs/v0.x/product-design/product-design-v0.18.md",
+    "docs/v0.x/system-design/opensearch/schema/loreley-deletions-v0.9.md",
+    "docs/v0.x/system-design/opensearch/schema/search-index-v0.9.md",
+    "docs/v0.x/system-design/indexer/indexer-api-v0.9.md",
+    "docs/v0.x/system-design/indexer/indexer-architecture-v0.9.md",
+    "agent_tasks/20261109_create_indexer_design/0045-plan-user-answers-v0.9.md",
+    "agent_tasks/20261109_create_indexer_design/0044-pending-user-decisions.md",
+    "agent_tasks/20261109_create_indexer_design/0043-task-review-and-completion-v0.8.md",
+    "agent_tasks/20261109_create_indexer_design/0042-fix-v0.8-review-findings.md",
+    "agent_tasks/20261109_create_indexer_design/0041-v0.8-review-results-and-fix-plan.md",
+    "agent_tasks/20261109_create_indexer_design/0040-create-v0.8-docs.md",
+    "docs/v0.x/system-design/opensearch/schema",
+    "agent_tasks/20261109_create_indexer_design"
+  ]
+}

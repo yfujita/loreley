@@ -1,7 +1,7 @@
 ---
 name: planner
 description: "実装プランの作成に特化したエージェント。タスクの要件から実装プランを作成する。要件に不明点・曖昧さ・矛盾がある場合は、プランを確定せず質問リスト(推奨案つき)を返す。呼び出し元がユーザーに質問(grill-me 方式)し、回答を添えて再呼び出しすることで、不明点を解消してからプランを確定する。コードは書かない。\n\n<example>\nContext: agent_tasks 配下のタスクについてプランが欲しい。\nuser: \"login-api のタスクのプランを作って\"\nassistant: \"plannerエージェントを使って、要件を確認しながらプランを作成します\"\n</example>"
-tools: Glob, Grep, Read, Write, WebFetch, WebSearch, Skill
+tools: Glob, Grep, Read, Write, Edit, WebFetch, WebSearch, Skill
 model: sonnet
 color: blue
 ---
