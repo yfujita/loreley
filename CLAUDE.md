@@ -22,6 +22,7 @@ CrawlerとIndexerは別コンテナで、メッセージブローカーを介さ
 - システム設計: `docs/v0.x/system-design/`(同上。実装レベルの詳細はこちら)
 - タスク管理: `agent_tasks/`(新規タスクは `scripts/new-task.sh` で作成する)
 - 作業ワークフロー: `.claude/rules/task-workflow.md`
+- 監査ログ: Hooks(`.claude/settings.json`)が `.claude/hooks/audit.py` で実行イベントを `agent_tasks/{タスク名}/audit/events.jsonl` に自動記録する(gitignore対象。タスク未特定時は `.claude/audit/events.jsonl`)
 
 ## 開発ルール
 
