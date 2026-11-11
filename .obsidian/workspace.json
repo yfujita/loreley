@@ -190,6 +190,11 @@
   },
   "active": "c94b62d47a40bbf2",
   "lastOpenFiles": [
+    "agent_tasks/20261111_implement_indexer/audit/events.jsonl",
+    "agent_tasks/20261111_implement_indexer/audit",
+    "agent_tasks/20261111_implement_indexer/STATUS.md",
+    "agent_tasks/20261111_implement_indexer/0000-requirements-definition.md",
+    "agent_tasks/20261111_implement_indexer",
     "docs/v0.x/product-design/product-design-v0.9.md",
     "agent_tasks/20261109_create_indexer_design/0054-v0.3-minor-clarifications.md",
     "agent_tasks/20261109_create_indexer_design/0053-create-module-structure-v0.3.md",
@@ -220,11 +225,6 @@
     "docs/v0.x/system-design/indexer/indexer-architecture-v0.9.md",
     "agent_tasks/20261109_create_indexer_design/0045-plan-user-answers-v0.9.md",
     "agent_tasks/20261109_create_indexer_design/0044-pending-user-decisions.md",
-    "agent_tasks/20261109_create_indexer_design/0043-task-review-and-completion-v0.8.md",
-    "agent_tasks/20261109_create_indexer_design/0042-fix-v0.8-review-findings.md",
-    "agent_tasks/20261109_create_indexer_design/0041-v0.8-review-results-and-fix-plan.md",
-    "agent_tasks/20261109_create_indexer_design/0040-create-v0.8-docs.md",
-    "docs/v0.x/system-design/opensearch/schema",
-    "agent_tasks/20261109_create_indexer_design"
+    "agent_tasks/20261109_create_indexer_design/0043-task-review-and-completion-v0.8.md"
   ]
 }
