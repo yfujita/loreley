@@ -13,7 +13,8 @@
   - Read / Bash で agent_tasks/{タスク名}/ に触れた場合は、タスク未特定のときだけ採用する
   - 特定前のイベントは .claude/audit/events.jsonl に残り、後から移し替えない
 
-プロンプト本文・Bash コマンド・ツール応答は機密情報を含み得るため、ログには保存しない
+プロンプト本文は UserPromptSubmit イベントの "prompt" として保存する(audit/ は gitignore 対象)。
+Bash コマンド・ツール応答は機密情報を含み得るため、ログには保存しない
 (タスク特定のための照合にのみ使う)。
 フックの失敗でセッションを妨げないよう、例外は握りつぶして .claude/audit/hook-errors.log に残す。
 """
@@ -154,6 +155,9 @@ def build_record(event: dict, root: Path, task: str | None) -> dict:
         match = EXIT_CODE_LINE.match(event.get("error") or "")
         if match:
             record["exit_code"] = int(match.group(1))
+
+    if name == "UserPromptSubmit":
+        record["prompt"] = event.get("prompt")
 
     if name == "SessionStart":
         record["source"] = event.get("source")
