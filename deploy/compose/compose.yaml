@@ -1,0 +1,116 @@
+# Loreley の compose 構成(MVP: OpenSearch と Indexer のみ)。
+#
+# 起動(このディレクトリで実行。.env は任意。無くても既定値で動く):
+#   docker compose up -d --build
+#   (`--wait` は使わない。compose v2.3.3 では、opensearch-init が正常終了(Exited)したあとも
+#    戻ってこないことを確認した。起動完了は `docker compose ps` の healthy で確認する。
+#    待機つきの起動は scripts/run-indexer-integration-test.sh を参照)
+# 停止(データは残す): docker compose down
+# 停止(データも消す): docker compose down -v
+#
+# 対象の docker compose は v2.3.3 以降。古い版でも解釈できるよう、`version:` や `name:` は
+# 書かない(プロジェクト名は `-p` で指定する。未指定ならディレクトリ名 `compose` になる)。
+#
+# 公開範囲(重要):
+#   Indexer API には認証・認可がなく(`DELETE` でソースの文書の全削除まで呼べる)、
+#   OpenSearch もセキュリティプラグインを無効にしている(認証・TLS なし)。
+#   そのため、ホストへの publish は必ず 127.0.0.1(ループバック)に限る。`0.0.0.0` を省いた
+#   `ports: "9200:9200"` のような書き方は、全 NIC に公開されるので使わない。
+#   コンテナ間はこのファイルが作る内部ネットワークで、サービス名(opensearch)で通信する。
+
+services:
+  opensearch:
+    # バージョンは .env の OPENSEARCH_VERSION で変える。既定はパッチまで固定した 2.19.7。
+    # `latest` は、取得のたびにバージョンが変わり再現できないため使わない。
+    # 2.19 は maintenance 系列で、opensearch-py 3.2.0(Indexer の依存)の CI が検証対象とする系列。
+    image: opensearchproject/opensearch:${OPENSEARCH_VERSION:-2.19.7}
+    environment:
+      # 単一ノード。クラスタ形成(discovery)を待たずに起動し、ブートストラップチェックも
+      # 本番モードの強制対象にならない(MVP は単一ホスト・単一ノード)。
+      discovery.type: single-node
+      # 認証なしで使う(MVP は認証なし。公開範囲はループバックのみに絞って補う)。
+      DISABLE_SECURITY_PLUGIN: "true"
+      # セキュリティを無効にするので、デモ用の証明書・ユーザーを生成する処理も不要。
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      # ヒープは Xms と Xmx を同じ値にする(実行中のヒープ伸縮を避ける)。
+      # 既定の 512m は、Docker VM のメモリが約 4GB の環境で OOM(exit 137)を避けるための値。
+      # 文書量が増えたら .env の OPENSEARCH_HEAP_SIZE で増やす(VM のメモリの半分以下を目安にする)。
+      OPENSEARCH_JAVA_OPTS: -Xms${OPENSEARCH_HEAP_SIZE:-512m} -Xmx${OPENSEARCH_HEAP_SIZE:-512m}
+    ulimits:
+      # 開いてよいファイル数。OpenSearch は 65535 以上を要求する(公式の Docker 手順と同じ値)。
+      # Docker の既定値が環境で異なるため、明示して環境差をなくす。
+      nofile:
+        soft: 65536
+        hard: 65536
+      # memlock(メモリのスワップ防止)は設定しない。memlock が要るのは bootstrap.memory_lock=true を
+      # 使うときだけで、MVP は使わない(単一ホストで Docker VM にスワップがほぼなく、設定を増やす利点が
+      # 小さい)。使うなら `memlock: {soft: -1, hard: -1}` とあわせて有効にする。
+    # Docker デーモンやホストの再起動、OOM(exit 137)で落ちたあとに戻すため。indexer だけ
+    # 再起動すると、OpenSearch に到達できずに終了と再起動を繰り返す。
+    # `depends_on` の待機は `up` のときにしか効かない。
+    restart: unless-stopped
+    ports:
+      # ループバックのみ。ホスト側ポートは .env の OPENSEARCH_HOST_PORT で変えられるが、
+      # バインドは常に 127.0.0.1。9600(Performance Analyzer)は使わないので publish しない。
+      - "127.0.0.1:${OPENSEARCH_HOST_PORT:-9200}:9200"
+    volumes:
+      # インデックスと Store 層のデータ。`down` では残り、`down -v` で消える。
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      # yellow は「全プライマリシャードが割り当て済み」で、読み書きできる最低ライン。単一ノードでは
+      # レプリカを置けず、green を待つと永久に healthy にならないことがあるため、green は求めない。
+      # クラスタが応答するまで最大 5 秒待つ。
+      test: ["CMD", "curl", "-fsS", "http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      # JVM の起動に時間がかかるので、この間の失敗は unhealthy に数えない(成功すれば即 healthy)。
+      start_period: 60s
+
+  opensearch-init:
+    # インデックスを一度だけ作る使い捨てコンテナ。Indexer はインデックスを作らないので、
+    # Indexer の起動前に完了させる。同じイメージを使うのは、curl と sh が入っていて追加の
+    # イメージ取得が要らないため。
+    image: opensearchproject/opensearch:${OPENSEARCH_VERSION:-2.19.7}
+    # イメージ既定の entrypoint は OpenSearch 本体を起動するので、init スクリプトに置き換える。
+    # スクリプトは sh に渡して実行するため、mount した側の実行権限には依存しない。
+    entrypoint: ["/bin/sh", "/init/init-indices.sh"]
+    environment:
+      OPENSEARCH_URL: http://opensearch:9200
+      SCHEMA_DIR: /init/schema
+    volumes:
+      # スキーマと init スクリプトは、イメージに焼かず読み取り専用で mount する(変更が再ビルド不要で、
+      # コンテナ側から書き換えられない)。
+      - ../../infra/opensearch:/init:ro
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    # 成功したら終了したままにする(スクリプトは冪等なので、再度 `up` しても何も壊さない)。
+    restart: "no"
+
+  indexer:
+    build: ../../apps/indexer
+    environment:
+      # 接続先。認証・TLS なしの OpenSearch に、内部ネットワークのサービス名で接続する。
+      LORELEY_INDEXER_OPENSEARCH_URL: http://opensearch:9200
+      LORELEY_INDEXER_LOG_LEVEL: ${INDEXER_LOG_LEVEL:-INFO}
+      # 要約生成は無効。LLM プロバイダが未実装で、true にすると起動に失敗する。
+      LORELEY_INDEXER_SUMMARY_ENABLED: "false"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+      # インデックスが無い状態で起動しないよう、init の正常終了を待つ。
+      opensearch-init:
+        condition: service_completed_successfully
+    ports:
+      # ループバックのみ(ファイル冒頭の「公開範囲」を参照)。認証がないため、0.0.0.0 へは公開しない。
+      # コンテナ内のポート(8000)は固定で、ホスト側だけ .env の INDEXER_HOST_PORT で変えられる。
+      - "127.0.0.1:${INDEXER_HOST_PORT:-8000}:8000"
+    # 起動時に OpenSearch へ到達できないとプロセスが終了する設計のため、再起動ポリシーが必要。
+    restart: unless-stopped
+    # SIGTERM 後、実行中の削除バッチの完了を待つため。Docker の既定 10 秒では足りないことがある。
+    stop_grace_period: 30s
+    # healthcheck は、イメージの HEALTHCHECK(/healthz、start-period 120 秒)をそのまま使う。
+
+volumes:
+  opensearch-data:

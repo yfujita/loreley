@@ -1,0 +1,43 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0
+    }
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "record_type":                         { "type": "keyword" },
+      "source_id":                           { "type": "keyword" },
+      "crawl_id":                            { "type": "keyword" },
+      "status":                              { "type": "keyword" },
+      "reason":                              { "type": "keyword" },
+      "reason_detail":                       { "type": "keyword" },
+      "outcome":                             { "type": "keyword" },
+      "finish_request_digest":               { "type": "keyword" },
+      "crawl_started_at":                    { "type": "date" },
+      "started_at":                          { "type": "date" },
+      "ended_at":                            { "type": "date" },
+      "finish_received_at":                  { "type": "date" },
+      "deletion_started_at":                 { "type": "date" },
+      "updated_at":                          { "type": "date" },
+      "ttl":                                 { "type": "long" },
+      "ratio_threshold":                     { "type": "double" },
+      "min_delete_count":                    { "type": "long" },
+      "enumerated_count":                    { "type": "long" },
+      "skip_and_oversize_id_count":          { "type": "long" },
+      "n_seen":                              { "type": "long" },
+      "e_missing":                           { "type": "long" },
+      "target_count":                        { "type": "long" },
+      "denominator":                         { "type": "long" },
+      "deleted_count":                       { "type": "long" },
+      "force_delete":                        { "type": "boolean" },
+      "forced":                              { "type": "boolean" },
+      "rewrite_mode":                        { "type": "boolean" },
+      "skip_and_oversize_id_limit_exceeded": { "type": "boolean" },
+      "skipped_document_ids":                { "type": "keyword", "index": false, "doc_values": false },
+      "oversize_document_ids":               { "type": "keyword", "index": false, "doc_values": false }
+    }
+  }
+}

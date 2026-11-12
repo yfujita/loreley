@@ -1,0 +1,23 @@
+# 結合テスト用の上書き。`deploy/compose/compose.yaml` の後ろに重ねて使う(本番用の設定には混ぜない)。
+#
+#   docker compose -p loreley-it \
+#     -f deploy/compose/compose.yaml -f tests/integration/compose.test.yaml up -d --build
+#
+# 上限・バッチ値を小さくするのは、テストが少ない文書で境界(サイズ超過、複数バッチ・複数ページの
+# 削除)を実機で再現するため。値を変えたら、これに依存するテストの前提も確認すること。
+#   - test_10_registration.py の IT-14(OVERSIZE_RAW_BYTES は MAX_RAW_BYTES を超える必要がある)
+#   - test_30_deletion.py の IT-31(対象件数は DELETION_BATCH_SIZE と SEARCH_AFTER_PAGE_SIZE の複数倍)
+# 環境変数名は apps/indexer/src/loreley_indexer/config.py(接頭辞 LORELEY_INDEXER_)のとおり。
+
+services:
+  indexer:
+    environment:
+      # 原本 1 件の上限 64 KiB(既定 20 MiB)。70,000 バイトの原本が `oversize` になる。
+      # 整合条件(MAX_RAW_BYTES <= MAX_BATCH_BYTES)は、既定の MAX_BATCH_BYTES(64 MiB)で満たす。
+      LORELEY_INDEXER_MAX_RAW_BYTES: "65536"
+      # 削除 1 バッチの文書数(既定 100)。対象 7 件の削除が 4 バッチに分かれる。
+      LORELEY_INDEXER_DELETION_BATCH_SIZE: "2"
+      # `search_after` の 1 ページの件数(既定 1,000)。対象 7 件の取り込みが 4 ページに分かれる。
+      LORELEY_INDEXER_SEARCH_AFTER_PAGE_SIZE: "2"
+      # 削除ワーカーの走査間隔(既定 2 秒)。終了通知から削除完了までの待ちを短くする。
+      LORELEY_INDEXER_DELETION_POLL_INTERVAL_SECONDS: "1"

@@ -1,0 +1,4 @@
+Loreley 結合テスト用サンプル (text)
+This file checks the plain text extraction.
+日本語と English が混在した本文です。
+固有語: txtmarkeralpha

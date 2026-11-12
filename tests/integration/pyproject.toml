@@ -1,0 +1,37 @@
+[project]
+name = "loreley-indexer-integration-tests"
+version = "0.1.0"
+description = "Loreley Indexer の結合テスト(compose で起動した実 OpenSearch・実 Indexer に対して実行する)"
+# 上限を付けるのは、uv が選ぶ Python が環境で変わらないようにするため(結合テストの再現性)。
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "httpx>=0.27,<1",
+    "pytest>=8.3",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8",
+]
+
+[tool.uv]
+# テストだけのプロジェクトなので、パッケージとしてビルド・インストールしない。
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+addopts = "-ra"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+# `support.py` を、テストと同じディレクトリのモジュール(first-party)として扱う。
+src = ["."]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# テストの docstring は日本語で詳しく書く(0000 の制約)。全角文字は幅 2 と数えられ、行の長さの
+# 検査が docstring の折り返しを不自然に強いるため、テストファイルでは E501 を対象外にする。
+"test_*.py" = ["E501"]
