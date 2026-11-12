@@ -37,7 +37,7 @@ cp .env.example .env
 
 | 変数 | 既定 | 説明 |
 | --- | --- | --- |
-| `OPENSEARCH_VERSION` | `2.19.7` | OpenSearch のイメージのタグ |
+| `OPENSEARCH_VERSION` | `3.9.0` | OpenSearch のイメージのタグ |
 | `OPENSEARCH_HEAP_SIZE` | `512m` | JVM ヒープ(`-Xms` と `-Xmx` の両方に使う) |
 | `OPENSEARCH_HOST_PORT` | `9200` | OpenSearch のホスト側ポート |
 | `INDEXER_HOST_PORT` | `8000` | Indexer のホスト側ポート |
@@ -60,7 +60,7 @@ docker compose down -v                # 停止してデータ(名前付きボリ
 ```
 
 - **`up --wait` は使わない**: compose v2.3.3 では、全サービスが Healthy / Exited(0) になったあとも `up -d --wait` が戻らない(2 回再現。原因の特定はしていない)。起動済みのスタックに対して `--wait` なしの `up -d` を再実行すると 3 秒で戻った(クリーン起動では次の「起動の所要時間」のとおり時間がかかる)。`up -d` は、`opensearch` が healthy になり `opensearch-init` が正常終了するのを待ってから `indexer` を起動する。起動完了は `docker compose ps` で確認する。`--wait-timeout` もこの版には無い。待機つきで起動したいときは、`docker compose ps` を一定間隔で確認する形にする(`scripts/run-indexer-integration-test.sh` が実装している)
-- **起動の所要時間**(1 回の実測。目安。実装担当の報告による。ログは保存していない): クリーンな状態からイメージのビルドを含めた `up -d --build` が初回約 90 秒、そのあと healthy になるまで約 20 秒。ビルドのキャッシュがあれば短い
+- **起動の所要時間**(1 回の実測。目安。実装担当の報告による。ログは保存していない): クリーンな状態からイメージのビルドを含めた `up -d --build` が初回約 90 秒、そのあと healthy になるまで約 20 秒(いずれも OpenSearch 2.19.7 での値。3.9.0 は後述の「OpenSearch のバージョン固定方針」)。ビルドのキャッシュがあれば短い
 - **初期化**: インデックスは `opensearch-init` が起動のたびに確認し、無いものだけ作る(冪等)。既存のインデックスは変更しない。再実行すると、すべて `skip` と表示して終了する(確認済み)。検索インデックスは、エイリアス `loreley-documents` の有無で判定する。再インデックスでエイリアスを `-000002` に付け替えて `-000001` を削除した状態でも、空の `-000001` は作り直さない(その状態を模擬して確認済み)
 - **マッピングを変えたいとき**: `infra/opensearch/schema/*.json` を直しても、既存のインデックスは変わらない(init は既存を変更しない。検索インデックスと `loreley-deletions` は `dynamic: strict` なので、定義にない項目を書くと拒否される)。開発用のデータを消してよいなら、`docker compose down -v` でボリュームごと消して、`up -d` で作り直す。**データを残したまま変える手順(再インデックス)は、本タスクでは未確認**(対象外。設計は `apps/indexer/README.md` 8 章と arch 11 章)
 - **停止**: Indexer は SIGTERM を受けると `Shutting down` → `Application shutdown complete` と出して、1 秒で終了コード 0 で止まる(`stop_grace_period` は 30 秒)
@@ -77,11 +77,12 @@ docker compose down -v                # 停止してデータ(名前付きボリ
 
 ## OpenSearch のバージョン固定方針
 
-- イメージは `opensearchproject/opensearch:2.19.7`。パッチまでのタグで固定し、`latest` は使わない(取得のたびに変わらないため、再現できる)。ダイジェストは固定しない(タグの固定で足りると判断した)
-- 2.19 を選んだ理由: 2.19 は maintenance 系列で、Indexer が使う opensearch-py 3.2.0 の CI が検証対象としている系列のため(調査による。出典の再確認はしていない)
+- イメージは `opensearchproject/opensearch:3.9.0`。パッチまでのタグで固定し、`latest` は使わない(取得のたびに変わらないため、再現できる)。ダイジェストは固定しない(タグの固定で足りると判断した)
+- 3.9.0 を選んだ理由: 2026-11-13 時点で Docker Hub にある最新の版のため。Indexer が使う opensearch-py は 3.2.0(PyPI の最新)。この組み合わせで結合テストが通ることを確認した。以前の既定は 2.19.7(2.19 は maintenance 系列で、opensearch-py 3.2.0 の CI が検証対象とする系列)で、同じ結合テストが通っていた
 - バージョンは `.env` の `OPENSEARCH_VERSION` で変えられる。上げるときは、結合テスト(`tests/integration/indexer`)を通してから使う
-- 確認した実体(参考): `opensearchproject/opensearch:2.19.7`(ダイジェスト `sha256:3bfa1ec74d56928c2e018033d45c460ce2c0ea65a5cedd577de3102326c31b89`、build_hash `6dd9a042`、JDK 21.0.12.1)。単一ノードで起動し、Indexer が接続して起動時の整理まで完了し、結合テストが通ることを確認した(結果は [indexer-integration.md](../../docs/v0.x/test-results/indexer-integration.md))
-- 2.19 以外のバージョンは未確認
+- 確認した実体(参考): `opensearchproject/opensearch:3.9.0`(ダイジェスト `sha256:3b55f6b6249cfdb92b52ee59adc8a266203ba9ef9f5d82544fad6f1af2f3609e`、build_hash `4ee42a94`、Lucene 10.5.1、JDK 25.0.4.1)。単一ノード・セキュリティプラグイン無効(`DISABLE_SECURITY_PLUGIN`)で起動し、Indexer が接続して起動時の整理まで完了し、結合テスト 40 件が通ることを確認した(結果は [indexer-integration.md](../../docs/v0.x/test-results/indexer-integration.md))
+- 3.9.0 は、ヒープ 512m の環境で起動に 1〜2 分かかった(1 回の測定の目安。2.19.7 より遅い)。ヘルスチェックの `start_period` は 60 秒のまま(猶予は 60 秒 + 10 秒 × 12 回)で、結合テストは 3.9.0 で 2 回成功した。ただし初回の 1 回は、`opensearch` が unhealthy になって起動に失敗した(原因は未特定)。環境が遅く、この猶予を超える場合は、`compose.yaml` の `start_period` を延ばす
+- 2.19.7 と 3.9.0 以外のバージョンは未確認
 
 ## `loreley-deletions` と `loreley-jobs` のマッピングは仮定義
 
@@ -117,5 +118,5 @@ docker compose down -v                # 停止してデータ(名前付きボリ
 
 ### `opensearch` / `indexer` が unhealthy のまま(想定。未確認)
 
-- 想定: `opensearch` は JVM の起動待ち(`start_period` 60 秒)、`indexer` は起動時の整理待ち(イメージの `start-period` 120 秒)。正常な起動では、この待ちは 20 秒程度だった(上記の目安)
+- 想定: `opensearch` は JVM の起動待ち(`start_period` 60 秒)、`indexer` は起動時の整理待ち(イメージの `start-period` 120 秒)。OpenSearch 3.9.0 の JVM 起動は 1〜2 分かかった(1 回の測定の目安)。猶予(60 秒 + 10 秒 × 12 回)を超えると unhealthy になる(初回の結合テストで 1 回発生。原因は未特定)。OpenSearch 2.19.7 では、この待ちは 20 秒程度だった(上記の目安は 2.19.7 での値)
 - 対処(案): `docker compose logs` で原因を確認し、待っても変わらなければメモリを確認する
