@@ -20,10 +20,10 @@
 
 services:
   opensearch:
-    # バージョンは .env の OPENSEARCH_VERSION で変える。既定はパッチまで固定した 2.19.7。
+    # バージョンは .env の OPENSEARCH_VERSION で変える。既定はパッチまで固定した 3.9.0。
     # `latest` は、取得のたびにバージョンが変わり再現できないため使わない。
-    # 2.19 は maintenance 系列で、opensearch-py 3.2.0(Indexer の依存)の CI が検証対象とする系列。
-    image: opensearchproject/opensearch:${OPENSEARCH_VERSION:-2.19.7}
+    # 3.9.0 は、opensearch-py 3.2.0(Indexer の依存)との組み合わせで、結合テストが通ることを確認した版。
+    image: opensearchproject/opensearch:${OPENSEARCH_VERSION:-3.9.0}
     environment:
       # 単一ノード。クラスタ形成(discovery)を待たずに起動し、ブートストラップチェックも
       # 本番モードの強制対象にならない(MVP は単一ホスト・単一ノード)。
@@ -71,7 +71,7 @@ services:
     # インデックスを一度だけ作る使い捨てコンテナ。Indexer はインデックスを作らないので、
     # Indexer の起動前に完了させる。同じイメージを使うのは、curl と sh が入っていて追加の
     # イメージ取得が要らないため。
-    image: opensearchproject/opensearch:${OPENSEARCH_VERSION:-2.19.7}
+    image: opensearchproject/opensearch:${OPENSEARCH_VERSION:-3.9.0}
     # イメージ既定の entrypoint は OpenSearch 本体を起動するので、init スクリプトに置き換える。
     # スクリプトは sh に渡して実行するため、mount した側の実行権限には依存しない。
     entrypoint: ["/bin/sh", "/init/init-indices.sh"]

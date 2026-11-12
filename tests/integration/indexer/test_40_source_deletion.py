@@ -124,8 +124,8 @@ def test_delete_documents_removes_all_documents_of_the_source_only(
     - (a) `runs == 1` は、`delete_by_query` の内部実装(1 シャード、スライスなし。1 回の実行が
       `scroll_total` を 1 つ進める)に依存する。シャード数・スライスを変えると、期待する差分が変わる。
     - (b) ID 取得(realtime GET)が、未 refresh の文書を読んでも refresh を起こさないこと(OpenSearch
-      2.19.7 で実測)。起こす版では、事前確認 (0) の `_count` が 0 にならずに落ちる(検出が効かない状態を
-      黙って通さない)。
+      2.19.7 で実測。3.9.0 でも、事前確認 (0) が通ることを確認した)。起こす版では、事前確認 (0) の
+      `_count` が 0 にならずに落ちる(検出が効かない状態を黙って通さない)。
     - (c) 「素の `delete_by_query` が未 refresh の文書に対して 0 件を返す」事実は、実装担当が実機で確認
       したが、このテストでは確認していない(テストが確認するのは、事前確認 (0) と `runs == 1`)。
 

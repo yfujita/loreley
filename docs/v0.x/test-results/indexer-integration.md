@@ -125,7 +125,7 @@ Indexer を、compose で起動した実 OpenSearch に接続して動かし、f
 
 - (完了)uv 経由の既定起動と `tests/integration/indexer/uv.lock` の生成は、2026-11-13 に実施した(3 章、4.2 の ④⑤)。`uv run` がロックを自動生成するかどうかは、事前に `uv lock` を実行したため確認していない。
 - `tests/integration/indexer/README.md` の「手動で実行する」の手順を、そのまま実行した確認(スクリプトが同じ手順を自動化しているが、README の手順どおりの実行は未実施)。`deploy/compose/README.md` の手動手順は 2026-11-13 に実行した(4.1 の最終行)。
-- Linux ホスト(`vm.max_map_count`、SELinux の bind mount)と、OpenSearch 2.19 以外のバージョンでの確認。
+- Linux ホスト(`vm.max_map_count`、SELinux の bind mount)と、OpenSearch 2.19.7・3.9.0 以外のバージョンでの確認(3.9.0 は 8 章)。
 - U-31 の未実施項目(4.3。(5) の再実行の上限の数値 K48 を含む)。
 - 発見事項 2 の、登録系(409 `crawl_not_started` など)での `loreley-deletions` 喪失時の挙動。
 - 変更をコミットしたあと、実施時点のコミット SHA を 3 章に追記する。
@@ -139,3 +139,27 @@ Indexer を、compose で起動した実 OpenSearch に接続して動かし、f
 ```sh
 scripts/run-indexer-integration-test.sh   # compose 起動 → pytest → 後始末まで一括(uv が必要)
 ```
+
+## 8. OpenSearch 3.9.0 での再実行(2026-11-13)
+
+OpenSearch と opensearch-py の更新(タスク `20261113_upgrade_opensearch`)にあわせて、同じ結合テストを OpenSearch 3.9.0 で再実行した。1〜7 章の結果(2.19.7)は、履歴としてそのまま残す。
+
+| 項目 | 内容 |
+| --- | --- |
+| 実施日・実施者 | 2026-11-13。Claude Code(メインエージェント)。ユーザー指示のもとで実施 |
+| OpenSearch | `opensearchproject/opensearch:3.9.0`(ダイジェスト `sha256:3b55f6b6249cfdb92b52ee59adc8a266203ba9ef9f5d82544fad6f1af2f3609e`、build_hash `4ee42a94`、Lucene 10.5.1、JDK 25.0.4.1)。単一ノード、セキュリティプラグイン無効、ヒープ 512m。compose の既定は 3.9.0 |
+| Indexer | opensearch-py 3.2.0(`apps/indexer/uv.lock` で固定。PyPI の最新。ロックの版は更新前から 3.2.0 で、`pyproject.toml` の指定を `>=3.2,<4` に上げた)。変更は**未コミット** |
+| ホスト・実行方法 | 3 章と同じ環境(macOS、Docker Desktop、メモリ約 3.8GiB)。`scripts/run-indexer-integration-test.sh`(uv 経由の既定起動) |
+
+結果:
+
+- **結合テスト: 40 件すべて成功**(2 回目と 3 回目の実行。`40 passed in 18.78s` と `40 passed in 19.08s`。pytest の実行時間のみ)。
+- Indexer の単体テスト(`apps/indexer`): 2119 件成功、ruff の指摘なし(opensearch-py の指定を更新したあと)。
+- **初回の実行は、スタックの起動に失敗した**(`container for service "opensearch" is unhealthy`、スクリプトの終了コード 10)。**原因は特定していない**。当初は、ヘルスチェックの猶予(`start_period` 60 秒 + 10 秒 × 12 回)が足りなかったと考え、120 秒にして再実行して成功した。しかし、60 秒に戻して再実行しても成功した(40 件)ため、猶予不足とは断定できず、`start_period` は 60 秒のままにした(120 秒への変更は取りやめた)。疑っている要因は、初回がイメージのビルドと同時の起動(負荷)だったことだが、未確認。OpenSearch 単体の起動は、手動の測定(1 回)で、`up` からクラスタが応答するまで約 121 秒、ログの `started` まで約 66 秒だった(2.19.7 では healthy まで約 20 秒)。猶予は 60 秒 + 約 120 秒あるため、遅い環境では超える余地がある。
+- 3.x でも、`DISABLE_SECURITY_PLUGIN` と `DISABLE_INSTALL_DEMO_CONFIG` によるセキュリティ無効の起動は、そのまま動いた(認証・TLS なしで Indexer が接続できた)。
+- 起動時のログに、Performance Analyzer の設定ファイルが無いというエラー(`performance-analyzer.properties` が見つからず、プラグインを無効化する)が出る。プラグインは使わないので、動作への影響はなかった。
+
+未確認:
+
+- 4.3 の「未実施」の項目は、3.9.0 でも未実施のまま。
+- 起動時間の測定は、各 1 回(目安)。
