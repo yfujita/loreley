@@ -10,3 +10,6 @@ tests/integration/*/results/
 tests/integration/*/.pytest_cache/
 tests/integration/*/.ruff_cache/
 tests/integration/*/__pycache__/
+
+# Obsidianの設定
+.obsidian/
