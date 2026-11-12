@@ -1,0 +1,24 @@
+# ビルドコンテキスト(apps/indexer)から除くもの。Dockerfile は必要なファイル
+# (pyproject.toml、uv.lock、src)だけを COPY するが、コンテキストの転送を小さくし、
+# 手元のファイルが誤ってイメージに入らないようにする。
+
+# 手元の仮想環境・キャッシュ(イメージ内で作り直す。OS・アーキテクチャが違いうる)
+.venv/
+**/__pycache__/
+**/*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# テストと開発用の文書(実行に不要。変更してもイメージのキャッシュを無効にしない)
+tests/
+README.md
+
+# バージョン管理・ビルド定義・エディタ・秘密になりうるファイル
+.git/
+.gitignore
+Dockerfile
+.dockerignore
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
