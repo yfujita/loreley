@@ -6,10 +6,10 @@
 #       scripts/run-indexer-integration-test.sh --keep       # 終了後もスタックを残す(デバッグ用)
 #       scripts/run-indexer-integration-test.sh -k test_30_deletion  # テストを絞る(-k。ファイル名の語でも絞れる)
 #   ※ 絞り込みは `-k` を使う。ファイルやノード ID(`ファイル::テスト名`)をパス引数で渡しても、既定のコマンドの
-#     末尾に `tests/integration` があるため絞られず、全テストが走る。1 テストだけを指定したいときは、
-#     `--keep` でスタックを残し、pytest を直接実行する(tests/integration/README.md の「手動で実行する」)。
+#     末尾に `tests/integration/indexer` があるため絞られず、全テストが走る。1 テストだけを指定したいときは、
+#     `--keep` でスタックを残し、pytest を直接実行する(tests/integration/indexer/README.md の「手動で実行する」)。
 #   ※ シナリオ ID(IT-nn)はテスト名に含まれないため、`-k IT-30` では 0 件になる(終了コード 5)。
-#     ID とファイルの対応は tests/integration/README.md を参照。
+#     ID とファイルの対応は tests/integration/indexer/README.md を参照。
 #
 # 終了コード:
 #   pytest の終了コード(0=全成功。1〜5 は pytest の定義どおり)
@@ -20,7 +20,7 @@
 # 環境変数:
 #   LORELEY_IT_WAIT_TIMEOUT_SECS  起動後の待機の上限(秒)。既定 300
 #   LORELEY_IT_PYTEST_CMD         pytest を起動するコマンドの置き換え(空白区切りで分割する)。
-#                                 既定は `uv run --project tests/integration pytest tests/integration -v`。
+#                                 既定は `uv run --project tests/integration/indexer pytest tests/integration/indexer -v`。
 #                                 uv が使えない環境で、用意済みの venv の pytest を使いたい場合だけ指定する。
 #                                 指定すると uv の事前確認は行わない。スクリプトの引数はこのコマンドの後ろに付く。
 #   OPENSEARCH_VERSION など         deploy/compose/.env.example の変数は、そのまま compose に渡る。
@@ -50,7 +50,7 @@ root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root_dir"
 
 wait_timeout_secs="${LORELEY_IT_WAIT_TIMEOUT_SECS:-300}"
-default_pytest_cmd="uv run --project tests/integration pytest tests/integration -v"
+default_pytest_cmd="uv run --project tests/integration/indexer pytest tests/integration/indexer -v"
 pytest_cmd_string="${LORELEY_IT_PYTEST_CMD:-$default_pytest_cmd}"
 keep_stack=false
 pytest_args=()
@@ -70,7 +70,7 @@ info() {
 compose() {
   docker compose -p "$PROJECT_NAME" \
     -f deploy/compose/compose.yaml \
-    -f tests/integration/compose.test.yaml "$@"
+    -f tests/integration/indexer/compose.test.yaml "$@"
 }
 
 # ---- 引数 ----
@@ -126,7 +126,7 @@ check_prerequisites() {
     if is_port_in_use "$port"; then
       error "ホストのポート ${port} が使用中です。使用中のプロセス(または起動したままの ${PROJECT_NAME} スタック)を止めてから再実行してください。"
       error "  確認: lsof -nP -iTCP:${port} -sTCP:LISTEN"
-      error "  ${PROJECT_NAME} の残りなら: docker compose -p ${PROJECT_NAME} -f deploy/compose/compose.yaml -f tests/integration/compose.test.yaml down -v --remove-orphans"
+      error "  ${PROJECT_NAME} の残りなら: docker compose -p ${PROJECT_NAME} -f deploy/compose/compose.yaml -f tests/integration/indexer/compose.test.yaml down -v --remove-orphans"
       return 1
     fi
   done
@@ -181,7 +181,7 @@ cleanup() {
   if [ "$keep_stack" = true ]; then
     info "--keep が指定されたため、スタックを残しました(プロジェクト名: ${PROJECT_NAME})。"
     info "  OpenSearch: http://127.0.0.1:${OPENSEARCH_PORT}  Indexer: http://127.0.0.1:${INDEXER_PORT}"
-    info "  後始末: docker compose -p ${PROJECT_NAME} -f deploy/compose/compose.yaml -f tests/integration/compose.test.yaml down -v --remove-orphans"
+    info "  後始末: docker compose -p ${PROJECT_NAME} -f deploy/compose/compose.yaml -f tests/integration/indexer/compose.test.yaml down -v --remove-orphans"
   else
     info "後始末します(docker compose -p ${PROJECT_NAME} down -v --remove-orphans)。"
     if ! compose down -v --remove-orphans; then
@@ -297,7 +297,7 @@ fi
 
 # ---- テスト ----
 
-results_dir="tests/integration/results"
+results_dir="tests/integration/indexer/results"
 mkdir -p "$results_dir"
 result_file="${results_dir}/pytest-$(date +%Y%m%d-%H%M%S).log"
 

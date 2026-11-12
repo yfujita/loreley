@@ -2,8 +2,8 @@
 
 compose で起動した**実 OpenSearch と実 Indexer**に対して、ホストの pytest から実行する結合テスト。テストが Crawler の役を務め、Indexer の HTTP API を呼び、OpenSearch の実データを直接読んで確かめる。
 
-> **確認状況**: 実行結果(passed 件数・所要時間・環境)は [docs/v0.x/test-results/indexer-integration.md](../../docs/v0.x/test-results/indexer-integration.md) に書く。この文書には書かない。
-> **uv 経由の既定起動は確認済み**(uv 0.13.8。スクリプトを 2 回連続で実行し、どちらも 40 passed。結果記録 4.2 の ④⑤)。`tests/integration/uv.lock` で依存を固定している。macOS(x86_64)・Docker 20.10.13・compose v2.3.3 でのみ確認した。
+> **確認状況**: 実行結果(passed 件数・所要時間・環境)は [docs/v0.x/test-results/indexer-integration.md](../../../docs/v0.x/test-results/indexer-integration.md) に書く。この文書には書かない。
+> **uv 経由の既定起動は確認済み**(uv 0.13.8。スクリプトを 2 回連続で実行し、どちらも 40 passed。結果記録 4.2 の ④⑤)。`tests/integration/indexer/uv.lock` で依存を固定している。macOS(x86_64)・Docker 20.10.13・compose v2.3.3 でのみ確認した。
 
 ## 目的
 
@@ -18,7 +18,7 @@ Indexer の単体テストは、OpenSearch を**インメモリの fake** に差
 | 項目 | 内容 |
 | --- | --- |
 | Docker | Docker と docker compose v2(確認した版: Docker 20.10.13、compose v2.3.3)。デーモンが起動していること |
-| uv | 必要(確認した版: uv 0.13.8)。`tests/integration/uv.lock` で依存を固定している。依存を変えたら、`tests/integration` で `uv lock` を実行して更新する |
+| uv | 必要(確認した版: uv 0.13.8)。`tests/integration/indexer/uv.lock` で依存を固定している。依存を変えたら、`tests/integration/indexer` で `uv lock` を実行して更新する |
 | メモリ | Docker に **約 4GB 以上**を推奨(OpenSearch のヒープ 512m の既定は、約 3.8GiB の VM で確認した)。ほかの重いコンテナを同時に動かさない |
 | ポート | ホストの `9200`(OpenSearch)と `8000`(Indexer)が空いていること。どちらも `127.0.0.1` だけに publish する |
 | ネットワーク | 初回は、ベースイメージ・OpenSearch のイメージ・Python の依存を取得する |
@@ -39,8 +39,8 @@ scripts/run-indexer-integration-test.sh -k test_ttl_deletion_runs_in_multiple_ba
 scripts/run-indexer-integration-test.sh -k deletion      # 名前に deletion を含むテスト
 ```
 
-- `--keep` と `-h` 以外の引数は、そのまま pytest に渡る。**絞り込みには `-k` を使う**。ファイルやノード ID(`ファイル::テスト名`)をパス引数で渡しても、既定のコマンドの末尾に `tests/integration` があるため絞られず、全テストが走る(`LORELEY_IT_PYTEST_CMD` で既定のコマンドを置き換えたときは別)。ノード ID で 1 テストを指定したいときは、「手動で実行する」の手順で pytest を直接実行する
-- スクリプトは、`docker compose -p loreley-it -f deploy/compose/compose.yaml -f tests/integration/compose.test.yaml up -d --build` で起動する。**`up --wait` は使わず**、`docker compose ps` 相当の確認を 3 秒間隔で繰り返して、`opensearch`・`indexer` が healthy、`opensearch-init` が Exited(0) になるのを待つ(compose v2.3.3 では `--wait` が戻らないため。`deploy/compose/README.md` を参照)
+- `--keep` と `-h` 以外の引数は、そのまま pytest に渡る。**絞り込みには `-k` を使う**。ファイルやノード ID(`ファイル::テスト名`)をパス引数で渡しても、既定のコマンドの末尾に `tests/integration/indexer` があるため絞られず、全テストが走る(`LORELEY_IT_PYTEST_CMD` で既定のコマンドを置き換えたときは別)。ノード ID で 1 テストを指定したいときは、「手動で実行する」の手順で pytest を直接実行する
+- スクリプトは、`docker compose -p loreley-it -f deploy/compose/compose.yaml -f tests/integration/indexer/compose.test.yaml up -d --build` で起動する。**`up --wait` は使わず**、`docker compose ps` 相当の確認を 3 秒間隔で繰り返して、`opensearch`・`indexer` が healthy、`opensearch-init` が Exited(0) になるのを待つ(compose v2.3.3 では `--wait` が戻らないため。`deploy/compose/README.md` を参照)
 - 異常終了したときは、`docker compose ps -a` と各サービスのログの末尾 100 行を表示してから、後始末する
 - ホスト側のポートは、スクリプトが 9200・8000 に固定する(`deploy/compose/.env` で変えていても上書きする)
 
@@ -59,7 +59,7 @@ scripts/run-indexer-integration-test.sh -k deletion      # 名前に deletion �
 | 変数 | 既定 | 説明 |
 | --- | --- | --- |
 | `LORELEY_IT_WAIT_TIMEOUT_SECS` | `300` | 起動後の待機の上限(秒)。1 以上の整数 |
-| `LORELEY_IT_PYTEST_CMD` | `uv run --project tests/integration pytest tests/integration -v` | pytest を起動するコマンド全体の置き換え(空白区切り。スクリプトの引数はこの後ろに付く)。**uv が使えない環境で、用意済みの venv の pytest を使うための逃げ道**で、通常は指定しない。指定すると uv の事前確認を省略する |
+| `LORELEY_IT_PYTEST_CMD` | `uv run --project tests/integration/indexer pytest tests/integration/indexer -v` | pytest を起動するコマンド全体の置き換え(空白区切り。スクリプトの引数はこの後ろに付く)。**uv が使えない環境で、用意済みの venv の pytest を使うための逃げ道**で、通常は指定しない。指定すると uv の事前確認を省略する |
 
 `OPENSEARCH_VERSION`・`OPENSEARCH_HEAP_SIZE`・`INDEXER_LOG_LEVEL` などの compose の変数は、そのまま compose に渡る(`deploy/compose/.env.example`)。
 
@@ -69,17 +69,17 @@ scripts/run-indexer-integration-test.sh -k deletion      # 名前に deletion �
 
 ```sh
 # 1. 起動(`--wait` は使わない)
-docker compose -p loreley-it -f deploy/compose/compose.yaml -f tests/integration/compose.test.yaml up -d --build
+docker compose -p loreley-it -f deploy/compose/compose.yaml -f tests/integration/indexer/compose.test.yaml up -d --build
 
 # 2. opensearch・indexer が healthy になるまで待つ(opensearch-init は Exited (0) になる)。
 #    indexer が healthy になる前に pytest を始めると、疎通確認で中止される(終了コード 2)
-docker compose -p loreley-it -f deploy/compose/compose.yaml -f tests/integration/compose.test.yaml ps
+docker compose -p loreley-it -f deploy/compose/compose.yaml -f tests/integration/indexer/compose.test.yaml ps
 
 # 3. テストを実行する
-uv run --project tests/integration pytest tests/integration -v
+uv run --project tests/integration/indexer pytest tests/integration/indexer -v
 
 # 4. 後始末(ボリュームも消す)
-docker compose -p loreley-it -f deploy/compose/compose.yaml -f tests/integration/compose.test.yaml down -v --remove-orphans
+docker compose -p loreley-it -f deploy/compose/compose.yaml -f tests/integration/indexer/compose.test.yaml down -v --remove-orphans
 ```
 
 - テストは `compose.test.yaml` の値(Indexer の原本上限 64 KiB、削除のバッチ・ページ 2 件、走査間隔 1 秒)を前提にしている。`deploy/compose/compose.yaml` だけで起動したスタックに向けて実行しない(IT-14・IT-31 などが前提を満たさず失敗する)
@@ -101,14 +101,14 @@ docker compose -p loreley-it -f deploy/compose/compose.yaml -f tests/integration
 - ファイル名の語を `-k` に渡す: 次の「シナリオ一覧」の表のファイル名から、例 `-k test_30_deletion`(`test_30_deletion.py` の 2 件に絞れることを確認した)
 - 名前のキーワードを使う: 例 `-k deletion`(ファイル名 `test_30_deletion.py`・`test_40_source_deletion.py` と、名前に `deletion` を含むテスト)、`-k document_id`(`test_02_document_id.py`)。キーワードはほかのファイルのテストにも一致しうるので、`--collect-only -q` で対象を確認してから実行する
 - 1 テストを指定する: テスト名の語を `-k` に渡す(例 `-k test_ttl_deletion_runs_in_multiple_batches_and_pages` で 1 件に絞れることを確認した)。テスト関数名は `--collect-only -q` で分かる
-- **スクリプトにファイルやノード ID(`ファイル::テスト名`)をパス引数で渡しても、絞られず全テストが走る**(既定のコマンドの末尾に `tests/integration` があるため。`pytest tests/integration … tests/integration/test_30_deletion.py` で 40 件が収集されることを確認した)。ノード ID で指定したいときは、「手動で実行する」の手順で pytest を直接実行する
-- 収集だけ確認したいときは、スクリプトを使わず、ホストで `uv run --project tests/integration pytest tests/integration --collect-only -q` を実行する(**スタックは不要**。スタックを止めた状態で実行して 40 件が収集されることを確認した)。スクリプト経由で `--collect-only` を渡すと、スタックを起動してから収集する
+- **スクリプトにファイルやノード ID(`ファイル::テスト名`)をパス引数で渡しても、絞られず全テストが走る**(既定のコマンドの末尾に `tests/integration/indexer` があるため。`pytest tests/integration/indexer … tests/integration/indexer/test_30_deletion.py` で 40 件が収集されることを確認した)。ノード ID で指定したいときは、「手動で実行する」の手順で pytest を直接実行する
+- 収集だけ確認したいときは、スクリプトを使わず、ホストで `uv run --project tests/integration/indexer pytest tests/integration/indexer --collect-only -q` を実行する(**スタックは不要**。スタックを止めた状態で実行して 40 件が収集されることを確認した)。スクリプト経由で `--collect-only` を渡すと、スタックを起動してから収集する
 
 ## 結果の見方
 
-- スクリプトで実行すると、pytest の出力が標準出力と `tests/integration/results/pytest-YYYYMMDD-HHMMSS.log` に残る(実行のたびに増える。`.gitignore` 済み)
+- スクリプトで実行すると、pytest の出力が標準出力と `tests/integration/indexer/results/pytest-YYYYMMDD-HHMMSS.log` に残る(実行のたびに増える。`.gitignore` 済み)
 - 失敗したテストの詳細は、このログの `FAILURES` の節にある。スタックの状態は、同じ実行の最後に出る `docker compose ps -a` と各サービスのログの末尾(異常終了のとき)を見る。`--keep` で残したスタックなら、`docker compose -p loreley-it ... logs indexer` で全体を見られる
-- 実行結果の記録は [docs/v0.x/test-results/indexer-integration.md](../../docs/v0.x/test-results/indexer-integration.md)
+- 実行結果の記録は [docs/v0.x/test-results/indexer-integration.md](../../../docs/v0.x/test-results/indexer-integration.md)
 
 ## シナリオ一覧
 

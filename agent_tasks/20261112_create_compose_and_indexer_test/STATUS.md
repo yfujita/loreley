@@ -5,12 +5,13 @@
 - 状態: done
 - 現在工程: 完了(ユーザーへの最終報告待ち。ユーザー判断が必要な発見事項が 2 件、確認事項が 1 件ある)
 - 最終更新: 2026-11-13
-- 最新作業記録: 0015-task-review-and-closing.md
+- 最新作業記録: 0016-reorganize-tests-by-module.md
 
 ## 現在の状況
 
+- 0016(ユーザー指示): `tests/integration/` 直下の Indexer 用資材を `tests/integration/indexer/` へ移動し、参照パスを更新した(作業記録 0001〜0015 は当時のパスのまま)。移動後も 40 passed。別モジュールは `tests/integration/{モジュール名}/` に追加する。
 全フェーズ(0〜7)、レビュー(R1〜R3、タスクレビュー、各再レビュー)と指摘対応が完了した。完了条件「composeを利用したテストが成功」を満たした。
-- 成果物: compose(`deploy/compose/`: opensearch / opensearch-init / indexer)、OpenSearch スキーマと init(`infra/opensearch/`)、結合テスト(`tests/integration/`: 全16シナリオ・40テスト、`uv.lock` 含む)、実行スクリプト(`scripts/run-indexer-integration-test.sh`)、手順書(`deploy/compose/README.md`、`tests/integration/README.md`)、結果記録(`docs/v0.x/test-results/indexer-integration.md`)。`apps/indexer` のコードは変更していない(README の 9〜10 章のみ更新)。
+- 成果物: compose(`deploy/compose/`: opensearch / opensearch-init / indexer)、OpenSearch スキーマと init(`infra/opensearch/`)、結合テスト(`tests/integration/indexer/`: 全16シナリオ・40テスト、`uv.lock` 含む)、実行スクリプト(`scripts/run-indexer-integration-test.sh`)、手順書(`deploy/compose/README.md`、`tests/integration/indexer/README.md`)、結果記録(`docs/v0.x/test-results/indexer-integration.md`)。`apps/indexer` のコードは変更していない(README の 9〜10 章のみ更新)。
 - **uv 経由の既定起動で、スクリプトを 2 回連続実行して 40 passed**(13.40s / 13.13s、終了コード 0、残骸なし)。pytest の rootdir・設定ファイルの読み込みも確認。`deploy/compose/README.md` の手動手順も、書かれたとおりに実行して確認(0015、結果記録 4.1)。
 - OpenSearch は `opensearchproject/opensearch:2.19.7` に固定(ダイジェスト sha256:3bfa1ec7…)。ホスト: Docker 20.10.13 / compose v2.3.3 / メモリ約3.8GiB・2CPU / x86_64(macOS)。
 - uv: `brew install uv` は約8時間後に失敗(llvm と rust のみ導入)。ユーザー自身が uv 0.13.8 を導入した。

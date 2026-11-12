@@ -5,7 +5,7 @@ OpenSearch と Indexer を起動する compose 構成(MVP)。`compose.yaml` が 
 > **確認状況**: 特記がない限り、次の環境で実機確認した事実だけを書いている。「未確認」「想定(未確認)」と書いた箇所は、実機で確認していない。
 >
 > - 確認環境: macOS(x86_64)、Docker 20.10.13(Docker Desktop。VM のメモリ約 3.8GiB、CPU 2)、docker compose v2.3.3
-> - 結合テスト(`tests/integration`)は、この構成を専用のプロジェクト名 `loreley-it` で起動して実行する。手順と結果は [tests/integration/README.md](../../tests/integration/README.md) を参照
+> - 結合テスト(`tests/integration/indexer`)は、この構成を専用のプロジェクト名 `loreley-it` で起動して実行する。手順と結果は [tests/integration/indexer/README.md](../../tests/integration/indexer/README.md) を参照
 
 ## 構成
 
@@ -79,7 +79,7 @@ docker compose down -v                # 停止してデータ(名前付きボリ
 
 - イメージは `opensearchproject/opensearch:2.19.7`。パッチまでのタグで固定し、`latest` は使わない(取得のたびに変わらないため、再現できる)。ダイジェストは固定しない(タグの固定で足りると判断した)
 - 2.19 を選んだ理由: 2.19 は maintenance 系列で、Indexer が使う opensearch-py 3.2.0 の CI が検証対象としている系列のため(調査による。出典の再確認はしていない)
-- バージョンは `.env` の `OPENSEARCH_VERSION` で変えられる。上げるときは、結合テスト(`tests/integration`)を通してから使う
+- バージョンは `.env` の `OPENSEARCH_VERSION` で変えられる。上げるときは、結合テスト(`tests/integration/indexer`)を通してから使う
 - 確認した実体(参考): `opensearchproject/opensearch:2.19.7`(ダイジェスト `sha256:3bfa1ec74d56928c2e018033d45c460ce2c0ea65a5cedd577de3102326c31b89`、build_hash `6dd9a042`、JDK 21.0.12.1)。単一ノードで起動し、Indexer が接続して起動時の整理まで完了し、結合テストが通ることを確認した(結果は [indexer-integration.md](../../docs/v0.x/test-results/indexer-integration.md))
 - 2.19 以外のバージョンは未確認
 

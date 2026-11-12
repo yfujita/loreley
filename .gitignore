@@ -4,9 +4,9 @@ audit/
 # compose のローカル設定(deploy/compose/.env.example からコピーして作る)
 deploy/compose/.env
 
-# 結合テストの実行環境と結果の出力先(tests/integration)
-tests/integration/.venv/
-tests/integration/results/
-tests/integration/.pytest_cache/
-tests/integration/.ruff_cache/
-tests/integration/__pycache__/
+# 結合テストの実行環境と結果の出力先(tests/integration/{モジュール名}/)
+tests/integration/*/.venv/
+tests/integration/*/results/
+tests/integration/*/.pytest_cache/
+tests/integration/*/.ruff_cache/
+tests/integration/*/__pycache__/

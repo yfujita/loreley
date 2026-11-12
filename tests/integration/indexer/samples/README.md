@@ -1,6 +1,6 @@
 # 結合テスト用のサンプル文書
 
-`tests/integration/` のテストが、Crawler 役として Indexer に登録する固定の原本。
+`tests/integration/indexer/` のテストが、Crawler 役として Indexer に登録する固定の原本。
 期待する抽出結果の要点は次のとおり(テストの期待値と対応する。IT-10・IT-11)。
 
 | ファイル | MIME タイプ | 期待する抽出結果 |

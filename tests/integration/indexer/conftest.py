@@ -25,7 +25,7 @@ STACK_HINT = (
     "compose のスタックが起動していません。先に次のどちらかで起動してください。\n"
     "  - scripts/run-indexer-integration-test.sh(起動 → テスト → 後片付けを一括で行う)\n"
     "  - docker compose -p loreley-it -f deploy/compose/compose.yaml "
-    "-f tests/integration/compose.test.yaml up -d --build"
+    "-f tests/integration/indexer/compose.test.yaml up -d --build"
 )
 
 
