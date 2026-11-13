@@ -37,7 +37,7 @@
 | 12 | 0 件列挙の警告と、識別子エラーの削除判定への影響: 観測性と記述の明確化だけで、削除の挙動は変えない(保留・抑止は CA-U-19・CA-U-7 で未決) | 案 | CA-P-52、architecture 7.7 |
 | 13 | 10,000 件超の記録の走査・バルク削除(PIT + `search_after`、走査前の refresh)と、Indexer の上限との起動時の整合性検査(Indexer の設定名に対応する値を compose で渡す。Crawler が読む名前は CM-U-9 で未決) | 案 | CA-P-53〜55、architecture 3.1・6.4・10章 |
 | 14 | MVP は単一ホスト・単一 Crawler・直列実行(Job Runner が `queued` を 1 件ずつ実行)。実装は Python(Indexer に揃えた構成) | 確定(単一・直列・Python)。構成は案 | CM-K-1・CM-K-8、CA-P-11、CM-P-1・19 |
-| 15 | モジュール構成: `connectors` は `infrastructure` の配下に置かず、アプリケーション機能の層の独立したモジュールにする(データソースへの接続のほか、クロール対象の管理など複雑な処理を持つため)。必要があれば `connectors` が `infrastructure` を使う。`infrastructure` は `opensearch`・`indexer_client`。`connectors` が Store 層・Indexer クライアント・他のアプリケーション機能に依存しないことは、interface 1.4 と R5 からの導出(案) | 確定(独立したモジュールにすること、必要があれば `infrastructure` を使うこと。CM-K-10)。ほかは案 | CM-K-10、CM-P-1・7、module 4.10・6章 |
+| 15 | モジュール構成: `connectors` は `infrastructure` の配下に置かず、アプリケーション機能の層の独立したモジュールにする(データソースへの接続のほか、クロール対象の管理など複雑な処理を持つため)。必要があれば `connectors` が `infrastructure` を使う。`infrastructure` は `opensearch`・`indexer_client`。`connectors` が Store 層・Indexer クライアント・他のアプリケーション機能に依存しないことは、interface 1.4 と R5 からの導出(案)。外部 API のクライアントは Connector が生成せず、`main.py` が Client Factory を作って `ConnectorType` に渡す(案。CM-P-26。`create(config)` は変えない) | 確定(独立したモジュールにすること、必要があれば `infrastructure` を使うこと。CM-K-10)。ほかは案 | CM-K-10、CM-P-1・7、module 4.10・6章 |
 
 ## 3. ユーザー確定事項(実装者が必ず守るもの)
 

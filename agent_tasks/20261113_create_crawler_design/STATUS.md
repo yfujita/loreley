@@ -5,7 +5,7 @@
 - 状態: done
 - 現在工程: 完了(v0.1 の6本+外部レビュー反映の v0.2 の6本と決定事項の文書を作成・レビュー済み。案・未決はユーザーの確認待ち)
 - 最終更新: 2026-11-13
-- 最新作業記録: 0013-make-connectors-independent-module.md
+- 最新作業記録: 0014-refine-r2-and-client-injection.md
 
 ## 現在の状況
 
@@ -13,6 +13,7 @@ Crawler 設計書6本(`docs/v0.x/system-design/crawler/` 配下。v0.1 を作成
 
 成果物(v0.2 が最新。v0.1 は変更していない。外部レビューの反映は 0011・0012):
 - **2026-11-13 の追加指示(0013)**: `connectors` を `infrastructure` の外の独立したモジュール(アプリケーション機能の層)にした。反映先は `crawler/crawler-module-structure-v0.3.md`(module-structure だけ v0.3 が最新)と `crawler/crawler-design-decisions-v0.2.md`(decisions の最新)。確定は CM-K-10(独立したモジュールにすること、必要があれば `infrastructure` を使うこと)だけで、`opensearch`・`indexer_client` に依存しないことなどは案。ほかの設計書は変更不要
+- **軽微な指摘 2 点(0014)**: R2 を責務の分担の表現に直し(探索・取得の制御は `connectors`、外部 API との通信などの低レベルな I/O は必要に応じて `infrastructure`)、`infrastructure` のクライアントの注入方法を CM-P-26(案)として追加(`main.py` が Client Factory を作って `ConnectorType` に渡す。`create(config)` は変えない)。同じ v0.3・decisions v0.2 に反映
 - `crawler/crawler-design-decisions-v0.1.md`(新規。実装着手のための決定事項の要約。0012)
 - 以下 6 本は v0.2 が最新(`-v0.2.md`)。v0.1 の記載:
 - `crawler/crawler-architecture-v0.1.md`(Indexer連携・課題の横断一覧 13.8 を含む)
