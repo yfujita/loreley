@@ -5,13 +5,14 @@
 - 状態: done
 - 現在工程: 完了(v0.1 の6本+外部レビュー反映の v0.2 の6本と決定事項の文書を作成・レビュー済み。案・未決はユーザーの確認待ち)
 - 最終更新: 2026-11-13
-- 最新作業記録: 0012-write-v0.2-docs.md
+- 最新作業記録: 0013-make-connectors-independent-module.md
 
 ## 現在の状況
 
 Crawler 設計書6本(`docs/v0.x/system-design/crawler/` 配下。v0.1 を作成後、外部レビューの反映で v0.2 を作成。v0.2 が最新)の作成とレビューが完了した。各文書のレビュー(R1・R2・R3・P4整合・R5)、最終レビュー(A・B)、タスクレビュー(task-reviewer)を通過し、0000 の完了条件7項目を満たしている。設計書はユーザー未承認の v0.1 で、設計書内の案・未決・既存設計との不整合(I-n)はユーザーの確認待ち。実装・Web Connector の詳細設計はスコープ外。
 
 成果物(v0.2 が最新。v0.1 は変更していない。外部レビューの反映は 0011・0012):
+- **2026-11-13 の追加指示(0013)**: `connectors` を `infrastructure` の外の独立したモジュール(アプリケーション機能の層)にした。反映先は `crawler/crawler-module-structure-v0.3.md`(module-structure だけ v0.3 が最新)と `crawler/crawler-design-decisions-v0.2.md`(decisions の最新)。確定は CM-K-10(独立したモジュールにすること、必要があれば `infrastructure` を使うこと)だけで、`opensearch`・`indexer_client` に依存しないことなどは案。ほかの設計書は変更不要
 - `crawler/crawler-design-decisions-v0.1.md`(新規。実装着手のための決定事項の要約。0012)
 - 以下 6 本は v0.2 が最新(`-v0.2.md`)。v0.1 の記載:
 - `crawler/crawler-architecture-v0.1.md`(Indexer連携・課題の横断一覧 13.8 を含む)
