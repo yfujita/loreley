@@ -384,6 +384,10 @@ def test_an_error_code_of_an_unexpected_shape_is_dropped(code: str) -> None:
         ("status", {"crawl_id": "j", "source_id": "s"}),
         ("status", {"crawl_id": "j", "source_id": "s", "status": "deleted", "deleted_count": "1"}),
         ("status", {"crawl_id": "j", "source_id": "s", "status": "deleted", "deleted_count": True}),
+        # 契約にない `status` は、終端とみなさず(`confirmed` の根拠にせず)、契約違反の応答にする。
+        ("status", {"crawl_id": "j", "source_id": "s", "status": "processing"}),
+        ("status", {"crawl_id": "j", "source_id": "s", "status": "Running"}),
+        ("status", {"crawl_id": "j", "source_id": "s", "status": ""}),
         ("discard", {"discarded_crawl_ids": [1]}),
         ("delete_documents", {"deleted_count": 1.5}),
         ("delete_records", {"deleted": "true"}),
@@ -412,3 +416,15 @@ def test_parse_failures_do_not_echo_the_response_values() -> None:
     result = call_with(reply, OPERATIONS["batch"])
 
     assert "SENTINEL-VALUE" not in repr(result)
+
+
+@pytest.mark.parametrize(
+    "status",
+    ["running", "deleted", "skipped_by_ratio", "validation_failed", "discarded", "failed"],
+)
+def test_every_status_of_the_contract_is_accepted(status: str) -> None:
+    reply = Reply(body={"crawl_id": "j", "source_id": SOURCE_ID, "status": status})
+
+    assert call_with(reply, OPERATIONS["status"]) == CrawlStatus(
+        crawl_id="j", source_id=SOURCE_ID, status=status
+    )

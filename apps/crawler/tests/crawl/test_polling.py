@@ -10,6 +10,7 @@ import pytest
 
 from loreley_crawler.crawl import CrawlSettings
 from loreley_crawler.infrastructure.indexer_client import (
+    MALFORMED_RESPONSE,
     CrawlStatus,
     IndexerRejected,
     IndexerUnavailable,
@@ -87,6 +88,8 @@ def test_only_404_until_the_failure_limit_is_unknown_and_does_not_fail_the_job(
         ],
         [not_found(), IndexerUnavailable("connection_error"), not_found()],
         [not_found(), not_found(), IndexerRejected(400, "invalid_request")],
+        # 契約にない `status` の応答(パース時に契約違反になる)は、確認の根拠にならない失敗。
+        [IndexerRejected(200, MALFORMED_RESPONSE)] * 3,
     ],
 )
 def test_a_streak_with_anything_but_404_is_unconfirmed(mixed: list[object], env: CrawlEnv) -> None:

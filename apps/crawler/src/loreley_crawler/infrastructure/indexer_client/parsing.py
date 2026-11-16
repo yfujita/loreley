@@ -77,12 +77,23 @@ def parse_batch(data: bytes, expected_external_ids: Sequence[str]) -> BatchResul
     return BatchResults(documents=documents)
 
 
+# Status API の削除結果の `status`(indexer-api 4.5。`running` 以外が終端状態)。`running` 以外を
+# すべて終端とみなす(`confirmed` の根拠にする)ので、契約にない値(バージョン不整合・想定外の応答)
+# は、終端とみなさず `MalformedResponseError` にする。
+KNOWN_DELETION_STATUSES = frozenset(
+    {"running", "deleted", "skipped_by_ratio", "validation_failed", "discarded", "failed"}
+)
+
+
 def parse_status(data: bytes) -> CrawlStatus:
     body = _load_object(data)
+    status = _str(body, "status")
+    if status not in KNOWN_DELETION_STATUSES:
+        raise MalformedResponseError("an unknown deletion status")
     return CrawlStatus(
         crawl_id=_str(body, "crawl_id"),
         source_id=_str(body, "source_id"),
-        status=_str(body, "status"),
+        status=status,
         reason=_optional_str(body, "reason"),
         forced=_optional_bool(body, "forced"),
         target_count=_optional_int(body, "target_count"),

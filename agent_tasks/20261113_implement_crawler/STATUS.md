@@ -5,7 +5,7 @@
 - 状態: done
 - 現在工程: なし(未決事項の対話による解消と反映まで完了。ユーザー確認事項あり)
 - 最終更新: 2026-11-16
-- 最新作業記録: 0025-open-items-qa.md
+- 最新作業記録: 0026-fix-unknown-deletion-status.md
 
 ## 現在の状況
 
@@ -32,6 +32,7 @@
 
 - **設計書の承認と改版の反映**(0023。ユーザー指示 2026-11-16「未確認事項について、設計書は承認する。2設計書の改版に反映する。それ以外は別タスク」): 設計書の現行版全体を承認(`-P-` は承認済みの案。`-K-` への付け替え・仮値の確定はしない。ID 列=decisions v0.3 の4章の10件+CM-U-4・CA-U-3 以外の `-U-` は未決のまま)。改版依頼(0021 §5・0022 §3 ほか)を新版に反映: `crawler-architecture-v0.4`・`crawler-api-v0.4`・`crawler-module-structure-v0.5`・`crawler-design-decisions-v0.4`・`connector/connector-file-system-v0.3`・`connector-interface-v0.3`・`connector-web-v0.3`(旧版は無変更)。document-reviewer 2回(Critical なし。Important は反映済み)。README の設計書参照・承認の記述・2か所の誤り(フラグの確認位置、形式不正ロックの解消手段)を修正。**実装コード・infra は変更なし。以降の設計の正本は上記の新版**。3〜5(infra 前提作業の起票・コミット・Integration Test)は「それ以外は別タスク」で、本タスクでは何もしていない。
 
+- **PR レビュー指摘への対応**(0026): Status API の応答の `status` が契約外の値のとき `confirmed` になる問題を、応答の解析で契約違反にして修正(pytest 3331 passed)。
 - **未決事項の対話による解消と反映**(0025。ユーザー指示 2026-11-16「未決事項は一件ずつインタラクティブに質問」): 12件を質問して回答済み(周期は cron 式・止まっていた分は起動しない、CA-U-13・5・4 残り・9・14 Crawler 側・CAPI-U-2・4・7・8 残り・CI-U-4・6 ほか)。実装は cron 式への置き換え(`schedule_cron`、`LORELEY_CRAWLER_TIMEZONE`、`cronsim` 追加、Scheduler の `last_checked` 方式)で、pytest 3321 passed・3 skipped、ruff・`uv lock --check` 成功、code-reviewer の Important(夏時間で同時刻が繰り返し起動)を修正済み。設計書7本を追補(その場で更新)し、document-reviewer・code-reviewer の指摘を反映済み(再レビューは省略。メインが機械照合)。なお未決は実測後・実機確認・Admin API/Web の設計時・infra の別タスクの性質のもの。
 - **0023 の確認へのユーザー回答の反映**(0024): 承認の範囲の解釈は「上の解釈で良い」。CA-U-20(専用の復旧経路を置かない)・CAPI-U-11(int64 範囲外は考えない)・CAPI-U-12(リクエスト本文の上限 10 MiB・仮値)を解消し、設計書の新版にその場で追補。**実装は本文の上限だけ追加**(`api/request_body.py`、テスト +6)。pytest 3255 passed・3 skipped、ruff 成功。レビューは省略(理由は 0024 §4)。
 
