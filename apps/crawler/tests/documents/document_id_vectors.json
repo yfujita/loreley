@@ -1,0 +1,63 @@
+{
+  "origin": "docs/v0.x/system-design/crawler/connector/connector-interface-v0.2.md の 5.2「サンプルベクタ」の全行。document_id = SHA-256(source_id + NUL + external_id(5.1 の最終形))の小文字 16 進。",
+  "verification": "api 例の 3 行は apps/indexer/tests/documents/test_document_id.py の API_EXAMPLE_VECTORS と同じ値。それ以外の行は設計書が算式で計算した値で、実装時(2026-11-14)に Indexer の compute_document_id の出力と一致することを使い捨ての確認で確かめた(Indexer のテストには含まれない)。",
+  "vectors": [
+    {
+      "source_id": "src-docs",
+      "external_ids": ["page-10023"],
+      "document_id": "6b5851d90534fc00e388eeb8bd8c79ae48b8bf5c58e4fb0191e708afa28674d7",
+      "origin": "indexer-api-v0.10.md 4.3 の応答例。API_EXAMPLE_VECTORS と一致",
+      "through_common_processing": true
+    },
+    {
+      "source_id": "src-docs",
+      "external_ids": ["page-10024"],
+      "document_id": "7f2216b2a91e74fe53ce071ed0bd8dcebccaa904f9a8d8004f592b0a4210a9c5",
+      "origin": "indexer-api-v0.10.md 4.3 の応答例。API_EXAMPLE_VECTORS と一致",
+      "through_common_processing": true
+    },
+    {
+      "source_id": "src-docs",
+      "external_ids": ["page-10025"],
+      "document_id": "48ea91b73f76334d8cf88f6a77438e740ba9d54a338970ad1433aa2f504c2c40",
+      "origin": "indexer-api-v0.10.md 4.3 の応答例。API_EXAMPLE_VECTORS と一致",
+      "through_common_processing": true
+    },
+    {
+      "source_id": "src-fs",
+      "external_ids": ["docs/guide.md"],
+      "document_id": "62a016d377e1f1d16870407d482a404dbd18891784a35825ec5bee062386501f",
+      "origin": "interface 5.2(導出)",
+      "through_common_processing": true
+    },
+    {
+      "source_id": "src-fs",
+      "external_ids": ["/docs/guide.md"],
+      "document_id": "805b7b88bf1762ed070e57e377bb5be133f124c163f227edd9e810e07912ae91",
+      "origin": "interface 5.2(導出)。先頭に / がある。上の行と別 ID になる(K58)",
+      "through_common_processing": false,
+      "note": "算出関数への直接入力。共通処理を通すと invalid_external_id になる"
+    },
+    {
+      "source_id": "src-fs",
+      "external_ids": ["Docs/Guide.md"],
+      "document_id": "7ee0706f071514209f89045c27777064068ac4720c7d1aa3ff5923eec0934881",
+      "origin": "interface 5.2(導出)。大文字小文字違いは別 ID になる",
+      "through_common_processing": true
+    },
+    {
+      "source_id": "src-fs",
+      "external_ids": ["資料/がぎ.txt", "資料/がぎ.txt"],
+      "document_id": "61333b3265b1d26d226ced9296e0e072de607e1e7a09f84ff797de59bfb2738f",
+      "origin": "interface 5.2(導出)。1 つ目が NFC、2 つ目は NFD(結合文字を生のまま含む。エディタに NFC へ正規化されると意味が変わるので、テストが「2 つ目は NFC でない」ことを確認している)。NFC に正規化してから計算するので同じ ID",
+      "through_common_processing": true
+    },
+    {
+      "source_id": "src-fs",
+      "external_ids": ["a\\b.txt", "a/b.txt"],
+      "document_id": "acf087b56a18acd68b1b30209882aaa1a42c6cf2000f423c8982a227ec80f83d",
+      "origin": "interface 5.2(導出)。\\ を / に置き換えるので、両方同じ ID(5.3 の衝突の例)",
+      "through_common_processing": true
+    }
+  ]
+}
