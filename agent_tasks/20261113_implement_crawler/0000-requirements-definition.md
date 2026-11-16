@@ -18,27 +18,35 @@ Clawlerが実装されている
 
 - 設計書の内容の把握
 - Crawlerモジュールの実装
+  - ConnectorはFileSystemのみ実装。
+- Crawlerモジュールの単体テスト
 
 ## 対象範囲
 
-- (対象とするファイル・機能・領域)
+- apps/crawler
+- docs/system-design/crawler
 
 ## スコープ外
 
-- (このタスクでは扱わないこと)
-
-## 制約・前提条件
-
-- (守るべき制約、前提とすること)
+- CrawlerのIntegration Test
 
 ## 完了条件
 
-- [ ] (完了と判断できる条件)
+- [ ] Crawlerが実装され、単体テストが通っている。
 
 ## 成果物
 
-- (作成・変更するもの)
+- Crawlerのソースコード。
 
 ## 補足・参考情報
 
-- (関連資料、リンク、メモなど)
+### 設計書
+
+X部分はそれぞれ最新を参照する。
+
+- docs/system-design/crawler/crawler-api-v0.X.md
+- docs/system-design/crawler/crawler-architecture-v0.x.md
+- docs/system-design/crawler/crawler-design-decisions-v0.X.md
+- docs/system-design/crawler/crawler-module-structure-v0.X.md
+- docs/system-design/crawler/connector/connector-interface-v0.X.md
+- docs/system-design/crawler/connector/connector-file-system-v0.X.md
