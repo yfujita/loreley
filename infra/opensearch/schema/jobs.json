@@ -8,10 +8,35 @@
   "mappings": {
     "dynamic": false,
     "properties": {
-      "owner":            { "type": "keyword" },
-      "job_id":           { "type": "keyword" },
-      "lease_expires_at": { "type": "date" },
-      "enabled":          { "type": "boolean" }
+      "owner":                      { "type": "keyword" },
+      "job_id":                     { "type": "keyword" },
+      "lease_expires_at":           { "type": "date" },
+      "enabled":                    { "type": "boolean" },
+
+      "record_type":                { "type": "keyword" },
+      "source_id":                  { "type": "keyword" },
+      "job_type":                   { "type": "keyword" },
+      "status":                     { "type": "keyword" },
+      "trigger":                    { "type": "keyword" },
+      "document_id":                { "type": "keyword" },
+      "last_job_id":                { "type": "keyword" },
+
+      "queued_at":                  { "type": "date" },
+      "started_at":                 { "type": "date" },
+      "finished_at":                { "type": "date" },
+      "heartbeat_at":               { "type": "date" },
+      "acquired_at":                { "type": "date" },
+      "first_skipped_at":           { "type": "date" },
+      "last_skipped_at":            { "type": "date" },
+      "first_detected_at":          { "type": "date" },
+      "last_detected_at":           { "type": "date" },
+      "settings_source_updated_at": { "type": "date" },
+
+      "settings_snapshot":          { "type": "object", "enabled": false },
+      "finish_notice":              { "type": "object", "enabled": false },
+      "registration":               { "type": "object", "enabled": false },
+      "deletion_summary":           { "type": "object", "enabled": false },
+      "warnings":                   { "type": "object", "enabled": false }
     }
   }
 }

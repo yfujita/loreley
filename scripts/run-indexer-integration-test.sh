@@ -287,7 +287,9 @@ wait_for_stack() {
 }
 
 info "スタックを起動します(プロジェクト名: ${PROJECT_NAME})。"
-if ! compose up -d --build; then
+# 起動するサービスを明示する。compose.yaml に crawler がある(依存先ではない)ので、指定しないと
+# crawler まで起動してしまい、Indexer の結合テストの範囲外のビルド・メモリを使う。
+if ! compose up -d --build opensearch opensearch-init indexer; then
   error "docker compose up に失敗しました(イメージの取得・ビルド、または依存サービスの起動失敗)。"
   exit "$EXIT_STARTUP_FAILED"
 fi

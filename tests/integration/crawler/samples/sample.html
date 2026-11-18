@@ -1,0 +1,14 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>Loreley HTML サンプル</title>
+<style>body { color: red; } .cssleakmarker { margin: 0; }</style>
+<script>var scriptleakmarker = "must not be indexed";</script>
+</head>
+<body>
+<h1>見出し htmlmarkergamma</h1>
+<p>段落その一。</p><p>段落その二。</p>
+<script>console.log("scriptleakmarker2");</script>
+</body>
+</html>

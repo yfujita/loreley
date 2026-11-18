@@ -1,0 +1,48 @@
+# Crawler の結合テスト用の上書き。`deploy/compose/compose.yaml` の後ろに重ねて使う
+# (本番用の設定には混ぜない。Indexer 用の tests/integration/indexer/compose.test.yaml とは別で、重ねない)。
+#
+#   CRAWLER_DOCUMENTS_DIR=$PWD/tests/integration/crawler/data \
+#   docker compose -p loreley-it \
+#     -f deploy/compose/compose.yaml -f tests/integration/crawler/compose.test.yaml up -d --build
+#
+# Indexer 用の上書き(MAX_RAW_BYTES=64KiB)を流用しない理由: Crawler の MAX_RAW_BYTES の既定
+# (20 MiB)は 64 KiB の Indexer の上限を超え、起動時の整合性検査で失敗するため。ここでは、
+# 原本 1 件の上限を Indexer・Crawler の両方で小さくそろえる。
+# 値を変えたら、これに依存するテストの前提も確認すること。
+#   - サイズ超過のテスト(CIT-21)は、70,000 バイトのファイルが MAX_RAW_BYTES を超える前提
+#   - 待ち時間の値(ポーリング間隔・上限)は、テスト側の待機の上限(90 秒など)の前提
+# 環境変数名は apps/crawler/src/loreley_crawler/config.py(接頭辞 LORELEY_CRAWLER_)のとおり。
+
+# 原本 1 件の上限 64 KiB(既定 20 MiB)。Indexer・Crawler・Crawler が検査に使う Indexer の値の
+# 3 か所を同じにする必要があるので、1 か所で定義する(YAML アンカー)。
+x-max-raw-bytes: &max_raw_bytes "65536"
+
+services:
+  indexer:
+    environment:
+      LORELEY_INDEXER_MAX_RAW_BYTES: *max_raw_bytes
+      # 削除ワーカーの走査間隔(既定 2 秒)。終了通知から削除完了までの待ちを短くする。
+      LORELEY_INDEXER_DELETION_POLL_INTERVAL_SECONDS: "1"
+
+  crawler:
+    environment:
+      # Crawler が自分で取得する原本の上限。70,000 バイトのファイルが超過(oversize)になる。
+      # 整合条件(Crawler の値 <= Indexer の上限、MAX_RAW_BYTES <= バッチの原本のバイト数)は、
+      # 既定の MAX_BATCH_BYTES(Indexer 64 MiB、Crawler 32 MiB)で満たす。
+      LORELEY_CRAWLER_MAX_RAW_BYTES: *max_raw_bytes
+      # 整合性検査に使う Indexer の上限。Indexer の MAX_RAW_BYTES と同じ値にする。
+      LORELEY_CRAWLER_INDEXER_MAX_RAW_BYTES: *max_raw_bytes
+      # 削除結果のポーリング間隔(既定 5 秒)。クロール 1 回の所要時間を短くする。
+      # ロックが存在する時間(ロックを観測するテスト)の窓も、この間隔が決める。
+      LORELEY_CRAWLER_POLLING_INTERVAL_SECONDS: "2"
+      # ポーリングの上限(既定 1,800 秒)。Indexer の削除が進まないとき、ジョブが居座って直列の
+      # Job Runner が後続のテストを止めるのを避ける。
+      LORELEY_CRAWLER_POLLING_TIMEOUT_SECONDS: "120"
+      # Job Runner が実行待ちのジョブを探す間隔(既定 5 秒)。起動(202)から実行開始までの待ちを短くする。
+      LORELEY_CRAWLER_RUNNER_SCAN_INTERVAL_SECONDS: "1"
+    healthcheck:
+      # test はイメージの HEALTHCHECK のものを使う(ここでは変えない)。healthy になるまでの待ちを
+      # 短くするため、確認間隔だけ縮める(イメージは 15 秒)。start_period はイメージと同じ 180 秒で、
+      # 起動時の回復が終わるまでの失敗を unhealthy に数えない。
+      interval: 3s
+      start_period: 180s

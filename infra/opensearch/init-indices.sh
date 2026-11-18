@@ -10,6 +10,7 @@
 #   SEARCH_INDEX_ALIAS      検索インデックスのエイリアス (loreley-documents)
 #   DELETIONS_INDEX_NAME    削除記録のインデックス名 (loreley-deletions)
 #   JOBS_INDEX_NAME         ジョブ・ロックのインデックス名 (loreley-jobs)
+#   SOURCES_INDEX_NAME      データソース設定のインデックス名 (loreley-sources)
 set -eu
 
 OPENSEARCH_URL="${OPENSEARCH_URL:-http://opensearch:9200}"
@@ -18,6 +19,7 @@ SEARCH_INDEX_NAME="${SEARCH_INDEX_NAME:-loreley-documents-000001}"
 SEARCH_INDEX_ALIAS="${SEARCH_INDEX_ALIAS:-loreley-documents}"
 DELETIONS_INDEX_NAME="${DELETIONS_INDEX_NAME:-loreley-deletions}"
 JOBS_INDEX_NAME="${JOBS_INDEX_NAME:-loreley-jobs}"
+SOURCES_INDEX_NAME="${SOURCES_INDEX_NAME:-loreley-sources}"
 
 REQUEST_TIMEOUT_SECS=30
 
@@ -132,5 +134,6 @@ else
 fi
 create_index_if_absent "$DELETIONS_INDEX_NAME" deletions.json
 create_index_if_absent "$JOBS_INDEX_NAME" jobs.json
+create_index_if_absent "$SOURCES_INDEX_NAME" sources.json
 
 echo "done: OpenSearch indices are ready"

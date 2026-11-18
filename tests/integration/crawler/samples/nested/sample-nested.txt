@@ -1,0 +1,3 @@
+Loreley nested sample (subdirectory)
+This file checks the recursive enumeration.
+固有語: nestedmarkerepsilon

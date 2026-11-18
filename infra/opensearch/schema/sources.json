@@ -1,0 +1,22 @@
+{
+  "settings": {
+    "index": {
+      "number_of_shards": 1,
+      "number_of_replicas": 0
+    }
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "source_id":        { "type": "keyword" },
+      "connector_type":   { "type": "keyword" },
+      "status":           { "type": "keyword" },
+      "schedule_cron":    { "type": "keyword" },
+      "ttl":              { "type": "long" },
+      "min_delete_count": { "type": "long" },
+      "ratio_threshold":  { "type": "double" },
+      "updated_at":       { "type": "date" },
+      "connector_config": { "type": "object", "enabled": false }
+    }
+  }
+}
