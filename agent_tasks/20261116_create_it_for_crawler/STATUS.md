@@ -5,7 +5,7 @@
 - 状態: done
 - 現在工程: 完了(ユーザーへの最終報告待ち。ユーザー判断が必要な事項が 3 件ある)
 - 最終更新: 2026-11-18
-- 最新作業記録: 0014-pr3-review-fixes.md
+- 最新作業記録: 0015-pr3-fix-index-names.md
 
 ## 現在の状況
 
@@ -16,12 +16,12 @@
 
 ## PR #3 レビュー対応(2026-11-18、0014)
 
-指摘 1(Crawler の公開を `compose.test.yaml` だけに)・2(既存の `loreley-jobs` に `PUT _mapping` で項目を足す。結合テストを 1 件追加)・3(残骸のボリューム・空でない `data/` で中止)に対応済み。最終: Crawler IT **14 passed**、Indexer IT 40 passed。指摘 4(`support.py` の索引名固定)は未対応。上の「13 件」「未コミット」などの記述は 0013 時点のもの。
+指摘 1(Crawler の公開を `compose.test.yaml` だけに)・2(既存の `loreley-jobs` に `PUT _mapping` で項目を足す。結合テストを 1 件追加)・3(残骸のボリューム・空でない `data/` で中止)に対応済み。最終: Crawler IT **14 passed**、Indexer IT 40 passed。指摘 4(`support.py` の索引名固定)は 0015 で対応済み(テストが `LORELEY_JOBS_INDEX_NAME`・`LORELEY_SOURCES_INDEX_NAME` を読み、スクリプトは既定値に固定。14 passed)。0014 までは push 済み(a11b345)、0015 の変更は未コミット。上の「13 件」「未コミット」などの記述は 0013 時点のもの。
 
 ## 次のアクション
 
 1. ユーザーへの最終報告(0013 の最終報告に含める事項)
-2. 指摘 4 の対応要否の判断、PR #3 への push(未コミット。コミットの指示待ち)
+2. 0015 の変更のコミット・push(指示待ち)
 3. ユーザーの判断に応じて: 設計書の反映(別タスク)、`fess-opensearch` の再作成、コミット(コミット後に結果記録 3 章へ実施時点の SHA を追記)
 
 ## 未解決事項

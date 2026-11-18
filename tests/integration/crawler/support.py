@@ -34,11 +34,14 @@ CRAWLER_URL = os.environ.get("LORELEY_IT_CRAWLER_URL", "http://127.0.0.1:8001")
 INDEXER_URL = os.environ.get("LORELEY_IT_INDEXER_URL", "http://127.0.0.1:8000")
 OPENSEARCH_URL = os.environ.get("LORELEY_IT_OPENSEARCH_URL", "http://127.0.0.1:9200")
 
-# --- 索引名(compose の既定。検索インデックスはエイリアス。infra/opensearch の init が作る) ---
+# --- 索引名(検索インデックスはエイリアス。infra/opensearch の init が作る) ---
+# compose で変えられる 2 つ(`LORELEY_JOBS_INDEX_NAME`・`LORELEY_SOURCES_INDEX_NAME`)は、
+# compose と同じ環境変数で上書きできる(未指定は compose の既定)。
+# 一括スクリプトは、これらを既定値に固定する。
 SEARCH_INDEX = "loreley-documents"
 DELETIONS_INDEX = "loreley-deletions"
-JOBS_INDEX = "loreley-jobs"
-SOURCES_INDEX = "loreley-sources"
+JOBS_INDEX = os.environ.get("LORELEY_JOBS_INDEX_NAME", "loreley-jobs")
+SOURCES_INDEX = os.environ.get("LORELEY_SOURCES_INDEX_NAME", "loreley-sources")
 MAINTENANCE_RECORD_ID = "maintenance"
 
 # --- 検索対象のディレクトリ ---

@@ -21,6 +21,7 @@ Crawler の単体テストは、OpenSearch・Indexer・ファイルシステム�
 | uv | 必要(確認した版: uv 0.13.8)。`tests/integration/crawler/uv.lock` で依存を固定している。依存を変えたら、`tests/integration/crawler` で `uv lock` を実行して更新する |
 | メモリ | Docker に**約 4GB 以上**を推奨。OpenSearch + Indexer + Crawler を約 3.84GiB の VM で同時に起動して、全件成功した(使用量は測定していない)。ほかの重いコンテナを同時に動かさない |
 | ポート | ホストの `9200`(OpenSearch)・`8000`(Indexer)・`8001`(Crawler)が空いていること。すべて `127.0.0.1` だけに publish する。**スクリプトは 3 つのポートに固定**し、`deploy/compose/.env` の値では変えられない(テストがこの 3 つに接続する)。手動で別のポートにしたときだけ、`LORELEY_IT_OPENSEARCH_URL`・`LORELEY_IT_INDEXER_URL`・`LORELEY_IT_CRAWLER_URL` でテストの接続先を合わせる |
+| 索引名 | スクリプトは `LORELEY_JOBS_INDEX_NAME`・`LORELEY_SOURCES_INDEX_NAME` を既定値(`loreley-jobs`・`loreley-sources`)に固定する。手動で起動して索引名を変えたときは、**同じ環境変数を pytest にも渡す**(テストは同じ変数を読む。未指定は既定値) |
 | ネットワーク | 初回は、ベースイメージ・OpenSearch のイメージ・Python の依存を取得する |
 
 Linux の `vm.max_map_count` と SELinux(bind mount のラベル)は未確認(`deploy/compose/README.md` の前提を参照)。

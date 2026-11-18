@@ -42,6 +42,10 @@ readonly CRAWLER_PORT=8001
 export OPENSEARCH_HOST_PORT="$OPENSEARCH_PORT"
 export INDEXER_HOST_PORT="$INDEXER_PORT"
 export CRAWLER_HOST_PORT="$CRAWLER_PORT"
+# 索引名も同じ理由で固定する。テストは loreley-jobs・loreley-sources を読むので、シェルや
+# deploy/compose/.env で別の名前にされていると、スタックだけが別の索引を使って、テストが失敗する。
+export LORELEY_JOBS_INDEX_NAME="loreley-jobs"
+export LORELEY_SOURCES_INDEX_NAME="loreley-sources"
 readonly POLL_INTERVAL_SECS=3
 readonly LOG_TAIL_LINES=100
 readonly MIN_MAX_MAP_COUNT=262144
