@@ -163,3 +163,36 @@ OpenSearch と opensearch-py の更新(タスク `20261113_upgrade_opensearch`)�
 
 - 4.3 の「未実施」の項目は、3.9.0 でも未実施のまま。
 - 起動時間の測定は、各 1 回(目安)。
+
+## 9. スキーマ・compose・スクリプト変更後の回帰確認(2026-11-16)
+
+タスク `20261116_create_it_for_crawler`(Crawler の結合テスト。結果は [crawler-integration.md](crawler-integration.md))で、Indexer の結合テストが使う資材を変えたため、同じ結合テストを再実行した。1〜8 章の結果は、履歴としてそのまま残す。
+
+変更した資材(いずれも**未コミット**。基準コミットは `6970478`):
+
+- `infra/opensearch/schema/jobs.json` の拡張(Indexer が読む 4 項目 `owner`・`job_id`・`lease_expires_at`・`enabled` の型は変えず、Crawler が使う項目を追加。`dynamic: false` のまま)、`infra/opensearch/schema/sources.json` の新設、`init-indices.sh` への `loreley-sources` の作成の追加
+- `deploy/compose/compose.yaml`(`crawler` サービスの追加、`indexer` と `opensearch-init` への索引名・上限の変数の追加)、`.env.example`
+- `scripts/run-indexer-integration-test.sh`(`up` に起動するサービス `opensearch opensearch-init indexer` を明示した 1 点とコメントのみ)
+
+| 項目 | 内容 |
+| --- | --- |
+| 実施日・実施者 | 2026-11-16。Claude Code(メインエージェント)。ユーザー指示のもとで実施 |
+| OpenSearch | `opensearchproject/opensearch:3.9.0`(compose の既定。8 章と同じ版) |
+| ホスト・実行方法 | 3 章と同じ環境(macOS、Docker 20.10.13、compose v2.3.3、メモリ約 3.84GiB・CPU 2、uv 0.13.8)。`scripts/run-indexer-integration-test.sh`(uv 経由の既定起動) |
+
+結果:
+
+| 時点 | 結果 |
+| --- | --- |
+| 変更前(ベースライン) | **40 passed in 19.47s**、終了コード 0。`loreley-it` の残りなし |
+| スキーマ・compose 変更後(Crawler の IT の準備段階) | **40 passed in 23.41s**、終了コード 0。`crawler` は起動せず(`ps -a` に出ない)、`deploy/compose/documents` も作られなかった |
+| 最終コード(Crawler の IT の完成後) | **40 passed in 37.69s**、終了コード 0。`ps -a` は空で、`crawler` のコンテナは起動しなかった。ログ `tests/integration/indexer/results/pytest-20261116-165635.log` |
+
+- **40 件すべて成功**した。IT-01(`loreley-jobs` が `dynamic: false`)を含め、`jobs.json` の拡張と `loreley-sources` の追加による影響はなかった。
+- **所要時間は 19.47s → 23.41s → 37.69s と延びた**。原因は特定していない(変更の影響か、実行時のホストの状態のばらつきかは切り分けていない)。2026-11-13 の同じ 3.9.0 での実測(8 章。18.78s・19.08s)より長いが、失敗や不安定なテストはなかった。
+- Indexer の単体テスト(`apps/indexer`)は、`apps/indexer` を変更していないため再実行していない。
+
+未確認:
+
+- 所要時間の延びの原因(上記)。
+- 4.3 の「未実施」の項目は、変わらず未実施。

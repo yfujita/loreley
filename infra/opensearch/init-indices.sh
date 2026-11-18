@@ -10,6 +10,7 @@
 #   SEARCH_INDEX_ALIAS      検索インデックスのエイリアス (loreley-documents)
 #   DELETIONS_INDEX_NAME    削除記録のインデックス名 (loreley-deletions)
 #   JOBS_INDEX_NAME         ジョブ・ロックのインデックス名 (loreley-jobs)
+#   SOURCES_INDEX_NAME      データソース設定のインデックス名 (loreley-sources)
 set -eu
 
 OPENSEARCH_URL="${OPENSEARCH_URL:-http://opensearch:9200}"
@@ -18,6 +19,7 @@ SEARCH_INDEX_NAME="${SEARCH_INDEX_NAME:-loreley-documents-000001}"
 SEARCH_INDEX_ALIAS="${SEARCH_INDEX_ALIAS:-loreley-documents}"
 DELETIONS_INDEX_NAME="${DELETIONS_INDEX_NAME:-loreley-deletions}"
 JOBS_INDEX_NAME="${JOBS_INDEX_NAME:-loreley-jobs}"
+SOURCES_INDEX_NAME="${SOURCES_INDEX_NAME:-loreley-sources}"
 
 REQUEST_TIMEOUT_SECS=30
 
@@ -99,6 +101,34 @@ create_index_if_absent() {
   fail_with_response "create index ${index_name}" "$status"
 }
 
+# 既存の索引に、スキーマファイルの mappings にある項目のうち、まだ無いものを足す(PUT _mapping)。
+# 索引は `dynamic: false` なので、マッピングに無い項目は検索・絞り込みに使えない。スキーマを拡張する前に
+# 作った索引(既存のボリューム)をそのまま使うと、拡張した項目で検索しても何も見つからない。
+# PUT _mapping は、項目の追加と同じ定義の再送だけを受け付ける(型の変更は OpenSearch が 400 で拒否し、
+# このスクリプトは失敗で止まる)。何度実行しても結果は同じ(冪等)。
+# jq が無いので、スキーマファイルから "mappings" の値を sed で取り出す。そのため、スキーマファイルは
+# 「最上位の最後のキーが、2 スペースの字下げで書いた "mappings": {」の形でなければならない。
+extend_mapping() {
+  index_name="$1"
+  schema_file="${SCHEMA_DIR}/$2"
+  mapping_body_file="$(mktemp)"
+
+  sed -n '/^  "mappings": {$/,$p' "$schema_file" | sed '1s/^  "mappings": //' | sed '$d' >"$mapping_body_file"
+  if [ ! -s "$mapping_body_file" ]; then
+    rm -f "$mapping_body_file"
+    die "cannot extract \"mappings\" from ${schema_file}"
+  fi
+
+  status="$(send_request PUT "/${index_name}/_mapping" "$mapping_body_file")" \
+    || { rm -f "$mapping_body_file"; die "request to OpenSearch failed: ${OPENSEARCH_URL}"; }
+  rm -f "$mapping_body_file"
+  if [ "$status" = "200" ] && grep -q '"acknowledged":true' "$response_body_file"; then
+    echo "ok: mapping is up to date: ${index_name}"
+    return
+  fi
+  fail_with_response "update mapping of ${index_name}" "$status"
+}
+
 # エイリアスが存在しなければ付与する(呼び出し側でも確認しているが、単独でも安全にしておく)。
 # 再インデックス後はエイリアスが別のインデックスを指すため、名前の存在だけで判定する。
 # 存在するのに追加すると、エイリアスが複数のインデックスを指して書き込みに使えなくなる。
@@ -132,5 +162,8 @@ else
 fi
 create_index_if_absent "$DELETIONS_INDEX_NAME" deletions.json
 create_index_if_absent "$JOBS_INDEX_NAME" jobs.json
+# loreley-jobs は、Crawler のために項目を拡張した。拡張前に作った索引にも項目を足す。
+extend_mapping "$JOBS_INDEX_NAME" jobs.json
+create_index_if_absent "$SOURCES_INDEX_NAME" sources.json
 
 echo "done: OpenSearch indices are ready"

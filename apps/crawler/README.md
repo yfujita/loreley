@@ -12,11 +12,11 @@
 
 - **責務**: データソース(MVP は FileSystem)の列挙・取得、Indexer への開始通知・`last-seen`・バッチ登録・終了通知、削除結果の確認(Status API のポーリング)、ジョブとソース単位のロック(リース+ハートビート)の管理、ソース削除ジョブ(arch 8章)、定期起動(Scheduler)、Crawler の HTTP API(Admin API から呼ばれる)の受け口
 - **MVP の前提**: 単一ホスト・単一 Crawler・直列実行(Job Runner は 1 スレッドで、ジョブを 1 件ずつ実行する)・認証なし。ソース単位のロック・Job Runner・取り消し要求・起床通知はプロセス内にあり、**複数プロセス・複数 Crawler は対象外**
-- **認証・認可がない**: Crawler の HTTP API(クロール・ソース削除ジョブの起動、ロック解放、設定の登録・更新)は、内部ネットワークにだけ置き、ホストや外部に公開しない(api 3.1)
+- **認証・認可がない**: Crawler の HTTP API(クロール・ソース削除ジョブの起動、ロック解放、設定の登録・更新)は、内部ネットワークにだけ置き、ホストや外部に公開しない(api 3.1)。`deploy/compose/compose.yaml` はホストに公開しない。結合テスト用の `tests/integration/crawler/compose.test.yaml` だけが、ホストのループバック(`127.0.0.1:8001`)に publish する(`deploy/compose/README.md`)
 - **他モジュールとの関係**: Indexer と HTTP で直接通信する(メッセージブローカーなし)。OpenSearch の `loreley-sources`(データソース設定。Crawler だけが書く)と `loreley-jobs`(ジョブ・ロック・スキップ記録・原本サイズ超過記録。Crawler が書く。メンテナンスフラグは**読み取りのみ**)に読み書きする。検索インデックスと `loreley-deletions` は読まない・書かない(Indexer だけが書く)。**索引とマッピングは作らない**(作成は `opensearch-init`。9 章)
 - **削除の判断・実行はしない**: 削除は Indexer の Deletion Manager が行う。Crawler は終了通知(列挙の完了と件数)を送り、結果を確認するだけ
-- **スコープ外**: Web Connector(MVP は FileSystem のみ)、infra の前提作業(9 章)、結合テスト(8 章)
-- **現在のステータス**: 単体テストのみ。実 OpenSearch・実 Indexer・実機の FileSystem・実 compose での動作は未確認(8 章)。infra の前提作業が済むまで実環境では動かない(9 章)
+- **スコープ外**: Web Connector(MVP は FileSystem のみ)。infra の前提作業(9 章)と結合テスト(8 章)は、別タスクで実施した
+- **現在のステータス**: 単体テストに加え、結合テスト(`tests/integration/crawler`。compose で実 OpenSearch・実 Indexer・実 FileSystem(Docker の bind mount)に接続。2026-11-16 に OpenSearch 3.9.0 で 13 件成功。結果は `docs/v0.x/test-results/crawler-integration.md`)を実施した。主要フロー・件数照合・TTL 削除・ソース削除・メンテナンスフラグは実機で確認済み。**権限エラー(`skip` 記録・`partially_succeeded`)・10,001 件超・並行時の原子性・`docker stop`・起動時の回復・実 NFS/SMB などは未実施**(8 章)。infra の前提作業(索引定義・compose の `crawler` サービス)は済み(9 章)
 
 ## 2. 構成
 
@@ -244,7 +244,7 @@ curl -X POST "http://<crawler>/sources" -H 'Content-Type: application/json' -d '
 - OpenSearch・Indexer の接続は閉じない(閉じると、実行中のジョブが途中で失敗の記録を試み、「終了処理をしない」方針とずれる。プロセスの終了に任せる)
 - プロセスの終了コードは 0(uvicorn が再送した SIGTERM を受け流して正常に戻る)。**PID 1 の Linux コンテナでも終了コード 0**(fake のバックエンド・実 uvicorn で確認済み)。停止処理が走ったかは、ログ `the crawler stopped` で確認できる
 
-**停止の時間予算と `stop_grace_period`**: 停止にかかる最大の時間は、uvicorn の graceful shutdown(最大 10 秒。接続が残っているとき)+ Scheduler の停止の待ち(最大 5 秒。Scheduler のリトライの待ち最大約 3 秒を含む)+ Job Runner の停止の待ち(最大 5 秒)で、足して **最悪約 20 秒**。Docker の既定の停止猶予(10 秒)を超えうる。さらに、処理中の HTTP ハンドラ(Store 層のリトライで最大約 90 秒)があると、終了はそれだけ遅れる。uvicorn の graceful shutdown の 10 秒と、join の 5 秒は、環境変数ではなく `main.py` の固定値(仮値)で、`HEARTBEAT_STOP_TIMEOUT_SECONDS`(ロックの解放のためにハートビートの停止を待つ上限)とは別。**compose の `stop_grace_period`(`docker run` なら `--stop-timeout`)は 30 秒以上にする**(compose は別タスク)。猶予を超えて SIGKILL されても、ジョブは次回の回復で `failed(crawler_restart)` になるので、安全性は変わらない。
+**停止の時間予算と `stop_grace_period`**: 停止にかかる最大の時間は、uvicorn の graceful shutdown(最大 10 秒。接続が残っているとき)+ Scheduler の停止の待ち(最大 5 秒。Scheduler のリトライの待ち最大約 3 秒を含む)+ Job Runner の停止の待ち(最大 5 秒)で、足して **最悪約 20 秒**。Docker の既定の停止猶予(10 秒)を超えうる。さらに、処理中の HTTP ハンドラ(Store 層のリトライで最大約 90 秒)があると、終了はそれだけ遅れる。uvicorn の graceful shutdown の 10 秒と、join の 5 秒は、環境変数ではなく `main.py` の固定値(仮値)で、`HEARTBEAT_STOP_TIMEOUT_SECONDS`(ロックの解放のためにハートビートの停止を待つ上限)とは別。**compose の `stop_grace_period`(`docker run` なら `--stop-timeout`)は 30 秒以上にする**(`deploy/compose` で 30s を設定済み。実行中のジョブがある状態での `docker stop` の所要時間は未実施。8 章)。猶予を超えて SIGKILL されても、ジョブは次回の回復で `failed(crawler_restart)` になるので、安全性は変わらない。
 
 ### メンテナンスフラグ(運用者の手動手順)
 
@@ -272,7 +272,7 @@ curl -X POST "http://<crawler>/sources" -H 'Content-Type: application/json' -d '
       -d '{"query": {"bool": {"filter": [{"term": {"record_type": "job"}}, {"term": {"status": "running"}}]}}}'
     ```
 
-    **9 章のとおり、現行の `jobs.json` では `record_type`・`status` が検索できないため、`jobs.json` の拡張が済むまで、0 件が返っても「実行中のジョブがない」とは言えない**(Crawler 自身の一覧も同じ条件で検索するので、同じく動かない)。拡張前は、`GET .../_doc/<job_id>`(ジョブ ID が分かるとき)と、ロックの有無で確認する
+    `jobs.json` は拡張済みで(9 章)、`record_type`・`status` で検索できる。**この curl の手順そのものは、実機では実行していない**。**拡張前に作った `loreley-jobs`(古いボリューム)では `record_type`・`status` が検索できず、0 件が返っても「実行中のジョブがない」とは言えない**(`down -v` で作り直すか、`GET .../_doc/<job_id>`(ジョブ ID が分かるとき)とロックの有無で確認する)
 
 ### 形式不正な記録の解消
 
@@ -293,7 +293,7 @@ curl -X POST "http://<crawler>/sources" -H 'Content-Type: application/json' -d '
 
 ## 7. テスト方針
 
-単体テストのみ(`uv run pytest`。結合テストは本タスクのスコープ外)。
+単体テスト(`uv run pytest`)。結合テストは別(`tests/integration/crawler`。8 章)。
 
 - 外部システムは**メモリ上の fake**に差し替える(`tests/fakes/`): OpenSearch(Repository。`create` と `if_seq_no` の楽観ロック、全件走査、バルク削除)、Indexer のクライアント、時計、FileSystem の OS 呼び出し(`FsOps`)。FileSystem は一時ディレクトリでも確認する。スレッドを使うテストは `Event`・固定時計・ゲートで決定的に書き、スリープに頼らない
 - Indexer のクライアントは、**127.0.0.1 のローカル HTTP スタブ**で、DELETE のボディ(`lock`)が届くことなどの契約を確認する(`tests/infrastructure/indexer_client/`)。OpenSearch の実クライアントを通る経路(ログへの漏洩、失敗の分類)も、ローカルのスタブで確認する
@@ -324,54 +324,55 @@ docker run --rm -e LORELEY_REQUIRE_LINUX_NAMES=1 -v "$PWD":/work:ro \
 
 `su tester` を外す(root のまま実行する)と、権限エラーの 5 件が skip になる。`:ro` でマウントするのは `apps/crawler` だけで、`pip install uv` に外部ネットワーク(PyPI)が要る。最終検証の結果は、作業記録 `agent_tasks/20261113_implement_crawler/0021-final-summary.md` にある。
 
-## 8. fake だけでは検証できないこと(持ち越し)
+## 8. fake だけでは検証できないこと(結合テストの結果と持ち越し)
 
-**単体テストは fake・スタブ・一時ディレクトリで通っているが、次は実 OpenSearch・実 Indexer・実機のファイルシステム・実コンテナでしか確認できず、未確認**。結合テスト(Indexer の結合テストと同じ構成の compose で OpenSearch と Indexer を起動して行う。arch 12章)の対象。
+**単体テストは fake・スタブ・一時ディレクトリで通っているが、次は実 OpenSearch・実 Indexer・実機のファイルシステム・実コンテナでしか確認できない。** 結合テスト(`tests/integration/crawler`。compose で OpenSearch・Indexer・Crawler を起動して行う。arch 12 章)を 2026-11-16 に OpenSearch 3.9.0 で実施し(13 件成功。手順は `tests/integration/crawler/README.md`、結果は `docs/v0.x/test-results/crawler-integration.md`)、確認できた項目と、**未確認・未実施のまま残る項目**を分けて示す(項目別の判定の正本は結果記録の 4.3。同じ項目には同じ語を使う)。
+
+**用語**: 未実施=テストを作っていない / 未確認=実機で見ていない(「一部確認」の項目の、見ていない部分にも使う)。
 
 **実 OpenSearch が必要**
 
-- `create`(存在しない場合だけ成功)と `if_seq_no`(読んだ版を条件にした置き換え・削除)の**並行時の原子性**(ロックの取得・解放、ジョブ記録の更新が依存する)
-- opensearch-py のクライアントの**スレッド安全性**(CM-U-1)。Job Runner・HTTP ハンドラ・Scheduler が Store 層のクライアントを共有し、ハートビートだけが専用のクライアントを持つ構成が足りているか
-- **10,001 件以上**の全件走査(PIT+`search_after`)・refresh の可視性・バルク削除の**部分失敗**(architecture 12章 #37)。fake は 10,000 件の上限・PIT・refresh の遅れを再現しない。`allow_partial_search_results=false`・`allow_partial_pit_creation=false` の**サーバー側の受理**(渡し方はダミー transport で確認済み)、PIT 期限切れの**実機の応答形**(404 の `search_context_missing_exception` は fake の再現)
-- 実環境の **date 型のソート・絞り込み**(`queued_at` の順の実行、受付途中のロックの判定。降順ソートの実マッピング)と、マッピング案(arch 3.1 の表。CA-P-49)との整合
-- fake の限界: メモリ上の Repository は、`document_id` を持たない同種の記録が 2 件以上あるときの `non_unique_sort`(実機の一意でないソート)を再現しない
+- `create`(存在しない場合だけ成功)と `if_seq_no`(読んだ版を条件にした置き換え・削除)の**並行時の原子性**(ロックの取得・解放、ジョブ記録の更新が依存する): **未実施**。通常経路(ロックの取得・解放、ジョブ記録の更新、設定の登録)は実機で動いた
+- opensearch-py のクライアントの**スレッド安全性**(CM-U-1)。Job Runner・HTTP ハンドラ・Scheduler が Store 層のクライアントを共有し、ハートビートだけが専用のクライアントを持つ構成が足りているか: **未実施**(専用の確認はしていない。クロール中の同時動作でログに警告・エラーは出なかった)
+- **10,001 件以上**の全件走査(PIT+`search_after`)・refresh の可視性・バルク削除の**部分失敗**(architecture 12章 #37)、PIT 期限切れの**実機の応答形**: **未実施**。fake は 10,000 件の上限・PIT・refresh の遅れを再現しない。小規模の走査(記録の整理・ソース削除の順 3)は実機で成功し、`allow_partial_search_results=false`・`allow_partial_pit_creation=false` のサーバー側の受理も、その成功から読み取れる(専用のアサートはない)
+- 実環境の **date 型のソート・絞り込み**と、マッピング案(arch 3.1 の表。CA-P-49)との整合: **一部確認**。マッピングの型は確認し(`jobs.json`・`sources.json`)、`queued` のジョブの検出(`queued_at` 昇順)は動いた。降順ソート(直近のクロールの取得)と受付途中のロックの判定は、専用のテストがなく**未実施**
+- fake の限界: メモリ上の Repository は、`document_id` を持たない同種の記録が 2 件以上あるときの `non_unique_sort`(実機の一意でないソート)を再現しない: **未実施**
 
 **実 Indexer が必要**
 
-- Status API の項目(`finish_received_at` の有無、`waiting_for` の出方)、終了通知の 409 の出方、実際のポーリング間隔(5 秒)・タイムアウト(30 分)の妥当性
-- バッチ登録の応答の `document_id` の照合(CM-U-3。Crawler の算出と Indexer の算出の一致)
-- `FakeIndexerClient` の `delete_*` が `lock` の値を検証しない(実 Indexer はロックの所有を検証する)
-- **件数照合の独立検証**: Crawler の `enumerated_count` と、Indexer 側の N_seen + E_missing の一致を、実際のクロールで確認する(Crawler の件数の不変条件は単体テストで確認済みだが、Indexer 側の独立した検算は別)
+- Status API の項目(`finish_received_at` の有無、`waiting_for` の出方)、終了通知の 409 の出方、実際のポーリング間隔(5 秒)・タイムアウト(30 分)の妥当性: **一部確認**。ポーリングで削除結果が終端になり `confirmed` になる通常経路は動いた。`waiting_for` の出方、終了通知の 409、既定の間隔・タイムアウトの妥当性は**未確認**(専用のテストを作っていない。テストは 2 秒・120 秒に短縮)
+- バッチ登録の応答の `document_id` の照合(CM-U-3。Crawler の算出と Indexer の算出の一致): **確認**(ASCII のパスのみ。NFC・`\` などの特殊な名前は未実施)
+- `FakeIndexerClient` の `delete_*` が `lock` の値を検証しない(実 Indexer はロックの所有を検証する): **一部確認**。ソース削除ジョブで、実 Indexer が `lock` を受理した。所有していない `lock` が拒否される側は、Crawler の結合テストでは**未実施**(Indexer 側は Indexer の結合テストにある)
+- **件数照合の独立検証**(Crawler の `enumerated_count` と Indexer 側の N_seen + E_missing の一致): **確認**。3 つのクロール(5 == 5 + 0、2 == 1 + 1、4 == 4 + 0)で一致し、`validation_failed` にならなかった
+- **起動時の整合性検査の統合部分**(architecture 12章 #39): Indexer の上限を超える値で起動が失敗する側と、上限ちょうどの値での通過(バッチ登録・`last-seen` が 400 にならないこと): **未実施**。compose の既定の値で、警告なしに起動できたことだけ確認した
 
 **実機のファイルシステム(FileSystem Connector)**
 
-- 実際の NFS/SMB・Docker のバインドマウントでの、**errno・マウント外れの症状**(集合 T の妥当性)、`st_ino` の信頼性、取得中の変更の検出
-- **ブロッキング I/O 中のスレッド挙動**(CFS-U-4): ハードマウントの停止などで Job Runner が戻らなくなっても、ハートビートが進み続けるか(macOS・CPython 3.13.4 では確認。Linux コンテナ・NFS/SMB は未確認)。GIL を長く保持する処理の間のハートビートも未確認
-- **実運用イメージの FS エンコーディング**(`python:3.12-slim-bookworm` では UTF-8)。`:ro` マウントの実機での動作
+- 実際の NFS/SMB での**errno・マウント外れの症状**(集合 T の妥当性)、`st_ino` の信頼性、取得中の変更の検出: **未実施**。Docker Desktop(macOS)の bind mount での列挙・取得は確認し、マウントの可視性の遅れは観測されなかった(10 回)。権限エラー(`fetch_permission_denied`・`skip` 記録・`partially_succeeded`)は**未実施**
+- **ブロッキング I/O 中のスレッド挙動**(CFS-U-4): ハードマウントの停止などで Job Runner が戻らなくなっても、ハートビートが進み続けるか。**未実施**(結合テストを作っていない)。macOS・Linux コンテナ・NFS/SMB のいずれでも未確認。GIL を長く保持する処理の間のハートビートも同じ
+- **実運用イメージの FS エンコーディング**(`python:3.12-slim-bookworm` では UTF-8): **一部確認**(非 ASCII のファイル名は未実施)。`:ro` マウントの実機での動作は、Docker Desktop(macOS)の bind mount で確認した(uid 10001 が 0644 / 0755 のファイルを読めた)
 
 **実コンテナ・実 compose**
 
-- **実 OpenSearch・実 Indexer に接続し、実行中のジョブがある状態での `docker stop`**: 所要時間と、猶予(`stop_grace_period`)を超えて SIGKILL されたときの挙動(uvicorn の `timeout_graceful_shutdown`・join の上限は仮値)。PID 1 の Linux コンテナでの SIGTERM は、fake のバックエンド・実 uvicorn で終了コード 0 を確認済み(6 章)
-- **`/healthz` が `healthy` になること**: 本タスクでは、必須設定なし・整合性検査違反・到達不能な OpenSearch でのイメージの異常終了(HTTP を開かない)までを確認した。実 OpenSearch・実 Indexer に接続して回復が終わり、`HEALTHCHECK` が `healthy` になるところは、結合テストに持ち越す
+- **実 OpenSearch・実 Indexer に接続し、実行中のジョブがある状態での `docker stop`**: 所要時間と、猶予(`stop_grace_period`)を超えて SIGKILL されたときの挙動(uvicorn の `timeout_graceful_shutdown`・join の上限は仮値): **未実施**。PID 1 の Linux コンテナでの SIGTERM は、fake のバックエンド・実 uvicorn で終了コード 0 を確認済み(6 章)
+- **`/healthz` が `healthy` になること**: **確認**。実 OpenSearch・実 Indexer に接続して回復が終わり、`HEALTHCHECK` が `healthy` になった(compose で `interval` と `start_period` だけ上書きしても、イメージの `test` は保持される)
+- 起動時の回復(`running` → `failed(crawler_restart)`、孤児ロックの削除)、ロック解放 API・取り消し API、定期起動(Scheduler)、10,001 件超の走査: 結合テストの対象外で**未実施**
 
-## 9. 前提・スコープ外(別タスク)
+## 9. 前提作業(別タスクで実施)
 
-本タスクは `apps/crawler/` の実装で、次は**別タスク**(infra の前提作業)。**これらが済むまで、実環境では正しく動かない**。現状(`infra/opensearch/init-indices.sh` と `schema/` を読んで確認した):
+本タスクは `apps/crawler/` の実装で、次は**別タスク**(infra の前提作業)として行った。実装時点では未着手だったが、2026-11-16 のタスク `20261116_create_it_for_crawler` で、下表の「済み」の項目を実施した。「未対応のまま」「未決のまま」の項目は残っている。
 
-- `init-indices.sh` が作る索引は、検索インデックス(エイリアス)・`loreley-deletions`・`loreley-jobs` の 3 つだけで、**`loreley-sources` は作らない**(`schema/` にも定義がない)。
-- `schema/jobs.json` は `dynamic: false` で、`owner`・`job_id`(keyword)、`lease_expires_at`(date)、`enabled`(boolean)の 4 項目だけを定義している。
+| 項目 | 状況 |
+| --- | --- |
+| **`loreley-sources` の索引定義** | **済み**。`infra/opensearch/schema/sources.json`(`dynamic: strict`。項目は arch 3.1・3.2)と、`init-indices.sh` の `create_index_if_absent`・索引名の環境変数 `SOURCES_INDEX_NAME`。実機でマッピングと、Crawler の書き込み(9 項目)が受理されることを確認した |
+| **`loreley-jobs` の定義の拡張** | **済み**。Indexer が読む 4 項目(型は不変)に、`record_type`・`source_id`・`status`・`queued_at` など(arch 3.1 の表)を追加(`dynamic: false` のまま)。Indexer の結合テスト 40 件も通る |
+| **既存の環境への反映** | **未対応のまま**。`init-indices.sh` は索引が既にあれば何もしないため、`jobs.json` を拡張しても、拡張前に作った `loreley-jobs` には入らない(put mapping か、既存ボリュームの作り直し)。結合テストは毎回 `down -v` で新規に作るため、反映の手順は確認していない |
+| **compose の `crawler` サービス** | **済み**。`deploy/compose/compose.yaml`: イメージの `HEALTHCHECK`(`start-period` 180 秒)を継承、`stop_grace_period: 30s`、検索対象ディレクトリの `:ro` マウント(`CRAWLER_DOCUMENTS_DIR`)、Indexer の上限 6 項目を Indexer と Crawler に同じ変数で受け渡し(4 章)、`JOBS_INDEX_NAME` を Indexer・`opensearch-init`・Crawler で同値、ループバックのみ publish。実行中のジョブがある状態での `docker stop` は未実施(8 章) |
+| **OpenSearch の `action.auto_create_index` の無効化の判断** | **未対応のまま**。OpenSearch 3.9.0 は、存在しない索引への書き込みで索引を自動作成する(実機の使い捨て確認)。Crawler は索引を作らない前提のため、`opensearch-init` が作る前に Crawler が書くと、意図しないマッピングで索引ができうる(compose では `opensearch-init` の完了を待つので、通常は起きない)。無効化するかは infra 側の判断 |
+| **結合テスト**(8 章) | **済み**(`tests/integration/crawler`。13 件成功)。未確認の項目は 8 章 |
+| メンテナンスフラグの書き込み手段の確定(arch U-24) | **未決のまま**。現状は 6 章の手動手順(承認済みの案) |
 
-この状態で Crawler を動かすと、次のようになる(Crawler のコードの検索条件・並べ替えから読み取った。**実機では未確認**)。
-
-- `loreley-jobs`: ジョブ・ロック・スキップ記録などの**書き込みと、ID 指定の取得・版条件つきの置き換え・削除は受理される**(`dynamic: false` は未定義の項目を拒否せず、索引しないだけ)。一方、`record_type`・`source_id`・`status`・`queued_at`・`job_id` などでの**絞り込み・並べ替えを使う操作が、想定どおりに動かない**。該当は、Job Runner による `queued` のジョブの検出、起動時の回復でのロックの一覧、定期起動の起点(直近のクロールジョブ)、0 件列挙の警告のための過去のジョブの取得、スキップ・サイズ超過記録の整理とソース削除(`record_type`・`source_id` での走査)。未定義の項目の条件は 0 件になるか、並べ替えが失敗するかのいずれかと推測される(未確認)。
-- `loreley-sources`: 索引がない状態で書き込むと、OpenSearch の自動作成(下の `action.auto_create_index` の項目)で、動的マッピングの索引ができうる。`ratio_threshold`(double の想定)が整数の値で始まると整数に推定されるなど、arch 3.1 の案と型が違う索引になる懸念がある(未確認)。
-
-- **`loreley-sources` の索引定義**: 現状、作成物がない。マッピングの案は arch 3.1 の表(CA-P-49)。`infra/opensearch/schema/` への追加と、`init-indices.sh`(`create_index_if_absent`)への呼び出し・索引名の環境変数の追加
-- **`loreley-jobs` の定義の拡張**: 上のとおり 4 項目だけの仮定義。Crawler が並べ替え・絞り込みに使う項目(`record_type`・`source_id`・`status`・`queued_at` など。arch 3.1 の表)の追加が要る(Indexer が読む 4 項目の型は変えない)。Indexer の結合テストも同じ `jobs.json` を使うので、同時に更新する
-- **既存の環境への反映**: `init-indices.sh` は索引が既にあれば何もしないため、`jobs.json` を拡張しても既存の `loreley-jobs` には入らない(put mapping か、既存ボリュームの作り直し)
-- **compose の `crawler` サービス**: ヘルスチェックの設定(間隔・猶予時間)、**`stop_grace_period`(30 秒以上。6 章)**、FileSystem の対象ディレクトリの `:ro` マウント、Indexer の上限値の Crawler への受け渡し(4 章。Indexer と同じ値)、`JOBS_INDEX_NAME` を Indexer・`opensearch-init`・Crawler で同じ値にすること
-- **OpenSearch の `action.auto_create_index` の無効化の判断**: OpenSearch 3.9.0 は、存在しない索引への書き込みで索引を自動作成する(実機の使い捨て確認)。Crawler は索引を作らない前提のため、`opensearch-init` が作る前に Crawler が書くと、意図しないマッピングで索引ができうる。無効化するかは infra 側の判断
-- **結合テスト**(8 章)。メンテナンスフラグの書き込み手段の確定(arch U-24。現状は 6 章の手動手順(承認済みの案))
+拡張前の `jobs.json`(4 項目だけ)や、`loreley-sources` の索引がない状態で Crawler を動かしたときの挙動は、実機では確認していない(拡張後の定義で結合テストを行ったため)。
 
 ## 10. 既知の限界・運用に影響する承認済みの案と未決の挙動
 

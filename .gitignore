@@ -10,6 +10,8 @@ tests/integration/*/results/
 tests/integration/*/.pytest_cache/
 tests/integration/*/.ruff_cache/
 tests/integration/*/__pycache__/
+# Crawler の結合テストが、テスト実行ごとに作る検索対象の文書(Crawler に :ro で mount する)
+tests/integration/*/data/
 
 # Obsidianの設定
 .obsidian/
