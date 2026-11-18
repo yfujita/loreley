@@ -25,6 +25,11 @@ services:
       LORELEY_INDEXER_DELETION_POLL_INTERVAL_SECONDS: "1"
 
   crawler:
+    # ホストの pytest から API を呼ぶためだけに、ループバックに publish する(本番用の compose.yaml は
+    # Crawler をホストに公開しない。設計書 crawler-architecture 10 章)。認証がないため 0.0.0.0 へは公開しない。
+    # コンテナ内のポート(8001)は固定で、ホスト側だけ CRAWLER_HOST_PORT で変えられる。
+    ports:
+      - "127.0.0.1:${CRAWLER_HOST_PORT:-8001}:8001"
     environment:
       # Crawler が自分で取得する原本の上限。70,000 バイトのファイルが超過(oversize)になる。
       # 整合条件(Crawler の値 <= Indexer の上限、MAX_RAW_BYTES <= バッチの原本のバイト数)は、

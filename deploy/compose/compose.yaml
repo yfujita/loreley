@@ -21,9 +21,9 @@
 #   そのため、ホストへの publish は必ず 127.0.0.1(ループバック)に限る。`0.0.0.0` を省いた
 #   `ports: "9200:9200"` のような書き方は、全 NIC に公開されるので使わない。
 #   コンテナ間はこのファイルが作る内部ネットワークで、サービス名(opensearch)で通信する。
-#   Crawler は設計書(crawler-architecture 10章)では「ホストに公開しない」。ここでは、ホストの
-#   ツール(結合テストの pytest など)から API を呼べるよう、ループバックにだけ publish している。
-#   Admin API など内部ネットワークから呼ぶ側を compose に加えたら、publish を外す。
+#   Crawler は設計書(crawler-architecture 10章)のとおり、ホストに公開しない(ports なし)。
+#   Crawler API は、FileSystem Connector の root にコンテナ内の任意のパスを登録でき、認証もないため。
+#   結合テストの pytest だけは、tests/integration/crawler/compose.test.yaml がループバックに publish する。
 #
 # 上限・索引名の同値定義(重要):
 #   Crawler は起動時に、自分の上限値(原本 1 件・バッチ・last-seen の件数など)が Indexer の上限
@@ -176,10 +176,10 @@ services:
       # 失敗しないよう、healthy を待つ。
       indexer:
         condition: service_healthy
-    ports:
-      # ループバックのみ(ファイル冒頭の「公開範囲」を参照)。認証がないため、0.0.0.0 へは公開しない。
-      # コンテナ内のポート(8001)は固定で、ホスト側だけ .env の CRAWLER_HOST_PORT で変えられる。
-      - "127.0.0.1:${CRAWLER_HOST_PORT:-8001}:8001"
+    # ports は定義しない(設計書 crawler-architecture 10 章: ホストに公開しない)。Crawler API は認証がなく、
+    # FileSystem Connector の root はコンテナ内の任意のパスを受け付けるため、ホストから呼べると、コンテナ内の
+    # 読めるファイルを列挙対象にされうる。結合テストだけが、tests/integration/crawler/compose.test.yaml で
+    # ループバックに publish する。
     # 起動時に OpenSearch へ到達できない・設定が不正だとプロセスが終了する設計のため、再起動ポリシーが必要。
     restart: unless-stopped
     # SIGTERM 後、uvicorn・Scheduler・Job Runner の停止を待つため。Docker の既定 10 秒では足りない

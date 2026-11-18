@@ -2,7 +2,7 @@
 
 | 項目 | 内容 |
 | --- | --- |
-| 状態 | **実施済み**(2026-11-16。13 件すべて成功。権限エラー・`skip` 記録・並行・運用系などは**未実施**。未実施・未確認の一覧は 6 章、項目別の判定は 4.3) |
+| 状態 | **実施済み**(2026-11-16。13 件すべて成功。2026-11-18 の PR レビュー対応でテストを 1 件足し、最終版は 14 件成功。8 章。権限エラー・`skip` 記録・並行・運用系などは**未実施**。未実施・未確認の一覧は 6 章、項目別の判定は 4.3) |
 | 作成日 | 2026-11-16 |
 | 参照する設計書 | `docs/v0.x/system-design/crawler/crawler-architecture-v0.4.md`(3.1、4.5、5.1、6.4・6.5、7.5〜7.9、8.1、10、12)、`crawler-api-v0.4.md`(3.3、4.1、4.4.2、4.6、4.7)、`connector/connector-file-system-v0.3.md`、`docs/v0.x/system-design/indexer/indexer-architecture-v0.10.md`(9.6 の件数照合) |
 | 関連 | `tests/integration/crawler/README.md`(実行・シナリオ一覧)、`deploy/compose/README.md`(起動)、`apps/crawler/README.md` 8 章(fake だけでは検証できないこと)、`docs/v0.x/test-results/indexer-integration.md`(9 章に Indexer の回帰確認を追記)、`agent_tasks/20261116_create_it_for_crawler/`(作業の経緯。レビューの指摘と対応は 0008・0009) |
@@ -29,8 +29,8 @@ Crawler(`apps/crawler`。FileSystem Connector のみ)を compose で起動し、
 | OpenSearch | `opensearchproject/opensearch:3.9.0`(compose の既定。`OPENSEARCH_VERSION` 未指定)。単一ノード、セキュリティプラグイン無効、ヒープ 512m。ダイジェストは今回確認していない。**`indexer-integration.md` の 1〜7 章(2.19.7)とは別の版**(8 章は 3.9.0) |
 | Crawler / Indexer | `apps/crawler`・`apps/indexer` の Dockerfile からビルドしたイメージ。`apps/crawler` は本タスクで**変更していない**。Indexer の要約は無効 |
 | スキーマ | `infra/opensearch/schema/{search-index,deletions,jobs,sources}.json`(`opensearch-init` が作成)。`jobs.json` を拡張し、`sources.json` を新設した(`loreley-sources` は `dynamic: strict`) |
-| compose の構成 | `deploy/compose/compose.yaml` に `crawler` サービスを追加。公開は `127.0.0.1:8001` のみ、`stop_grace_period: 30s`、検索対象ディレクトリを `:ro` で `/data/documents` に mount、Indexer の上限 6 項目と `loreley-jobs` の索引名を Indexer・Crawler に同じ変数で渡す |
-| テスト用の設定 | `tests/integration/crawler/compose.test.yaml`: Indexer・Crawler とも `MAX_RAW_BYTES=65536`(Crawler が検査に使う Indexer の値も同じ)、Indexer の `DELETION_POLL_INTERVAL_SECONDS=1`、Crawler の `POLLING_INTERVAL_SECONDS=2`・`POLLING_TIMEOUT_SECONDS=120`・`RUNNER_SCAN_INTERVAL_SECONDS=1`、`crawler` の healthcheck の `interval: 3s`・`start_period: 180s`(`test` はイメージのものを継承) |
+| compose の構成 | `deploy/compose/compose.yaml` に `crawler` サービスを追加。**ホストには公開しない**(2026-11-18 の PR レビュー対応で、`127.0.0.1:8001` の publish を `compose.test.yaml` へ移した。8 章)。`stop_grace_period: 30s`、検索対象ディレクトリを `:ro` で `/data/documents` に mount、Indexer の上限 6 項目と `loreley-jobs` の索引名を Indexer・Crawler に同じ変数で渡す |
+| テスト用の設定 | `tests/integration/crawler/compose.test.yaml`: Crawler を `127.0.0.1:8001` に publish(2026-11-18 から)、Indexer・Crawler とも `MAX_RAW_BYTES=65536`(Crawler が検査に使う Indexer の値も同じ)、Indexer の `DELETION_POLL_INTERVAL_SECONDS=1`、Crawler の `POLLING_INTERVAL_SECONDS=2`・`POLLING_TIMEOUT_SECONDS=120`・`RUNNER_SCAN_INTERVAL_SECONDS=1`、`crawler` の healthcheck の `interval: 3s`・`start_period: 180s`(`test` はイメージのものを継承) |
 | 実行方法 | `scripts/run-crawler-integration-test.sh`(`-p loreley-it`。`up -d --build opensearch opensearch-init indexer crawler` + 自前ポーリング → pytest → `down -v --remove-orphans` と `tests/integration/crawler/data` の削除)。手動起動も併用した |
 | pytest の起動 | uv 経由の既定起動(`uv run --project tests/integration/crawler pytest tests/integration/crawler -v`)。CPython 3.13.4、pytest 9.2.0、httpx 0.28.1(`uv.lock` で固定した 15 パッケージ) |
 | 起動所要時間・メモリ | 起動の所要時間とメモリ使用量は**測定していない**。OpenSearch + Indexer + Crawler を約 3.84GiB の VM で同時に起動して全実行が成功し、メモリ起因の失敗は記録されていない |
@@ -139,7 +139,7 @@ Crawler(`apps/crawler`。FileSystem Connector のみ)を compose で起動し、
 1. **`connector_type` の値は `file_system`**(`filesystem` は 400 `unsupported`)。`apps/crawler/src/loreley_crawler/connectors/registry.py` の定数。
 2. **未知の `connector_config` 項目は 400 `config_invalid`**。当初のシナリオ案(`agent_tasks/20261116_create_it_for_crawler/0002-work-plan.md`。以下「当初案」)の CIT-10 は `invalid_request` と書いたが誤りで、訂正する。crawler-api 3.3 とコードはどちらも `config_invalid` で、設計とコードは一致している。テストは設計に従った。
 3. **設計書 arch 10 章との差(ユーザーの承認済みの前提。設計書は改版していない。反映はユーザー判断)**:
-   - arch 10 章は「ポートは内部ネットワークだけで、ホストに公開しない」。この compose は、結合テストの pytest が API を呼べるよう、Crawler を **`127.0.0.1:8001` にだけ publish** する(`CRAWLER_HOST_PORT` で変えられるのはポート番号だけ。バインド先はループバック固定で、`0.0.0.0` を指定すると compose が失敗する。`docker compose config` で確認)。Admin API など内部ネットワークから呼ぶ側を compose に加えたら、publish を外す。
+   - arch 10 章は「ポートは内部ネットワークだけで、ホストに公開しない」。**当初は** `compose.yaml` が Crawler を `127.0.0.1:8001` に publish していたが、PR レビュー(認証なしの API で、`connector_config.root` からコンテナ内の任意のパスを読めうる)を受けて、**2026-11-18 に設計書どおり(公開しない)に戻した**。結合テストの pytest のために必要な publish は、`tests/integration/crawler/compose.test.yaml` だけが行う(8 章)。
    - arch 10 章の「限界」の段落は「既定の compose は Indexer に上限の変数を渡していない」と書く。この compose は、Indexer の上限 6 項目(`INDEXER_MAX_RAW_BYTES` など。既定値は Indexer のコードの既定値と同じ)と `loreley-jobs` の索引名を、Indexer・Crawler の両方に同じ変数で渡す。起動時の整合性検査が素通りしないため。
    - arch 10 章の「現在の compose は OpenSearch と Indexer だけ」は、`crawler` の追加で現状と合わない。`opensearch-init` 側の変数名(arch は「名前は実装時」)は `SOURCES_INDEX_NAME`、`.env` では `LORELEY_SOURCES_INDEX_NAME` とした。
 4. **当初案にない追加テスト CIT-23**(`test_oversize_record_is_purged_when_the_file_is_removed`。arch 6.4 の (b)「列挙されなかった文書の記録を消す」)。CIT-20 では、クロール終了後の整理が空の走査になり、実 OpenSearch での記録の削除を確認できないため、記録がある状態の確認を足した。新機能ではなく、既存シナリオの確認を実効的にする目的。arch 6.4 の (a)(今回列挙され、その種類の結果にならなかった文書の記録の削除。ファイルを上書きして小さくした場合など)の変種は、要件外のため作っていない。
@@ -209,3 +209,19 @@ scripts/run-crawler-integration-test.sh   # compose 起動 → pytest → 後始
 ```
 
 Indexer の結合テストと同じプロジェクト名(`loreley-it`)・ポート(9200・8000)を使うため、**同時には実行できない**。
+
+## 8. PR #3 のレビュー指摘への対応(2026-11-18)
+
+PR #3 のレビューの指摘 1〜3 に対応した(指摘 4 のインデックス名の固定は対象外)。
+
+| 指摘 | 対応 | 確認 |
+| --- | --- | --- |
+| 1. Crawler API の公開で、コンテナ内の任意のファイルを読ませうる | `compose.yaml` の `crawler` から `ports` を外し(設計書 arch 10 章どおり)、`compose.test.yaml` だけが `127.0.0.1:8001` に publish する | `docker compose config` で、`compose.yaml` 単体は 8000・9200 だけ、`compose.test.yaml` を重ねると crawler の 8001(`host_ip: 127.0.0.1`)が出ることを確認(レビュアーも確認) |
+| 2. 既存の `loreley-jobs` では Job Runner がジョブを検索できない | `init-indices.sh` に `extend_mapping` を追加し、起動のたびに `jobs.json` の不足項目を `PUT _mapping` で足す | 旧 `jobs.json`(4 項目)の索引で、修正前は `status` 検索が 0 件、修正後は 1 件。再実行は同じ結果。型の衝突は HTTP 400 で init が失敗。結合テスト `test_init_adds_the_missing_fields_to_an_existing_jobs_index` を追加 |
+| 3. スクリプトが既存のボリュームと `data/` を消しうる | 事前確認に `check_no_leftover_data` を追加。`loreley-it` のボリュームの残りと、空でない `data/` を検出したら、何も消さず終了コード 1 で中止する | ボリュームだけ残した状態と、`data/` に利用者のファイルを置いた状態で中止し、どちらも消えないことを確認 |
+
+最終のテスト: `scripts/run-crawler-integration-test.sh` が **14 passed in 37.66s**、終了コード 0、後始末の後にコンテナ・ボリューム・`data/` なし。Indexer の結合テスト(同じ init を使う)の回帰: **40 passed in 21.30s**。
+
+- 未対応: Indexer 用スクリプト(`run-indexer-integration-test.sh`)は同じプロジェクト名・ボリュームで `down -v` するが、残骸検出は入れていない(今回は Crawler 用のみ。スクリプトの重複の負債と同じ扱い)。
+- 未対応: Connector が許可するルートディレクトリを制限する仕組み(将来の課題)。
+- 未確認: Linux ホスト、`shellcheck`(未導入)。

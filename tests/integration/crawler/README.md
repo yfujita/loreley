@@ -3,7 +3,7 @@
 compose で起動した**実 OpenSearch・実 Indexer・実 Crawler**に対して、ホストの pytest から実行する結合テスト。テストは Crawler の HTTP API(`127.0.0.1:8001`)を呼んでクロールなどを起動し、結果を OpenSearch の実データ(`loreley-jobs`・`loreley-deletions`・`loreley-sources`・検索インデックス)を直接読んで確かめる。Crawler にはジョブの状態を取得する API がないため(Admin API が OpenSearch を読む設計)、判定は HTTP 応答と OpenSearch の実データの両方で行う。
 
 > **確認状況**: 実行結果(passed 件数・所要時間・環境)は [docs/v0.x/test-results/crawler-integration.md](../../../docs/v0.x/test-results/crawler-integration.md) に書く。この文書には書かない。
-> macOS(x86_64)・Docker 20.10.13・compose v2.3.3・uv 0.13.8 でのみ確認した(クリーンな状態からスクリプトを 2 回連続で実行し、どちらも 13 passed)。Linux ホストなどは未確認。
+> macOS(x86_64)・Docker 20.10.13・compose v2.3.3・uv 0.13.8 でのみ確認した(クリーンな状態からスクリプトを 2 回連続で実行し、どちらも 13 passed。PR レビュー対応でテストを 1 件足した最終版は 14 passed。2026-11-18)。Linux ホストなどは未確認。
 
 ## 目的
 
@@ -43,7 +43,7 @@ scripts/run-crawler-integration-test.sh -k oversize      # 名前に oversize �
 - `--keep` と `-h` 以外の引数は、そのまま pytest に渡る。**絞り込みには `-k` を使う**(「シナリオ ID でテストを選べない」を参照)
 - スクリプトは `docker compose -p loreley-it -f deploy/compose/compose.yaml -f tests/integration/crawler/compose.test.yaml up -d --build opensearch opensearch-init indexer crawler` で起動する。**`up --wait` は使わず**、3 秒間隔で状態を確認して、`opensearch`・`indexer`・`crawler` が healthy、`opensearch-init` が Exited(0) になるのを待つ(compose v2.3.3 では `--wait` が戻らないため。`deploy/compose/README.md` を参照)
 - 異常終了したときは、`docker compose ps -a` と各サービスのログの末尾 100 行を表示してから、後始末する
-- 起動前に、`loreley-it` の前回のコンテナの残り(停止中を含む)とポートの使用中を確認し、あれば原因と対処を出して中止する(スタックには触れない)
+- 起動前に、`loreley-it` の前回のコンテナの残り(停止中を含む)・名前付きボリュームの残り・空でない `data/`・ポートの使用中を確認し、あれば原因と対処を出して中止する(スタックにも、ボリュームにも、`data/` にも触れない)。終了時の `down -v` と `data/` の削除が、前回 `docker compose down`(`-v` なし)で止めただけのボリュームや、利用者が `data/` に置いたファイルを消さないため
 
 #### 終了コード
 
@@ -109,13 +109,14 @@ Indexer の結合テスト(`scripts/run-indexer-integration-test.sh`)とは、**
 
 ## シナリオ一覧
 
-各テストの docstring に、【何を確認するか】【前提と手順】【期待する結果とその根拠(設計書の章)】【fake では確認できず実機で確認する点】がある。表の「設計書」は、期待値の根拠にした章(arch = `crawler-architecture-v0.4.md`、api = `crawler-api-v0.4.md`、FS = `connector/connector-file-system-v0.3.md`、Indexer arch = `indexer-architecture-v0.10.md`)。全部で 13 テスト。
+各テストの docstring に、【何を確認するか】【前提と手順】【期待する結果とその根拠(設計書の章)】【fake では確認できず実機で確認する点】がある。表の「設計書」は、期待値の根拠にした章(arch = `crawler-architecture-v0.4.md`、api = `crawler-api-v0.4.md`、FS = `connector/connector-file-system-v0.3.md`、Indexer arch = `indexer-architecture-v0.10.md`)。全部で 14 テスト。
 
 | ID | ファイル | テスト関数 | 何を確認するか | 設計書 |
 | --- | --- | --- | --- | --- |
 | CIT-01 | `test_01_startup.py` | `test_crawler_is_healthy_after_the_startup_recovery` | `/healthz` が 200 `{"status":"ok"}`(起動時の回復を終えている) | api 4.7、arch 5.8・10 章 |
 | CIT-01 | `test_01_startup.py` | `test_all_four_indices_exist_and_the_search_index_is_an_alias` | 4 索引(検索インデックスはエイリアス `loreley-documents` が実体 1 つを指す、`loreley-deletions`、`loreley-jobs`、`loreley-sources`)が存在する | arch 3.1 |
 | CIT-01 | `test_01_startup.py` | `test_sources_index_is_strict_and_jobs_index_defines_the_fields_crawler_queries` | `loreley-sources` が `dynamic: strict` で 9 項目の型が定義されている。`loreley-jobs` が `dynamic: false` で、Crawler が絞り込み・並べ替えに使う主要項目(`record_type`・`source_id`・`job_type`・`status`・`document_id`・`queued_at`)と Indexer の 4 項目(`owner`・`job_id`・`lease_expires_at`・`enabled`)の型を定義している(それ以外の項目はアサートしない) | arch 3.1 |
+| CIT-01 | `test_01_startup.py` | `test_init_adds_the_missing_fields_to_an_existing_jobs_index` | 拡張前の定義(4 項目・`dynamic: false`)の索引では `status` の検索が 0 件。`opensearch-init` のスクリプトをその索引名で再実行すると、不足項目が足され(型が正しく、既存 4 項目は不変)、同じ検索が 1 件ヒットする(既存のボリュームでも Job Runner が動く) | arch 3.1 |
 | CIT-10 | `test_10_source_registration.py` | `test_register_source_is_stored_and_a_resend_is_accepted_as_is` | `POST /sources` が 201 で、`loreley-sources` に strict のまま保存される。同内容の再送は 200 | api 4.4.2、arch 3.1・3.2 |
 | CIT-10 | `test_10_source_registration.py` | `test_register_source_rejects_an_unknown_connector_config_item` | 未知の `connector_config` 項目は 400 `config_invalid`、保存されない | api 3.3、FS 2 章 |
 | CIT-10 | `test_10_source_registration.py` | `test_start_crawl_of_an_unregistered_source_is_rejected_with_404` | 設定のないソースのクロール起動は 404 `source_config_not_found`、ジョブ記録・ロックは作られない | api 4.1 |

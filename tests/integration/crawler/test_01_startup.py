@@ -15,17 +15,26 @@
 扱うシナリオ: CIT-01
 """
 
+import os
+import subprocess
+from pathlib import Path
 from typing import Any
 
 from support import (
     DELETIONS_INDEX,
     JOBS_INDEX,
+    OPENSEARCH_URL,
     SEARCH_INDEX,
     SOURCES_INDEX,
     CrawlerApi,
     OpenSearchProbe,
     expect_json,
+    unique_id,
 )
+
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+INIT_SCRIPT = REPOSITORY_ROOT / "infra/opensearch/init-indices.sh"
+SCHEMA_DIR = REPOSITORY_ROOT / "infra/opensearch/schema"
 
 
 def _fetch_mapping(opensearch: OpenSearchProbe, index: str) -> dict[str, Any]:
@@ -165,3 +174,98 @@ def test_sources_index_is_strict_and_jobs_index_defines_the_fields_crawler_queri
             f"loreley-jobs.{field_name} must be {expected_type}: "
             f"{jobs['properties'].get(field_name)}"
         )
+
+
+def test_init_adds_the_missing_fields_to_an_existing_jobs_index(
+    opensearch: OpenSearchProbe,
+) -> None:
+    """【何を確認するか】
+    Crawler の拡張より前に作られた `loreley-jobs`(既存のボリューム)に、`opensearch-init` を再実行すると、
+    不足している項目が足され、Job Runner が使う絞り込み(`record_type`・`status`)で検索できること。
+
+    【前提と手順】
+    前提: スタックは起動済み。本物の `loreley-jobs` には触れず、拡張前の定義(Indexer が読む 4 項目だけ、
+    `dynamic: false`)で、テスト専用の索引を作る。
+    手順: (1) 旧定義の索引に `queued` のジョブ記録を入れ、`status` で検索 → 0 件(不具合の再現)。
+    (2) その索引名を指定して `infra/opensearch/init-indices.sh` を実行(ほかの索引は、実在する名前を渡して
+    skip させる)。(3) マッピングを読み、記録を入れ直して、同じ検索を行う。
+
+    【期待する結果とその根拠】
+    (1) 0 件: `dynamic: false` は未定義の項目を索引しない。これが、拡張前のボリュームで Job Runner が
+    `queued` のジョブを見つけられず、ジョブが進まなくなる原因。
+    (3) スクリプトが終了コード 0 で、`record_type`・`status`・`source_id` が keyword、`queued_at` が date
+    になり、検索で 1 件ヒットする。既存の 4 項目の型は変わらない。(マッピングの追加は、すでに入っている
+    文書を再索引しない。そのため記録を入れ直す。ジョブ記録は、Crawler が更新のたびに書き直す。)
+
+    【fake では確認できず実機で確認する点】
+    実 OpenSearch が `PUT _mapping` による項目の追加を受け付けること、sed で取り出したスキーマが有効な
+    リクエスト本文になること。
+    """
+    legacy_index = unique_id("it-legacy-jobs")
+    job_record = {"record_type": "job", "status": "queued", "queued_at": "2026-11-18T00:00:00Z"}
+    queued_jobs_query = {
+        "bool": {"filter": [{"term": {"record_type": "job"}}, {"term": {"status": "queued"}}]}
+    }
+    # 拡張前の loreley-jobs の定義(Indexer が読む 4 項目だけ)
+    legacy_mappings = {
+        "dynamic": False,
+        "properties": {
+            "owner": {"type": "keyword"},
+            "job_id": {"type": "keyword"},
+            "lease_expires_at": {"type": "date"},
+            "enabled": {"type": "boolean"},
+        },
+    }
+
+    expect_json(
+        opensearch.request("PUT", f"/{legacy_index}", json={"mappings": legacy_mappings}), 200
+    )
+    try:
+        # (1) 旧定義の索引では、status で絞り込めない
+        expect_json(opensearch.request("PUT", f"/{legacy_index}/_doc/job-1", json=job_record), 201)
+        assert opensearch.count(legacy_index, queued_jobs_query) == 0, (
+            "a legacy loreley-jobs must not match by status (dynamic: false)"
+        )
+
+        # (2) init を、旧定義の索引名を指定して再実行する
+        result = subprocess.run(
+            ["sh", str(INIT_SCRIPT)],
+            env={
+                **os.environ,
+                "OPENSEARCH_URL": OPENSEARCH_URL,
+                "SCHEMA_DIR": str(SCHEMA_DIR),
+                "JOBS_INDEX_NAME": legacy_index,
+                # ほかの索引は実在するので skip される(別の名前で作ってしまわないよう、実在する名前を渡す)
+                "SEARCH_INDEX_ALIAS": SEARCH_INDEX,
+                "DELETIONS_INDEX_NAME": DELETIONS_INDEX,
+                "SOURCES_INDEX_NAME": SOURCES_INDEX,
+            },
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        assert result.returncode == 0, f"init-indices.sh failed: {result.stdout}\n{result.stderr}"
+
+        # (3) 項目が足され、型が正しい。既存の 4 項目は変わらない
+        properties = _fetch_mapping(opensearch, legacy_index)["properties"]
+        expected_types = {
+            "owner": "keyword",
+            "job_id": "keyword",
+            "lease_expires_at": "date",
+            "enabled": "boolean",
+            "record_type": "keyword",
+            "source_id": "keyword",
+            "status": "keyword",
+            "queued_at": "date",
+        }
+        for field_name, expected_type in expected_types.items():
+            assert properties[field_name]["type"] == expected_type, (
+                f"{legacy_index}.{field_name} must be {expected_type}: {properties.get(field_name)}"
+            )
+        expect_json(opensearch.request("PUT", f"/{legacy_index}/_doc/job-1", json=job_record), 200)
+        assert opensearch.count(legacy_index, queued_jobs_query) == 1, (
+            "the queued job must be found by record_type and status after the mapping is extended"
+        )
+    finally:
+        opensearch.request("DELETE", f"/{legacy_index}")

@@ -28,6 +28,8 @@
 #   - ホスト側ポートは 9200(OpenSearch)・8000(Indexer)・8001(Crawler)で固定。テストがこの 3 つに接続する。
 #   - Crawler が読む文書は tests/integration/crawler/data に置く。Docker に root 所有で作らせないよう、
 #     起動前にこのスクリプトが作り、終了時に削除する(--keep のときは残す)。
+#   - 終了時の `down -v` と `rm -rf` が、利用者のデータを消さないよう、事前確認で loreley-it の
+#     コンテナ・名前付きボリューム・空でない data/ のどれかが残っていたら、何も消さずに中止する。
 set -euo pipefail
 
 readonly PROJECT_NAME="loreley-it"
@@ -170,6 +172,34 @@ check_no_leftover_stack() {
   fi
 }
 
+# 前回の ${PROJECT_NAME} のデータ(名前付きボリュームと検索対象のディレクトリ)が残っていないかを確認する。
+# このスクリプトは終了時に `down -v`(ボリュームの削除)と `rm -rf`(検索対象のディレクトリの削除)をする。
+# コンテナが無くても、`docker compose down`(-v なし)で止めただけのボリュームや、利用者が data/ に置いた
+# ファイルが残っていることがあり、確認しないとそれらを消してしまう。検出したら、何も消さずに中止する。
+check_no_leftover_data() {
+  local leftover_volumes
+  # `||` の文脈では set -e が効かないので、docker の失敗(空の出力と区別できない)は明示的に止める。
+  leftover_volumes="$(docker volume ls --filter "label=com.docker.compose.project=${PROJECT_NAME}" --format '{{.Name}}')" || {
+    error "docker volume ls に失敗しました。"
+    return 1
+  }
+  if [ -n "$leftover_volumes" ]; then
+    error "${PROJECT_NAME} のデータボリュームが残っています(このスクリプトは終了時に削除します):"
+    while IFS= read -r line; do
+      error "  ${line}"
+    done <<<"$leftover_volumes"
+    error "  残したいデータなら、別のプロジェクト名のスタックへ移すか、バックアップしてください。"
+    error "  不要なら: docker compose -p ${PROJECT_NAME} -f deploy/compose/compose.yaml -f tests/integration/crawler/compose.test.yaml down -v --remove-orphans"
+    return 1
+  fi
+  # ディレクトリがあって空でないとき(存在しない、または空なら問題ない)。
+  if [ -n "$(ls -A "$documents_dir" 2>/dev/null)" ]; then
+    error "${documents_dir} が空ではありません(このスクリプトは終了時にディレクトリごと削除します)。"
+    error "  残したいファイルなら別の場所へ移し、不要なら削除してから再実行してください: rm -rf '${documents_dir}'"
+    return 1
+  fi
+}
+
 # OpenSearch は vm.max_map_count が低いと、環境によって起動に失敗する。Docker Desktop(macOS)では不要。
 warn_if_max_map_count_is_low() {
   local max_map_count_file=/proc/sys/vm/max_map_count
@@ -202,6 +232,7 @@ check_prerequisites() {
     return 1
   fi
   check_no_leftover_stack || return 1
+  check_no_leftover_data || return 1
   check_ports_are_free || return 1
   warn_if_max_map_count_is_low
 }

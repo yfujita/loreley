@@ -12,7 +12,7 @@
 
 - **責務**: データソース(MVP は FileSystem)の列挙・取得、Indexer への開始通知・`last-seen`・バッチ登録・終了通知、削除結果の確認(Status API のポーリング)、ジョブとソース単位のロック(リース+ハートビート)の管理、ソース削除ジョブ(arch 8章)、定期起動(Scheduler)、Crawler の HTTP API(Admin API から呼ばれる)の受け口
 - **MVP の前提**: 単一ホスト・単一 Crawler・直列実行(Job Runner は 1 スレッドで、ジョブを 1 件ずつ実行する)・認証なし。ソース単位のロック・Job Runner・取り消し要求・起床通知はプロセス内にあり、**複数プロセス・複数 Crawler は対象外**
-- **認証・認可がない**: Crawler の HTTP API(クロール・ソース削除ジョブの起動、ロック解放、設定の登録・更新)は、内部ネットワークにだけ置き、ホストや外部に公開しない(api 3.1)。`deploy/compose` は、結合テストのために、ホストのループバック(`127.0.0.1:8001`)にだけ publish している(`deploy/compose/README.md`)
+- **認証・認可がない**: Crawler の HTTP API(クロール・ソース削除ジョブの起動、ロック解放、設定の登録・更新)は、内部ネットワークにだけ置き、ホストや外部に公開しない(api 3.1)。`deploy/compose/compose.yaml` はホストに公開しない。結合テスト用の `tests/integration/crawler/compose.test.yaml` だけが、ホストのループバック(`127.0.0.1:8001`)に publish する(`deploy/compose/README.md`)
 - **他モジュールとの関係**: Indexer と HTTP で直接通信する(メッセージブローカーなし)。OpenSearch の `loreley-sources`(データソース設定。Crawler だけが書く)と `loreley-jobs`(ジョブ・ロック・スキップ記録・原本サイズ超過記録。Crawler が書く。メンテナンスフラグは**読み取りのみ**)に読み書きする。検索インデックスと `loreley-deletions` は読まない・書かない(Indexer だけが書く)。**索引とマッピングは作らない**(作成は `opensearch-init`。9 章)
 - **削除の判断・実行はしない**: 削除は Indexer の Deletion Manager が行う。Crawler は終了通知(列挙の完了と件数)を送り、結果を確認するだけ
 - **スコープ外**: Web Connector(MVP は FileSystem のみ)。infra の前提作業(9 章)と結合テスト(8 章)は、別タスクで実施した
