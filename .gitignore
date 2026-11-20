@@ -15,3 +15,5 @@ tests/integration/*/data/
 
 # Obsidianの設定
 .obsidian/
+# Playwright CLI output (may contain credentials)
+.playwright-cli/
