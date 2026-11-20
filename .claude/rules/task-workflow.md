@@ -69,7 +69,7 @@ agent_tasks/
 積極的にサブエージェントを活用する。
 
 - **要件確認は `requirements-clarifier`**：要件定義の不明点・矛盾・不足の洗い出しと質問の整理を担当する。ユーザーへの質問と、確定した要件の作業記録への保存はメインエージェントが行う。`STATUS: NEEDS_USER_INPUT` が返ったら、ユーザーの回答を「確定済みの回答」として添えて再呼び出しし、`STATUS: REQUIREMENTS_READY` になるまで繰り返す。
-- **サブエージェントを優先する**：独立性が高い作業(並行して進められる、メインの文脈がなくても遂行できる)、専門的なレビュー(code-reviewer / test-reviewer / web-ui-reviewer / document-reviewer / task-reviewer)、コンテキスト消費が大きい調査・技術調査。
+- **サブエージェントを優先する**：独立性が高い作業(並行して進められる、メインの文脈がなくても遂行できる)、Web UI のデザイン検討(`web-ui-designer`。UI デザイン仕様書・ワイヤーフレーム・モックを `docs/v0.x/ui-design/` に作成・更新する。実装は `code-implementer`。重要なデザイン判断はメインエージェントがユーザーの承認を取る)、専門的なレビュー(code-reviewer / test-reviewer / web-ui-reviewer / document-reviewer / task-reviewer)、コンテキスト消費が大きい調査・技術調査。
 - **メインエージェントが直接実施してよい**：数行〜1ファイル程度の軽微な実装・修正、簡単な調査・デバッグ、作業記録・`STATUS.md` の作成・更新。
 
 サブエージェントを使うこと自体を目的にせず、分離のコスト(呼び出し先が文脈を読み直す手間、認識合わせ、結果の再確認)に見合うかで判断する。ただし、レビューを実装担当から分離する原則(`code-implementer` と `code-reviewer` / `test-reviewer` を同一エージェントにしない)は常に維持する。
