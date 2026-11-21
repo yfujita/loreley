@@ -10,10 +10,11 @@
   - 1ファイル完結・外部通信なし・外部フォントなし。ダミーデータのみ(クラスタ名・ノード名・インデックス名は demo-*。実在しない)。
   - トークンは design-system-v0.1.html と同じ値。
   - OpenSearch 汎用の情報だけを出す(機能設計書 UC-1・UC-8)。データソース・ジョブなど Loreley 固有の概念は画面に含めない。読み取り専用で、操作は「更新」だけ。
-  - JavaScript は 3 つだけ: (1) 画面枠(サイドバー・上部バー)の複製(表示用)、(2) 狭い画面のナビ開閉(スクリム・Esc でも閉じる)、(3) シャード配置マトリクスの表示用の組み立てとページ送り(下の <script> 2 つ目。ダミーデータから表を組むだけで、検索・API の処理はしない)。
+  - JavaScript は 3 つだけ: (1) 画面枠(サイドバー・上部バー)の複製(表示用)、(2) 狭い画面のナビ開閉(スクリム・Esc でも閉じる)、(3) シャード配置マトリクスの表示用の組み立てと、絞り込み・ページ送り(下の <script> 2 つ目。ダミーデータから表を組むだけで、検索・API の処理はしない)。
   - 未実装(実装時に付ける): 列が収まらず表の外側が横スクロールしたときの、スクロール領域の tabindex="0"・role="region"・aria-label(opensearch-v0.1.md 3.4 の保険)。端のボタンは aria-disabled だけを付けている。実装ではクリックのハンドラでもガードする。
   - インデックス一覧のカードは廃止した(ユーザー指示 2026-11-22。承認済み)。ドキュメント件数はシャード配置の列見出しの、インデックス名の直下に出す(ユーザー指示。承認済み)。状態タグは最下段(案)。プライマリ数・レプリカ数の数値は出さない。列見出しの「シャード n」は外した(案)。件数は 9 桁まで 1 行、10〜11 桁は「件」だけ折り返し、12 桁以上は想定外(見出しからはみ出しうる。`white-space:nowrap` のまま)。(この時点では O1 は 2 カードだったが、その後、下の行のとおり 1 カードへ統合した。)
-  - 「クラスタの状態」のカードも廃止し、シャード配置と 1 つのカード「クラスタ状態」に統合した(ユーザー指示 2026-11-22。承認済み)。カードの中は、概況(クラスタ名・状態・ノード数ほか)→ 凡例 → ページ送りバー → マトリクス。概況の構成・位置は案。更新ボタンと最終取得日時はページ見出しの右(DS 6.4)に残した。概況はダミーデータから計算して出している(表示用)。「シャードの配置」は、マトリクス部分を指す説明用の語(カードの名称ではない)。
+  - 「クラスタの状態」のカードも廃止し、シャード配置と 1 つのカード「クラスタ状態」に統合した(ユーザー指示 2026-11-22。承認済み)。カードの中は、概況(クラスタ名・状態・ノード数ほか)→ 絞り込みフォーム(下の行)→ 凡例 → ページ送りバー → マトリクス。概況の構成・位置は案。更新ボタンと最終取得日時はページ見出しの右(DS 6.4)に残した。概況はダミーデータから計算して出している(表示用)。「シャードの配置」は、マトリクス部分を指す説明用の語(カードの名称ではない)。
+  - 絞り込みフォームを追加した(ユーザー指示 2026-11-22(O1 への指示の 4 回目)。承認済みなのは、表示するインデックスの絞り込みフォームを追加すること(要約)だけ。ユーザーは条件の種類を指定していない。以下の条件の種類=名前(部分一致)・状態(複数選択)、置き場所=概況の下・マトリクス領域の上、即時に絞り込む(名前は 250ms の debounce、Enter ですぐ)、解除、結果件数の通知(role="status")、行見出し・凡例は絞り込み後、概況は絞り込みの対象外、はすべて案)。JS はダミーデータの絞り込み・ページ送りとの連動だけ(検索・API の処理ではない)。URL への反映(?q=&state=)は実アプリの仕様で、静的なモックでは行わない。
   - シャードの配置は、ユーザー指示(2026-11-22)で「行=ノード、列=インデックス+列のページング」に改訂した(DS 4.15、opensearch-v0.1.md 3.3・3.4)。向きとページングは承認済み。1 ページの列数・並び順・細部は案。
 -->
 <style>
@@ -194,6 +195,21 @@ button,input,select{font:inherit;color:inherit}
 .sum .stats dd{font-size:1.125rem}
 .sum .stats dd .cap{display:inline;margin-left:6px;font-size:.75rem}
 .mxhost>.stateblock{padding:40px 24px}
+/* 絞り込みフォーム(マトリクス領域の上。概況の下) */
+.mxfilter{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 24px;padding:12px 16px;border-bottom:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+.mxfilter .ff{display:grid;gap:4px;min-width:0;border:0;margin:0;padding:0}
+.mxfilter .lb{font-size:.75rem;line-height:1.4;color:rgb(var(--v-theme-on-surface-variant));padding:0}
+.mxfilter .qf{width:280px;max-width:100%}
+.mxfilter .input::placeholder{color:rgb(var(--v-theme-on-surface-variant));opacity:1}
+.mxfilter .chks{display:flex;flex-wrap:wrap;gap:0 16px}
+.chk{display:inline-flex;align-items:center;gap:6px;min-height:40px;cursor:pointer}
+.chk input{width:18px;height:18px;margin:0;accent-color:rgb(var(--v-theme-primary));flex:none}
+.mxfilter .btn{align-self:flex-end;margin-bottom:0}
+.mxfilter :disabled,.mxfilter [disabled]{cursor:not-allowed}
+.mxfilter .input:disabled{background:rgb(var(--v-theme-surface-variant));color:rgba(var(--v-theme-on-surface),.46);border-color:rgba(var(--v-border-color),.28)}
+.mxcount .nb{display:inline-block}
+.mxfilter .chk:has(:disabled){opacity:.6;cursor:not-allowed}
+.mxbody>.stateblock{padding:40px 24px}
 .card-h h2{font-size:inherit;line-height:inherit;font-weight:inherit}
 .card-h .cap{font-weight:400}
 .mxcount{font-weight:600}
@@ -260,6 +276,12 @@ button,input,select{font:inherit;color:inherit}
   .input,.pager .per select,.mxnav .per select{height:44px}
   .mxt .nd{padding:8px}
   .mxnav .per label{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .mxfilter{flex-direction:column;align-items:stretch;gap:12px;padding:12px}
+  .mxfilter .qf{width:100%}
+  .mxbody>.stateblock{padding:32px 12px}
+  .chk{min-height:44px}
+  .mxfilter .chks{gap:0 12px}
+  .mxfilter .btn{align-self:stretch}
   .mxnav .per select{width:84px;padding-left:8px;padding-right:26px;background-position:calc(100% - 14px) 19px,calc(100% - 9px) 19px}
   .mxnav{flex-wrap:nowrap;gap:6px}
   .mxnav .btn{padding:0 10px;gap:6px}
@@ -322,6 +344,10 @@ button,input,select{font:inherit;color:inherit}
         <li><a href="#o1-paging">多数のインデックス(25 件・1 ページ目)</a></li>
         <li><a href="#o1-paging-2">同 2 ページ目</a></li>
         <li><a href="#o1-paging-last">同 最終ページ</a></li>
+        <li><a href="#o1-filter">絞り込み(名前: docs)</a></li>
+        <li><a href="#o1-filter-state">絞り込み(状態: yellow・red)</a></li>
+        <li><a href="#o1-filter-paging">絞り込み後も複数ページ(名前: logs・2 ページ目)</a></li>
+        <li><a href="#o1-filter-empty">絞り込み: 一致 0 件</a></li>
         <li><a href="#o1-red">red(未割り当てのプライマリ)</a></li>
         <li><a href="#o1-empty">空(インデックスなし)</a></li>
         <li><a href="#o1-loading">読み込み中</a></li>
@@ -462,6 +488,67 @@ button,input,select{font:inherit;color:inherit}
 </div>
 </div>
 
+<!-- ===== 絞り込み ===== -->
+<div class="state" id="o1-filter">
+<h3>絞り込み中(名前): 「docs」を含むインデックス(全 25 件中 3 件)</h3>
+<p class="cap t2">名前の入力で、すぐに(250ms 待って)絞り込む。概況はクラスタ全体の値のまま(絞り込みの対象外)。件数の表示は「絞り込み後 3 件のインデックス(全 25 件中)」で、変わるとすぐ読み上げる(<span class="mono">role="status"</span>)。行見出し・未割り当ての行の「シャード n」と凡例は、絞り込み後のインデックスの分だけ(この例は yellow の docs-000003 が含まれるため、未割り当ての行と点線の凡例が出る)。モックの入力欄は実際に動く(この例も、入力・チェック・解除を試せる)。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
+    <div class="stack">
+      <section class="card" aria-labelledby="c-f1" data-testid="o1-cluster"><h2 id="c-f1">クラスタ状態</h2>
+        <div class="mxhost" data-ds="paging" data-q="docs"></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="state" id="o1-filter-state">
+<h3>絞り込み中(状態): yellow または red(全 25 件中 3 件)</h3>
+<p class="cap t2">状態は複数選択(チェックボックス+状態タグ。色・形・文言で区別)。選ばなければすべて。この例は red のインデックスがないため、yellow の 3 件。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
+    <div class="stack">
+      <section class="card" aria-labelledby="c-f2" data-testid="o1-cluster"><h2 id="c-f2">クラスタ状態</h2>
+        <div class="mxhost" data-ds="paging" data-state="red,yellow"></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="state" id="o1-filter-paging">
+<h3>絞り込み後も複数ページ: 「logs」を含む 16 件(全 25 件中)。2 ページ目</h3>
+<p class="cap t2">絞り込みの結果が 1 ページに収まらないときは、列のページングが続く(「a–b / 絞り込み後 N 件のインデックス(全 25 件中)」)。条件を変えると 1 ページ目に戻る。ページの列数の式と列幅は絞り込みでも変わらない。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
+    <div class="stack">
+      <section class="card" aria-labelledby="c-f3" data-testid="o1-cluster"><h2 id="c-f3">クラスタ状態</h2>
+        <div class="mxhost" data-ds="paging" data-q="logs" data-page="2"></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="state" id="o1-filter-empty">
+<h3>絞り込み: 一致 0 件</h3>
+<p class="cap t2">件数の通知(常に DOM にある <span class="mono">role="status"</span>)は「絞り込み後 0 件のインデックス(全 25 件中)」だけ。補足は「適用中の条件」の文だけ。ブロックの見出しは「条件に合うインデックスがありません」で、解除のボタンはブロックに置かず、上のフォームの「条件を解除」を使う(同じ画面にボタンを 2 つ置かない)。フォームはそのまま使える。表・凡例・ページ送りは出さない。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
+    <div class="stack">
+      <section class="card" aria-labelledby="c-f4" data-testid="o1-cluster"><h2 id="c-f4">クラスタ状態</h2>
+        <div class="mxhost" data-ds="paging" data-q="zzz" data-state="green"></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
 <!-- ===== 空 ===== -->
 <div class="state" id="o1-empty">
 <h3>空: インデックスが 1 つもない</h3>
@@ -480,7 +567,7 @@ button,input,select{font:inherit;color:inherit}
 <!-- ===== 読み込み中 ===== -->
 <div class="state" id="o1-loading">
 <h3>読み込み中(初回取得)</h3>
-<p class="cap t2">見出しと「更新」は先に出し、「クラスタ状態」のカードの中(概況とマトリクスの 2 領域)をスケルトンにする。</p>
+<p class="cap t2">見出しと「更新」は先に出し、「クラスタ状態」のカードの中(概況とマトリクスの 2 領域)をスケルトンにする。絞り込みフォームは、無効にして(入力できない。無効の入力欄の見た目)出す(読み込み後の位置が動かないように)。URL から復元した条件(この例は 名前 logs・状態 yellow)は、無効のフォームにも表示する。</p>
 <div class="app" data-shell="opensearch">
   <div class="main">
     <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
@@ -488,6 +575,7 @@ button,input,select{font:inherit;color:inherit}
       <section class="card" aria-labelledby="c-cl5" aria-busy="true" data-testid="o1-cluster"><h2 id="c-cl5">クラスタ状態</h2><div class="prog" aria-hidden="true"></div>
         <p class="sr-only" role="status" data-testid="o1-state-loading">OpenSearch の状態を読み込み中</p>
         <div class="pad" style="display:grid;gap:12px"><span class="skel" style="width:30%"></span><span class="skel" style="width:20%"></span><span class="skel" style="width:60%"></span></div>
+        <div data-filter-disabled data-q="logs" data-state="yellow"></div>
         <div class="pad" style="display:grid;gap:12px;border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity))"><span class="skel" style="width:80%"></span><span class="skel" style="width:70%"></span><span class="skel" style="width:75%"></span></div></section>
     </div>
   </div>
@@ -621,9 +709,9 @@ function cell(x,node){
   if(!l.length) return '<td><span class="none">—<span class="sr-only">シャードなし</span></span></td>';
   return '<td><span class="shs">'+l.map(chip).join('')+'</span></td>';
 }
-function legend(d){
+function legend(rows){ /* 凡例は、表示対象(絞り込み後。全ページ)のデータにある状態だけを出す */
   var has={uw:0,ue:0,mv:0};
-  d.ix.forEach(function(x){x.sh.forEach(function(s){ if(s.node<0) has[s.role==='p'?'ue':'uw']=1; else if(s.mv||s.ini) has.mv=1; });});
+  rows.forEach(function(x){x.sh.forEach(function(s){ if(s.node<0) has[s.role==='p'?'ue':'uw']=1; else if(s.mv||s.ini) has.mv=1; });});
   var h='<li><span class="sh sh--p">P0</span><span>プライマリ</span></li><li><span class="sh sh--r">R0</span><span>レプリカ</span></li>';
   if(has.uw) h+='<li><span class="sh sh--uw"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>R0</span><span>未割り当てのレプリカ(点線)</span></li>';
   if(has.ue) h+='<li><span class="sh sh--ue"><svg class="ic" aria-hidden="true"><use href="#i-fail"/></svg>P0</span><span>未割り当てのプライマリ(点線・赤)</span></li>';
@@ -638,66 +726,155 @@ function cntHTML(x){
   return '<span class="cnt"'+t+'><span class="sr-only">ドキュメント </span><span class="n">'+fmt(x.cnt)+'</span><span class="u"> 件</span></span>';
 }
 function tableHTML(h){
-  var d=h._d,s=h._s,cols=d.ix.slice(s.first,s.first+s.per),w=s.H+cols.length*s.cw,pages=Math.ceil(d.ix.length/s.per);
-  var cap='シャードの配置。行はノード'+(d.uaTotal?'と未割り当て':'')+'、列はインデックス(列見出しにインデックス名・ドキュメント件数・状態)。'+(s.paged?'全 '+d.ix.length+' 件のうち '+(cols.length===1?(s.first+1)+' 件目':(s.first+1)+'〜'+(s.first+cols.length)+' 件目')+'を表示中(ページ '+(s.first/s.per+1)+' / '+pages+')。':'')+'状態の悪い順、同じ状態は名前の昇順。';
+  var d=h._d,s=h._s,rows=h._rows,filtered=isFiltered(h._f),cols=rows.slice(s.first,s.first+s.per),w=s.H+cols.length*s.cw,pages=Math.ceil(rows.length/s.per);
+  /* ノード行・未割り当て行の「シャード n」は、表示対象(絞り込み後。全ページ)のインデックスの合計 */
+  var nodeTotal=d.nodes.map(function(_,n){var c=0;rows.forEach(function(x){x.sh.forEach(function(q){if(q.node===n)c++;});});return c;});
+  var uaTotal=0;rows.forEach(function(x){x.sh.forEach(function(q){if(q.node<0)uaTotal++;});});
+  var sumSr='<span class="sr-only">('+(filtered?'絞り込み後のインデックスの合計':'全インデックスの合計')+')</span>';
+  var cap='シャードの配置。行はノード'+(uaTotal?'と未割り当て':'')+'、列はインデックス(列見出しにインデックス名・ドキュメント件数・状態)。'+(filtered?'絞り込み後 '+rows.length+' 件(全 '+d.ix.length+' 件中)。':'')+(s.paged?(filtered?'':'全 '+rows.length+' 件のうち ')+(cols.length===1?(s.first+1)+' 件目':(s.first+1)+'〜'+(s.first+cols.length)+' 件目')+'を表示中(ページ '+(s.first/s.per+1)+' / '+pages+')。':'')+'状態の悪い順、同じ状態は名前の昇順。';
   var t='<table class="mxt" style="width:'+w+'px"><caption class="sr-only">'+cap+'</caption><colgroup><col style="width:'+s.H+'px">'+cols.map(function(){return '<col style="width:'+s.cw+'px">';}).join('')+'</colgroup>';
   t+='<thead><tr><th scope="col" class="corner">ノード</th>'+cols.map(function(x){
     var hl=HL[x.health];
     return '<th scope="col" class="ixh"><div class="in"><span class="ixn">'+esc(x.name)+'</span>'+cntHTML(x)+'<span class="tag '+hl.c+'"><svg class="ic" aria-hidden="true"><use href="#'+hl.i+'"/></svg>'+x.health+'</span></div></th>';
   }).join('')+'</tr></thead><tbody>';
   d.nodes.forEach(function(n,k){
-    t+='<tr><th scope="row" class="nd"><span class="mono">'+esc(n)+'</span><span class="cap t2">シャード '+d.nodeTotal[k]+'<span class="sr-only">(全インデックスの合計)</span></span></th>'+cols.map(function(x){return cell(x,k);}).join('')+'</tr>';
+    t+='<tr><th scope="row" class="nd"><span class="mono">'+esc(n)+'</span><span class="cap t2">シャード '+nodeTotal[k]+sumSr+'</span></th>'+cols.map(function(x){return cell(x,k);}).join('')+'</tr>';
   });
-  if(d.uaTotal) t+='<tr class="ua"><th scope="row" class="nd"><span class="lab"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>未割り当て</span><span class="cap">シャード '+d.uaTotal+'<span class="sr-only">(全インデックスの合計)</span></span></th>'+cols.map(function(x){return cell(x,-1);}).join('')+'</tr>';
+  if(uaTotal) t+='<tr class="ua"><th scope="row" class="nd"><span class="lab"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>未割り当て</span><span class="cap">シャード '+uaTotal+sumSr+'</span></th>'+cols.map(function(x){return cell(x,-1);}).join('')+'</tr>';
   return t+'</tbody></table>';
 }
-function barHTML(h){
-  var s=h._s,d=h._d,pages=Math.ceil(d.ix.length/s.per),opts='';
-  for(var i=1;i<=pages;i++) opts+='<option value="'+i+'">'+i+' / '+pages+'</option>';
-  return '<div class="mxinfo"><p class="mxcount" role="status" aria-live="polite" aria-atomic="true"></p><p class="cap t2 mxnote"><span>インデックス名の下の数はドキュメント件数。</span> <span>状態の悪い順(同じ状態は名前の昇順)。</span> <span class="mxdash"></span></p></div>'+
-    (s.paged?'<div class="mxnav" role="group" aria-label="シャードの配置のページ送り"><button class="btn btn--outlined btn--sm" type="button" data-mx="prev" aria-label="前へ。シャードの配置の前のページ"><svg class="ic" aria-hidden="true"><use href="#i-chev-l"/></svg>前へ</button><div class="per"><label for="'+h._id+'-pg">ページ</label><select class="input select" id="'+h._id+'-pg" data-mx="page">'+opts+'</select></div><button class="btn btn--outlined btn--sm" type="button" data-mx="next" aria-label="次へ。シャードの配置の次のページ">次へ<svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg></button></div>':'');
+/* 絞り込みフォーム(名前=部分一致・大文字小文字を区別しない / 状態=green・yellow・red の複数選択。何も選ばなければすべて)。
+   画面側で絞り込む(Admin API は全件を返す前提)。実アプリでは URL のクエリ ?q=…&state=yellow,green に反映する(モックは静的なため反映しない)。 */
+var STATES=['red','yellow','green'];
+/* 条件の正規化: 名前は前後の空白を除く(空白だけ=条件なし)。状態は 3 つとも選択=「すべて」と同じ=条件なし。f.raw はチェックの表示用(3 つとも選んだ表示を保つ) */
+function mkFilter(q,raw){ q=(q||'').trim(); raw=STATES.filter(function(k){return raw.indexOf(k)>=0;}); return {q:q,raw:raw,st:raw.length===STATES.length?[]:raw}; }
+function sameFilter(a,b){return a.q===b.q&&a.st.join()===b.st.join();}
+function isFiltered(f){return !!(f.q||f.st.length);}
+function match(f){var q=f.q.toLowerCase();return function(x){return (!q||x.name.toLowerCase().indexOf(q)>=0)&&(!f.st.length||f.st.indexOf(x.health)>=0);};}
+function filterHTML(h,disabled){
+  var id=(h?h._id:'ld'),dis=disabled?' disabled':'';
+  /* 読み込み中の無効のフォームも、URL から復元した条件(値)を表示する */
+  var chks=STATES.map(function(k){var hl=HL[k];return '<label class="chk"><input type="checkbox" value="'+k+'" data-mx="st"'+dis+'><span class="tag '+hl.c+'"><svg class="ic" aria-hidden="true"><use href="#'+hl.i+'"/></svg>'+k+'</span></label>';}).join('');
+  return '<form class="mxfilter" role="search" aria-label="インデックスの絞り込み" data-testid="o1-filter" novalidate>'+
+    '<div class="ff qf"><label class="lb" for="'+id+'-q">インデックス名</label><input class="input" id="'+id+'-q" type="text" data-mx="q" placeholder="名前の一部(例: logs)" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="'+id+'-qh"'+dis+'><span class="sr-only" id="'+id+'-qh">大文字小文字は区別しません。入力するとすぐに絞り込みます。</span></div>'+
+    '<fieldset class="ff"><legend class="lb">状態(複数選択できます。選ばなければすべて)</legend><div class="chks">'+chks+'</div></fieldset>'+
+    '<button class="btn btn--text btn--sm" type="button" data-mx="clear" aria-disabled="true"'+dis+'>条件を解除</button></form>';
 }
-function build(h){
-  var d=h._d,s=h._s,W=h.clientWidth,narrow=matchMedia('(max-width:599px)').matches;
-  if(!d.ix.length){
+function syncForm(h){ /* フォームの表示を状態に合わせる(解除・初期値) */
+  var f=h._f,form=h.querySelector('.mxfilter'); if(!form) return;
+  form.querySelector('[data-mx="q"]').value=f.q;
+  form.querySelectorAll('[data-mx="st"]').forEach(function(c){c.checked=f.raw.indexOf(c.value)>=0;});
+  form.querySelector('[data-mx="clear"]').setAttribute('aria-disabled',!isFiltered(f));
+}
+function barHTML(h){
+  return '<div class="mxinfo"><p class="mxcount" role="status" aria-live="polite" aria-atomic="true" data-testid="o1-count"></p><p class="cap t2 mxnote"><span class="mxs1">インデックス名の下の数はドキュメント件数。</span> <span class="mxs2">状態の悪い順(同じ状態は名前の昇順)。</span> <span class="mxapplied"></span> <span class="mxdash"></span></p></div><div class="mxnavslot"></div>';
+}
+function navHTML(h){
+  var s=h._s,rows=h._rows,pages=Math.ceil(rows.length/s.per),opts='';
+  for(var i=1;i<=pages;i++) opts+='<option value="'+i+'">'+i+' / '+pages+'</option>';
+  return (s.paged?'<div class="mxnav" role="group" aria-label="シャードの配置のページ送り"><button class="btn btn--outlined btn--sm" type="button" data-mx="prev" aria-label="前へ。シャードの配置の前のページ"><svg class="ic" aria-hidden="true"><use href="#i-chev-l"/></svg>前へ</button><div class="per"><label for="'+h._id+'-pg">ページ</label><select class="input select" id="'+h._id+'-pg" data-mx="page">'+opts+'</select></div><button class="btn btn--outlined btn--sm" type="button" data-mx="next" aria-label="次へ。シャードの配置の次のページ">次へ<svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg></button></div>':'');
+}
+/* 1 回だけ組む部分(概況・絞り込みフォーム・マトリクスの枠)。フォームは組み直さない(入力・フォーカスを保つため。件数の通知 role="status" も同じ要素を使い続ける) */
+function init(h){
+  var d=h._d;
+  h._f=mkFilter(h.getAttribute('data-q'),(h.getAttribute('data-state')||'').split(',').filter(Boolean));
+  if(!d.ix.length){ /* インデックス 0 件: フォームは出さない */
     h.innerHTML=summaryHTML(h)+'<div class="stateblock" data-testid="o1-state-empty"><div class="ill"><svg class="ic" aria-hidden="true"><use href="#i-cluster"/></svg></div><h3>インデックスがありません</h3><p class="t2">このクラスタにはインデックスが作成されていません。インデックスが作成されると、ここに、インデックスごとのドキュメント件数とシャードの配置が表示されます。</p></div>';
-    return;
+    return false;
   }
-  var prevPer=s.per; s.H=narrow?112:152;
+  h.innerHTML=summaryHTML(h)+filterHTML(h,false)+'<div class="mxm" role="group" aria-label="シャードの配置(行はノード、列はインデックス)" data-testid="o1-shards"><div class="mxlegend"></div><div class="mxbar">'+barHTML(h)+'</div><div class="mxbody"></div></div>';
+  syncForm(h);
+  return true;
+}
+/* 幅・絞り込み・ページが変わるたびに、マトリクスの中身だけを組み直す */
+function render(h){
+  var d=h._d,s=h._s,f=h._f,W=h.clientWidth,narrow=matchMedia('(max-width:599px)').matches;
+  var rows=d.ix.filter(match(f)); h._rows=rows;
+  s.H=narrow?112:152;
   s.per=Math.max(1,Math.floor((W-s.H)/MINCOL));
-  s.paged=d.ix.length>s.per;
-  s.cw=s.paged?Math.floor((W-s.H)/s.per):Math.min(200,Math.floor((W-s.H)/d.ix.length));
-  if(s.first==null){ var pg=h.getAttribute('data-page'), pages=Math.ceil(d.ix.length/s.per); s.first=((pg==='last'?pages:+(pg||1))-1)*s.per; }
+  s.paged=rows.length>s.per;
+  s.cw=!rows.length?0:s.paged?Math.floor((W-s.H)/s.per):Math.min(200,Math.floor((W-s.H)/rows.length));
+  if(s.first==null){ var pg=h.getAttribute('data-page'), pages=Math.ceil(rows.length/s.per); s.first=((pg==='last'?pages:+(pg||1))-1)*s.per; }
   else s.first=Math.floor(s.first/s.per)*s.per;
-  s.first=Math.min(s.first,Math.floor((d.ix.length-1)/s.per)*s.per);
-  h.innerHTML=summaryHTML(h)+'<div class="mxm" role="group" aria-label="シャードの配置(行はノード、列はインデックス)" data-testid="o1-shards">'+legend(d)+'<div class="mxbar">'+barHTML(h)+'</div><div class="mxscroll"></div></div>';
+  s.first=rows.length?Math.max(0,Math.min(s.first,Math.floor((rows.length-1)/s.per)*s.per)):0;
+  h.querySelector('.mxlegend').innerHTML=rows.length?legend(rows):'';
+  h.querySelector('.mxnavslot').innerHTML=navHTML(h);
+  h.querySelector('.mxbody').innerHTML=rows.length?'<div class="mxscroll"></div>':'<div class="stateblock" data-testid="o1-state-nomatch"><div class="ill"><svg class="ic" aria-hidden="true"><use href="#i-cluster"/></svg></div><h3>条件に合うインデックスがありません</h3><p class="t2">インデックス名や状態の条件を変えるか、上のフォームの「条件を解除」で条件を外してください。</p></div>';
   update(h);
 }
+function condText(f){
+  var p=[]; if(f.q) p.push('名前に「'+esc(f.q)+'」を含む'); if(f.st.length) p.push('状態が '+f.st.join(' または '));
+  return p.join('、');
+}
 function update(h){
-  var d=h._d,s=h._s,total=d.ix.length,pages=Math.ceil(total/s.per),page=s.first/s.per+1,to=Math.min(total,s.first+s.per);
-  h.querySelector('.mxscroll').innerHTML=tableHTML(h);
-  h.querySelector('.mxdash').textContent=d.ix.slice(s.first,s.first+s.per).some(function(x){return x.cnt==null;})?'見出しの「—」は件数を取得できません。':'';
-  h.querySelector('.mxcount').innerHTML=s.paged?(s.first+1===to?to:(s.first+1)+'–'+to)+' / 全 '+total+' 件のインデックス<span class="sr-only">(ページ '+page+' / '+pages+')</span>':total+' 件のインデックス';
+  var d=h._d,s=h._s,f=h._f,rows=h._rows,m=rows.length,total=d.ix.length,filtered=isFiltered(f),pages=Math.ceil(m/s.per),page=s.first/s.per+1,to=Math.min(m,s.first+s.per);
+  var cnt=h.querySelector('.mxcount'),txt;
+  /* 件数表示: N=絞り込み後、M=全件。「(全 M 件中)」は 1 つの塊(途中で折り返さない)。0 件でも要素は消さず、文だけを書き換える */
+  if(!m) txt='<span class="nb">絞り込み後 0 件のインデックス</span> <span class="nb">(全 '+total+' 件中)</span>';
+  else{
+    var range=s.paged?(s.first+1===to?to:(s.first+1)+'–'+to)+' / ':'';
+    txt=range+(filtered?'<span class="nb">絞り込み後 '+m+' 件のインデックス</span> <span class="nb">(全 '+total+' 件中)</span>':(s.paged?'全 '+m+' 件のインデックス':m+' 件のインデックス'))+(s.paged?'<span class="sr-only">(ページ '+page+' / '+pages+')</span>':'');
+  }
+  if(cnt.innerHTML!==txt) cnt.innerHTML=txt; /* 変わったときだけ書き換える(読み上げの重複を避ける) */
+  h.querySelector('.mxs1').hidden=!m; h.querySelector('.mxs2').hidden=!m; /* 0 件: 補足は「適用中の条件」の文だけ */
+  if(m) h.querySelector('.mxscroll').innerHTML=tableHTML(h);
+  h.querySelector('.mxapplied').textContent=filtered?'適用中の条件: '+condText(f)+'。概況はクラスタ全体の値で、絞り込みの対象外。':'';
+  h.querySelector('.mxdash').textContent=m&&rows.slice(s.first,s.first+s.per).some(function(x){return x.cnt==null;})?'見出しの「—」は件数を取得できません。':'';
   if(s.paged){
     h.querySelector('[data-mx="page"]').value=page;
     h.querySelector('[data-mx="prev"]').setAttribute('aria-disabled',page===1);
     h.querySelector('[data-mx="next"]').setAttribute('aria-disabled',page===pages);
   }
+  var clr=h.querySelector('.mxfilter [data-mx="clear"]'); if(clr) clr.setAttribute('aria-disabled',!filtered);
 }
 var n=0;
 document.querySelectorAll('.mxhost').forEach(function(h){
   h._d=D[h.getAttribute('data-ds')]; h._s={}; h._id='mx'+(n++);
+  if(!init(h)) return;
   var last=-1;
-  new ResizeObserver(function(){ var w=h.clientWidth; if(w&&w!==last){ last=w; build(h); } }).observe(h);
+  new ResizeObserver(function(){ var w=h.clientWidth; if(w&&w!==last){ last=w; render(h); } }).observe(h);
 });
-function move(h,page){ var s=h._s,pages=Math.ceil(h._d.ix.length/s.per); page=Math.max(1,Math.min(pages,page)); s.first=(page-1)*s.per; update(h); }
+document.querySelectorAll('[data-filter-disabled]').forEach(function(e){ /* 読み込み中: 無効のフォーム。URL から復元した条件(値)は表示する */
+  var w=document.createElement('div'); w.innerHTML=filterHTML(null,true); var form=w.firstChild;
+  form.querySelector('[data-mx="q"]').value=e.getAttribute('data-q')||'';
+  var st=(e.getAttribute('data-state')||'').split(','); form.querySelectorAll('[data-mx="st"]').forEach(function(c){c.checked=st.indexOf(c.value)>=0;});
+  e.replaceWith(form);
+});
+function move(h,page){ var s=h._s,pages=Math.ceil(h._rows.length/s.per); page=Math.max(1,Math.min(pages,page)); s.first=(page-1)*s.per; update(h); }
+function refilter(h){ /* 絞り込みを変えたら 1 ページ目に戻る。直前に適用した条件と同じなら何もしない(ページを保つ) */
+  var form=h.querySelector('.mxfilter');
+  var nf=mkFilter(form.querySelector('[data-mx="q"]').value,STATES.filter(function(k){return form.querySelector('[data-mx="st"][value="'+k+'"]').checked;}));
+  if(sameFilter(nf,h._f)){ h._f=nf; update(h); return; }
+  h._f=nf; h._s.first=0; render(h);
+}
+var timers=new WeakMap();
+function schedule(h){ clearTimeout(timers.get(h)); timers.set(h,setTimeout(function(){refilter(h);},250)); }
+document.addEventListener('input',function(e){ /* 名前: 入力に応じて少し待ってから(debounce 250ms)絞り込む。IME の変換中は待たず、確定(compositionend)後に適用する */
+  var el=e.target; if(!el.matches||!el.matches('[data-mx="q"]')) return;
+  var h=el.closest('.mxhost'); if(!h||!h._f||e.isComposing) return; schedule(h);
+});
+document.addEventListener('compositionend',function(e){
+  var el=e.target; if(!el.matches||!el.matches('[data-mx="q"]')) return;
+  var h=el.closest('.mxhost'); if(h&&h._f) schedule(h);
+});
+document.addEventListener('submit',function(e){ /* Enter: 待たずにすぐ絞り込む(ページは移動しない) */
+  var form=e.target; if(!form.matches||!form.matches('.mxfilter')) return; e.preventDefault();
+  var h=form.closest('.mxhost'); clearTimeout(timers.get(h)); refilter(h);
+});
 document.addEventListener('click',function(e){
+  var c=e.target.closest('[data-mx="clear"]');
+  if(c){ /* 条件を解除: 何も条件がなければ何もしない(aria-disabled)。解除後は名前の入力欄にフォーカス */
+    if(c.getAttribute('aria-disabled')==='true'||c.disabled) return;
+    var h=c.closest('.mxhost'); clearTimeout(timers.get(h)); h._f=mkFilter('',[]); h._s.first=0; syncForm(h); render(h); h.querySelector('.mxfilter [data-mx="q"]').focus(); return;
+  }
   var b=e.target.closest('[data-mx="prev"],[data-mx="next"]'); if(!b) return;
   if(b.getAttribute('aria-disabled')==='true') return;
-  var h=b.closest('.mxhost'); move(h,h._s.first/h._s.per+1+(b.getAttribute('data-mx')==='next'?1:-1));
+  var h2=b.closest('.mxhost'); move(h2,h2._s.first/h2._s.per+1+(b.getAttribute('data-mx')==='next'?1:-1));
 });
 document.addEventListener('change',function(e){
-  var el=e.target; if(!el.matches||!el.matches('[data-mx="page"]')) return;
+  var el=e.target; if(!el.matches) return;
+  if(el.matches('[data-mx="st"]')){ var h=el.closest('.mxhost'); if(h&&h._f) refilter(h); return; } /* 状態: すぐ絞り込む */
+  if(!el.matches('[data-mx="page"]')) return;
   move(el.closest('.mxhost'),+el.value);
 });
 })();
