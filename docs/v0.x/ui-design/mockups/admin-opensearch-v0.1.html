@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin View O1 OpenSearch v0.1(モック。承認済み(ゲートC))</title>
+<!--
+  Admin View G4 OpenSearch(O1)の静的モック。実装コードではない。
+  - 仕様の正: docs/v0.x/ui-design/admin/opensearch-v0.1.md と design-system-v0.1.md。値が食い違う場合は仕様書を正とする。
+  - 1ファイル完結・外部通信なし・外部フォントなし。ダミーデータのみ(クラスタ名・ノード名・インデックス名は demo-*。実在しない)。
+  - トークンは design-system-v0.1.html と同じ値。
+  - OpenSearch 汎用の情報だけを出す(機能設計書 UC-1・UC-8)。データソース・ジョブなど Loreley 固有の概念は画面に含めない。読み取り専用で、操作は「更新」だけ。
+  - JavaScript は 2 つだけ: (1) 画面枠(サイドバー・上部バー)の複製(表示用)、(2) 狭い画面のナビ開閉(スクリム・Esc でも閉じる)。
+-->
+<style>
+:root{
+  --v-theme-background:244,246,248; --v-theme-on-background:26,37,48;
+  --v-theme-surface:255,255,255; --v-theme-on-surface:26,37,48;
+  --v-theme-surface-variant:233,237,241; --v-theme-on-surface-variant:70,83,95;
+  --v-theme-primary:29,91,135; --v-theme-on-primary:255,255,255;
+  --v-theme-primary-container:227,238,246; --v-theme-on-primary-container:18,63,95;
+  --v-theme-secondary-container:230,234,238; --v-theme-on-secondary-container:59,72,84;
+  --v-theme-error:179,38,30; --v-theme-on-error:255,255,255;
+  --v-theme-error-container:252,232,230; --v-theme-on-error-container:122,23,18;
+  --v-theme-warning:143,90,0; --v-theme-on-warning:255,255,255;
+  --v-theme-warning-container:255,241,214; --v-theme-on-warning-container:107,66,0;
+  --v-theme-success:29,111,66; --v-theme-success-container:226,243,232; --v-theme-on-success-container:17,77,46;
+  --v-theme-info:47,107,154; --v-theme-info-container:225,237,247; --v-theme-on-info-container:23,63,97;
+  --v-theme-focus:11,87,208; --v-theme-ink:38,50,62;
+  --v-border-color:26,37,48; --v-border-opacity:.16;
+  --line-strong:111,124,136;
+  --radius-sm:2px; --radius-md:4px; --radius-lg:8px;
+  --shadow-menu:0 4px 12px rgba(26,37,48,.16); --shadow-dialog:0 8px 24px rgba(26,37,48,.20);
+  --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo UI","Noto Sans JP",sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{font-size:16px;-webkit-text-size-adjust:100%}
+body{margin:0;background:rgb(var(--v-theme-background));color:rgb(var(--v-theme-on-background));font-family:var(--font-sans);font-size:.875rem;line-height:1.5714}
+h1,h2,h3,h4,p,dl,dd,ul,ol{margin:0}
+ul,ol{padding:0;list-style:none}
+a{color:rgb(var(--v-theme-primary))}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid rgb(var(--v-theme-focus));outline-offset:2px}
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.skip{position:absolute;left:8px;top:-48px;background:#fff;padding:8px 12px;border-radius:var(--radius-md);z-index:50}
+.skip:focus{top:8px}
+.ic{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.mono{font-family:var(--font-mono);font-size:.8125rem}
+.t2{color:rgb(var(--v-theme-on-surface-variant))}
+.cap{font-size:.75rem;line-height:1.5}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+
+/* 見本ページの枠 */
+.doc{max-width:1240px;margin:0 auto;padding:24px 24px 64px}
+.doc h1.mock-title{font-size:1.25rem;line-height:1.4;font-weight:600}
+.index{margin:16px 0 8px;padding:12px 16px;background:rgb(var(--v-theme-surface));border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));border-radius:var(--radius-lg);display:grid;gap:8px}
+.index ul{display:flex;flex-wrap:wrap;gap:4px 16px}
+.index b{font-weight:600}
+.index a{display:inline-block;padding:4px 0}
+.sec{margin-top:40px;scroll-margin-top:16px}
+.sec>h2{font-size:1rem;line-height:1.5;font-weight:600;padding-bottom:8px;border-bottom:1px solid rgba(var(--v-border-color),var(--v-border-opacity));margin-bottom:12px}
+.state{margin-top:24px;scroll-margin-top:16px}
+.state>h3{font-size:.875rem;font-weight:600;margin-bottom:4px}
+.state>.cap{margin-bottom:8px;max-width:90ch}
+
+/* 部品 */
+.tag{--tg-bg:var(--v-theme-secondary-container);--tg-fg:var(--v-theme-on-secondary-container);display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px 0 6px;border-radius:var(--radius-md);font-size:.75rem;line-height:1;font-weight:600;white-space:nowrap;background:rgb(var(--tg-bg));color:rgb(var(--tg-fg))}
+.tag .ic{width:16px;height:16px}
+.tag--success{--tg-bg:var(--v-theme-success-container);--tg-fg:var(--v-theme-on-success-container)}
+.tag--warning{--tg-bg:var(--v-theme-warning-container);--tg-fg:var(--v-theme-on-warning-container)}
+.tag--error{--tg-bg:var(--v-theme-error-container);--tg-fg:var(--v-theme-on-error-container)}
+.tag--info{--tg-bg:var(--v-theme-info-container);--tg-fg:var(--v-theme-on-info-container)}
+.tag--outline{background:transparent;box-shadow:inset 0 0 0 1px currentColor;padding:0 8px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:36px;padding:0 16px;border-radius:var(--radius-md);border:1px solid transparent;background:none;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap}
+.btn .ic{width:18px;height:18px}
+.btn--tonal{background:rgb(var(--v-theme-primary-container));color:rgb(var(--v-theme-on-primary-container))}
+.btn--outlined{border-color:rgb(var(--line-strong));background:rgb(var(--v-theme-surface))}
+.btn--text{color:rgb(var(--v-theme-primary));padding:0 12px}
+.btn--icon{width:36px;padding:0}
+.btn--sm{min-height:32px;padding:0 12px}
+.btn--sm.btn--icon{width:32px;padding:0}
+.btn:disabled,.btn[aria-disabled="true"]{background:rgba(var(--v-border-color),.12);color:rgba(var(--v-theme-on-surface),.46);cursor:not-allowed;border-color:transparent}
+.btn:hover:not(:disabled){filter:brightness(.94)}
+.btn--text:hover:not(:disabled){background:rgba(var(--v-theme-primary),.08);filter:none}
+.alert .acts .btn{white-space:normal;text-align:center;height:auto;padding-top:6px;padding-bottom:6px}
+.input{height:40px;width:100%;border:1px solid rgb(var(--line-strong));border-radius:var(--radius-md);padding:0 12px;background:rgb(var(--v-theme-surface));min-width:0}
+.input:focus-visible{border-color:rgb(var(--v-theme-primary));outline-offset:1px}
+.select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,#46535F 50%),linear-gradient(135deg,#46535F 50%,transparent 50%);background-position:calc(100% - 18px) 17px,calc(100% - 13px) 17px;background-size:5px 5px;background-repeat:no-repeat;padding-right:32px}
+.alert{--tn:var(--v-theme-info);--ct:var(--v-theme-info-container);--on:var(--v-theme-on-info-container);display:flex;gap:12px;align-items:flex-start;min-width:0;padding:12px 16px;border-radius:var(--radius-md);background:rgb(var(--ct));color:rgb(var(--on));border:1px solid rgba(var(--tn),.35);border-left:4px solid rgb(var(--tn))}
+.alert>.ic{margin-top:1px;color:rgb(var(--tn))}
+.alert .body{flex:1;min-width:0;display:grid;gap:2px;overflow-wrap:anywhere}
+.alert .ttl{font-weight:600}
+.alert .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.alert--warning{--tn:var(--v-theme-warning);--ct:var(--v-theme-warning-container);--on:var(--v-theme-on-warning-container)}
+.alert--error{--tn:var(--v-theme-error);--ct:var(--v-theme-error-container);--on:var(--v-theme-on-error-container)}
+.card{background:rgb(var(--v-theme-surface));border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));border-radius:var(--radius-lg);overflow:hidden}
+.card>h2,.card>.card-h{font-size:1rem;line-height:1.5;font-weight:600;padding:12px 16px;border-bottom:1px solid rgba(var(--v-border-color),var(--v-border-opacity));display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.card>h2 .cap{font-weight:400}
+.card .pad{padding:16px}
+.kv{display:grid;grid-template-columns:200px minmax(0,1fr);margin:0}
+.kv dt,.kv dd{padding:10px 16px;border-bottom:1px solid rgba(var(--v-border-color),.08)}
+.kv dt{color:rgb(var(--v-theme-on-surface-variant))}
+.kv dd{overflow-wrap:anywhere}
+.kv dt:last-of-type,.kv dd:last-of-type{border-bottom:0}
+.kv .sub{display:block;margin-top:4px}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin:0;border-top:1px solid rgba(var(--v-border-color),.08)}
+.stats>div{padding:12px 16px;border-right:1px solid rgba(var(--v-border-color),.08)}
+.stats>div:last-child{border-right:0}
+.stats dt{color:rgb(var(--v-theme-on-surface-variant));font-size:.75rem}
+.stats dd{font-size:1.25rem;line-height:1.4;font-weight:600;font-variant-numeric:tabular-nums}
+.stats dd .cap{font-weight:400;display:block;color:rgb(var(--v-theme-on-surface-variant))}
+.stateblock{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:48px 24px}
+.stateblock .ill{width:48px;height:48px;border-radius:var(--radius-lg);display:flex;align-items:center;justify-content:center;background:rgb(var(--v-theme-surface-variant));color:rgb(var(--v-theme-on-surface-variant))}
+.stateblock .ill .ic{width:28px;height:28px}
+.stateblock--error .ill{background:rgb(var(--v-theme-error-container));color:rgb(var(--v-theme-error))}
+.stateblock h3{font-size:1rem;font-weight:600}
+.stateblock p{max-width:56ch}
+.skel{display:block;height:14px;border-radius:var(--radius-sm);background:linear-gradient(90deg,#E9EDF1 25%,#F4F6F8 40%,#E9EDF1 60%);background-size:300% 100%;animation:shimmer 1.4s ease-in-out infinite}
+@keyframes shimmer{from{background-position:100% 0}to{background-position:0 0}}
+.prog{height:2px;background:rgba(var(--v-theme-primary),.18);overflow:hidden;position:relative}
+.prog::after{content:"";position:absolute;inset:0 auto 0 0;width:35%;background:rgb(var(--v-theme-primary));animation:slide 1.2s ease-in-out infinite}
+@keyframes slide{from{left:-35%}to{left:100%}}
+@media (prefers-reduced-motion:reduce){.skel,.prog::after{animation:none}.prog::after{width:100%;opacity:.5}}
+
+/* シェル */
+.app{position:relative;display:block;background:rgb(var(--v-theme-background));border:1px solid rgba(var(--v-border-color),.28);border-radius:var(--radius-lg);overflow:hidden}
+.app.shell-ready{display:grid;grid-template-columns:232px minmax(0,1fr)}
+.topbar{position:relative;z-index:6;display:none;align-items:center;gap:8px;height:48px;padding:0 8px;background:rgb(var(--v-theme-surface));border-bottom:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+.topbar .brand{font-weight:600}
+.sidebar{background:rgb(var(--v-theme-surface-variant));padding:16px 12px;display:flex;flex-direction:column;gap:4px;border-right:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+.sidebar .brand{display:flex;align-items:center;gap:10px;padding:4px 12px 16px;font-size:1rem;font-weight:600;line-height:1.2}
+.sidebar .brand svg{width:24px;height:24px;flex:none}
+.sidebar .brand small{display:block;font-size:.75rem;font-weight:400;color:rgb(var(--v-theme-on-surface-variant))}
+.sidebar hr{border:0;border-top:1px solid rgba(var(--v-border-color),.2);margin:8px 12px}
+.navi{display:flex;align-items:center;gap:12px;min-height:40px;padding:0 12px;border-radius:var(--radius-md);color:rgb(var(--v-theme-on-surface));text-decoration:none}
+.navi:hover{background:rgba(var(--v-theme-primary),.08)}
+.navi .ic{color:rgb(var(--v-theme-on-surface-variant))}
+.navi[aria-current="page"]{background:rgb(var(--v-theme-surface));font-weight:600;box-shadow:inset 3px 0 0 rgb(var(--v-theme-primary))}
+.navi[aria-current="page"] .ic{color:rgb(var(--v-theme-primary))}
+.sidebar .grow{flex:1}
+.main{padding:24px 32px 40px;min-width:0}
+.pagehead{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;margin-bottom:16px}
+.pagehead h1{font-size:1.25rem;line-height:1.4;font-weight:600;overflow-wrap:anywhere}
+.pagehead .desc{margin-top:2px;max-width:70ch}
+.pagehead .acts{display:flex;gap:8px 12px;flex-wrap:wrap;align-items:center}
+.stack{display:grid;gap:16px;min-width:0}
+
+/* O1 */
+.toolbar{display:flex;align-items:center;gap:12px;padding:8px 16px;min-height:52px;flex-wrap:wrap}
+.toolbar .count{font-weight:600}
+.toolbar .grow{flex:1}
+.tablewrap{overflow-x:auto}
+.dt{width:100%;border-collapse:collapse}
+.dt th{background:rgb(var(--v-theme-surface-variant));font-size:.75rem;font-weight:600;color:rgb(var(--v-theme-on-surface-variant));text-align:left;padding:0 16px;height:40px;white-space:nowrap}
+.dt td,.dt tbody th{padding:10px 16px;border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity));vertical-align:middle;text-align:left}
+.dt tbody th{background:none;height:auto;font-size:inherit;color:inherit;font-weight:400;white-space:normal;overflow-wrap:anywhere}
+.dt tbody tr:hover{background:rgba(var(--v-theme-primary),.05)}
+.dt .sub{display:block;margin-top:2px}
+.dt td.num,.dt th.num{text-align:right}
+.pager{display:flex;justify-content:flex-end;align-items:center;gap:16px;flex-wrap:wrap;padding:8px 16px;border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+.pager .per{display:flex;align-items:center;gap:8px}
+.pager .per select{height:32px;width:72px}
+.rowacts{display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap}
+.stateblock .rowacts{justify-content:center}
+.skelrow{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:24px;padding:22px 16px;border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+/* シャード */
+.legend{display:flex;flex-wrap:wrap;gap:8px 20px;padding:12px 16px;border-bottom:1px solid rgba(var(--v-border-color),var(--v-border-opacity));align-items:center}
+.legend li{display:inline-flex;align-items:center;gap:8px}
+.sh{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:var(--radius-md);font-family:var(--font-mono);font-size:.75rem;font-weight:600;line-height:1;border:1px solid transparent;white-space:nowrap}
+.sh .ic{width:14px;height:14px}
+.sh--p{background:rgb(var(--v-theme-primary-container));color:rgb(var(--v-theme-on-primary-container));border-color:rgba(var(--v-theme-primary),.45)}
+.sh--r{background:rgb(var(--v-theme-surface));color:rgb(var(--v-theme-on-surface));border-color:rgb(var(--line-strong))}
+.sh--uw{background:rgb(var(--v-theme-warning-container));color:rgb(var(--v-theme-on-warning-container));border:1px dashed rgb(var(--v-theme-warning))}
+.sh--ue{background:rgb(var(--v-theme-error-container));color:rgb(var(--v-theme-on-error-container));border:1px dashed rgb(var(--v-theme-error))}
+.sh--i{background:rgb(var(--v-theme-info-container));color:rgb(var(--v-theme-on-info-container));border-color:rgba(var(--v-theme-info),.5)}
+.shs{display:flex;gap:6px;flex-wrap:wrap}
+.mx td .none{color:rgb(var(--v-theme-on-surface-variant))}
+
+@media (max-width:1144px){
+  .main{padding:20px 24px 32px}
+  .dt th,.dt td,.dt tbody th{padding-left:12px;padding-right:12px}
+}
+@media (max-width:839px){
+  .app.shell-ready{grid-template-columns:minmax(0,1fr)}
+  .topbar{display:flex}
+  .sidebar{display:none}
+  .app.nav-open .sidebar{display:flex;position:absolute;z-index:5;left:0;top:48px;bottom:0;width:272px;box-shadow:var(--shadow-dialog)}
+  .app.nav-open::after{content:"";position:absolute;inset:48px 0 0 0;background:rgba(26,37,48,.4);z-index:4}
+  .main{padding:16px}
+  .tablewrap{overflow:visible}
+  .dt,.dt tbody,.dt tr,.dt td,.dt tbody th{display:block}
+  .dt thead{display:none}
+  .dt tr{padding:12px 16px;border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+  .dt td,.dt tbody th{border:0;padding:4px 0;display:flex;gap:12px;justify-content:flex-start;align-items:center}
+  .dt tbody th{display:block;padding-bottom:6px;font-weight:600}
+  .dt td::before{content:attr(data-label);flex:0 0 112px;color:rgb(var(--v-theme-on-surface-variant));font-size:.75rem;overflow-wrap:anywhere}
+  .dt td.num{text-align:left}
+  .mx td.empty{display:none}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .stats>div{border-bottom:1px solid rgba(var(--v-border-color),.08)}
+  .skelrow{grid-template-columns:1fr;gap:10px}
+  .pager{justify-content:flex-start}
+}
+@media (max-width:599px){
+  .doc{padding:16px 16px 48px}
+  .btn,.btn--sm{min-height:44px}
+  .btn--sm.btn--icon,.btn--icon{width:44px}
+  .input,.pager .per select{height:44px}
+  .kv{grid-template-columns:minmax(0,1fr)}
+  .kv dt{padding-bottom:0;border-bottom:0;font-size:.75rem}
+  .dt td::before{flex-basis:96px}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M7.8 12.4l2.9 2.9 5.6-6"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3.8L21.2 20H2.8z"/><path d="M12 10v4.2M12 17.3v.1"/></symbol>
+  <symbol id="i-fail" viewBox="0 0 24 24"><path d="M8.6 3h6.8L21 8.6v6.8L15.4 21H8.6L3 15.4V8.6z"/><path d="M9 9l6 6M15 9l-6 6"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.6v.1"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.6v.1"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h14M14 4l4 4-4 4M20 16H6M10 12l-4 4 4 4"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5"/></symbol>
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></symbol>
+  <symbol id="i-jobs" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h4"/></symbol>
+  <symbol id="i-docs" viewBox="0 0 24 24"><path d="M6 3h8l4 4v5M6 3v18h6"/><circle cx="16.5" cy="17" r="3"/><path d="M18.7 19.3L21 21.6"/></symbol>
+  <symbol id="i-cluster" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="6" rx="1.5"/><rect x="4" y="14" width="16" height="6" rx="1.5"/><path d="M8 7v.1M8 17v.1"/></symbol>
+  <symbol id="i-dash" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="8" rx="1"/><rect x="13" y="4" width="7" height="5" rx="1"/><rect x="4" y="14" width="7" height="6" rx="1"/><rect x="13" y="11" width="7" height="9" rx="1"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></symbol>
+  <symbol id="i-wave" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" rx="5" fill="#1D5B87" stroke="none"/><path d="M4.5 14c2-3.2 4-3.2 5.5 0s3.5 3.2 5.5 0 2.5-2.5 3.5-2.5" stroke="#fff" fill="none"/><path d="M7 8.5h3" stroke="#fff"/></symbol>
+</svg>
+
+<template id="tpl-shell">
+  <div class="topbar"><button class="btn btn--text btn--icon" type="button" data-nav-toggle aria-label="メニューを開く" aria-expanded="false"><svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg></button><span class="brand">Loreley 管理</span></div>
+  <nav class="sidebar" aria-label="メインメニュー">
+    <div class="brand"><svg aria-hidden="true"><use href="#i-wave"/></svg><span>Loreley<small>管理</small></span></div>
+    <a class="navi" href="admin-dashboard-v0.1.html" data-key="dashboard"><svg class="ic" aria-hidden="true"><use href="#i-dash"/></svg>ダッシュボード</a><hr>
+    <a class="navi" href="admin-sources-v0.1.html" data-key="sources"><svg class="ic" aria-hidden="true"><use href="#i-db"/></svg>データソース</a>
+    <a class="navi" href="admin-jobs-v0.1.html" data-key="jobs"><svg class="ic" aria-hidden="true"><use href="#i-jobs"/></svg>ジョブ</a><hr>
+    <a class="navi" href="admin-documents-v0.1.html" data-key="documents"><svg class="ic" aria-hidden="true"><use href="#i-docs"/></svg>文書の確認</a>
+    <a class="navi" href="admin-opensearch-v0.1.html" data-key="opensearch"><svg class="ic" aria-hidden="true"><use href="#i-cluster"/></svg>OpenSearch</a>
+    <div class="grow"></div>
+    <a class="navi" href="#" target="_blank" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#i-ext"/></svg>OpenSearch Dashboards<span class="sr-only">(別タブで開く。設定されている場合のみ表示)</span></a>
+  </nav>
+</template>
+<noscript><p style="padding:8px 16px;background:#FFF1D6;color:#6B4200">このモックは、画面枠(サイドバー・上部バー)の表示に JavaScript を使います。JavaScript を有効にしてください。</p></noscript>
+<a class="skip" href="#main">メインコンテンツへ移動</a>
+
+<div class="doc">
+<header>
+  <h1 class="mock-title">Admin View O1 OpenSearch v0.1(静的モック。承認済み(ゲート C 2026-11-22))</h1>
+  <p class="t2" style="margin-top:4px;max-width:80ch">仕様は <span class="mono">admin/opensearch-v0.1.md</span>。ダミーデータのみ。OpenSearch 汎用の情報(クラスタの状態・インデックス・ドキュメント件数・シャードの配置)だけを読み取り専用で出す。URL ハッシュ(例: <span class="mono">#o1-yellow</span>)で直接開ける。</p>
+  <nav class="index" aria-label="状態一覧">
+    <div><b>O1 OpenSearch</b>
+      <ul>
+        <li><a href="#o1-normal">通常(green・2 ノード)</a></li>
+        <li><a href="#o1-yellow">yellow(単一ノード・未割り当てのレプリカ)</a></li>
+        <li><a href="#o1-red">red(未割り当てのプライマリ)</a></li>
+        <li><a href="#o1-empty">空(インデックスなし)</a></li>
+        <li><a href="#o1-loading">読み込み中</a></li>
+        <li><a href="#o1-error">エラー(データなし)</a></li>
+        <li><a href="#o1-stale">エラー(前回データ表示)</a></li>
+      </ul></div>
+  </nav>
+</header>
+
+<main id="main">
+<section class="sec" aria-labelledby="h-o1">
+<h2 id="h-o1">O1 OpenSearch(AF-17。読み取り専用)</h2>
+
+<!-- ===== 通常 ===== -->
+<div class="state" id="o1-normal">
+<h3>通常: クラスタが green(2 ノード)</h3>
+<p class="cap t2">上から、クラスタの状態 → インデックス → シャードの配置。操作は「更新」だけ(手動のみ。自動更新はしない)。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1><p class="desc t2">OpenSearch のクラスタの状態、インデックス、シャードの配置を確認します。この画面は読み取り専用で、インデックスの削除・シャードの再配置・設定の変更はできません。</p></div>
+      <div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
+    <div class="stack">
+      <section class="card" aria-labelledby="c-cl" data-testid="o1-cluster"><h2 id="c-cl">クラスタの状態</h2>
+        <dl class="kv"><dt>クラスタ名</dt><dd class="mono">demo-cluster</dd><dt>状態</dt><dd><span class="tag tag--success"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>green(正常)</span><span class="cap t2 sub">すべてのシャードが割り当てられています。</span></dd></dl>
+        <dl class="stats"><div><dt>ノード</dt><dd>2</dd></div><div><dt>アクティブなシャード</dt><dd>6</dd></div><div><dt>未割り当てのシャード</dt><dd>0</dd></div><div><dt>初期化中・移動中</dt><dd>0</dd></div></dl>
+      </section>
+      <section class="card" aria-labelledby="c-ix" data-testid="o1-indices"><h2 id="c-ix">インデックス</h2>
+        <div class="toolbar"><span class="count">3 件</span></div>
+        <div class="tablewrap"><table class="dt">
+          <caption class="sr-only">インデックス一覧。名前の昇順</caption>
+          <thead><tr><th scope="col" aria-sort="ascending">インデックス名<svg class="ic" aria-hidden="true" style="width:14px;height:14px;vertical-align:-2px"><use href="#i-sort"/></svg></th><th scope="col">状態</th><th scope="col" class="num">ドキュメント件数</th><th scope="col" class="num">プライマリ</th><th scope="col" class="num">レプリカ</th></tr></thead>
+          <tbody>
+            <tr><td data-label="インデックス名"><span class="mono">demo-docs-000001</span></td><td data-label="状態"><span class="tag tag--success"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>green</span></td><td class="num" data-label="ドキュメント件数">12,846</td><td class="num" data-label="プライマリ">1</td><td class="num" data-label="レプリカ">1</td></tr>
+            <tr><td data-label="インデックス名"><span class="mono">demo-store-jobs</span></td><td data-label="状態"><span class="tag tag--success"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>green</span></td><td class="num" data-label="ドキュメント件数">1,204</td><td class="num" data-label="プライマリ">1</td><td class="num" data-label="レプリカ">1</td></tr>
+            <tr><td data-label="インデックス名"><span class="mono">demo-store-sources</span></td><td data-label="状態"><span class="tag tag--success"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>green</span></td><td class="num" data-label="ドキュメント件数">6</td><td class="num" data-label="プライマリ">1</td><td class="num" data-label="レプリカ">1</td></tr>
+          </tbody></table></div>
+        <div class="pager"><div class="per"><label for="pp-o1">1 ページの件数</label><select class="input select" id="pp-o1"><option>25</option><option>50</option><option>100</option></select></div><span>1–3 / 3 件</span><div class="rowacts"><button class="btn btn--outlined btn--icon btn--sm" type="button" aria-label="前のページ" disabled><svg class="ic" aria-hidden="true"><use href="#i-chev-l"/></svg></button><button class="btn btn--outlined btn--icon btn--sm" type="button" aria-label="次のページ" disabled><svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg></button></div></div>
+      </section>
+      <section class="card" aria-labelledby="c-sh" data-testid="o1-shards"><h2 id="c-sh">シャードの配置</h2>
+        <ul class="legend" aria-label="凡例"><li><span class="sh sh--p">P0</span><span>プライマリ</span></li><li><span class="sh sh--r">R0</span><span>レプリカ</span></li><li><span class="sh sh--uw"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>R0</span><span>未割り当て(点線)</span></li><li><span class="sh sh--i"><svg class="ic" aria-hidden="true"><use href="#i-swap"/></svg>P0</span><span>初期化中・移動中</span></li></ul>
+        <div class="tablewrap"><table class="dt mx">
+          <caption class="sr-only">シャードの配置。行はインデックス、列はノード</caption>
+          <thead><tr><th scope="col">インデックス</th><th scope="col">demo-node-1</th><th scope="col">demo-node-2</th></tr></thead>
+          <tbody>
+            <tr><th scope="row"><span class="mono">demo-docs-000001</span></th><td data-label="demo-node-1"><span class="shs"><span class="sh sh--p">P0<span class="sr-only">(プライマリ。割り当て済み)</span></span></span></td><td data-label="demo-node-2"><span class="shs"><span class="sh sh--r">R0<span class="sr-only">(レプリカ。割り当て済み)</span></span></span></td></tr>
+            <tr><th scope="row"><span class="mono">demo-store-jobs</span></th><td data-label="demo-node-1"><span class="shs"><span class="sh sh--r">R0<span class="sr-only">(レプリカ。割り当て済み)</span></span></span></td><td data-label="demo-node-2"><span class="shs"><span class="sh sh--p">P0<span class="sr-only">(プライマリ。割り当て済み)</span></span></span></td></tr>
+            <tr><th scope="row"><span class="mono">demo-store-sources</span></th><td data-label="demo-node-1"><span class="shs"><span class="sh sh--p">P0<span class="sr-only">(プライマリ。割り当て済み)</span></span></span></td><td data-label="demo-node-2"><span class="shs"><span class="sh sh--r">R0<span class="sr-only">(レプリカ。割り当て済み)</span></span></span></td></tr>
+          </tbody></table></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ===== yellow ===== -->
+<div class="state" id="o1-yellow">
+<h3>yellow: 単一ノードで、レプリカが未割り当て</h3>
+<p class="cap t2">単一ノードの構成では、レプリカが 1 以上のインデックスが yellow になる(OpenSearch の一般的な挙動)。未割り当てのシャードは「未割り当て」の列に点線のチップで並べる。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
+    <div class="stack">
+      <section class="card" aria-labelledby="c-cl2"><h2 id="c-cl2">クラスタの状態</h2>
+        <dl class="kv"><dt>クラスタ名</dt><dd class="mono">demo-cluster</dd><dt>状態</dt><dd><span class="tag tag--warning"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>yellow(注意)</span><span class="cap t2 sub">プライマリシャードはすべて割り当てられていますが、一部のレプリカシャードが割り当てられていません。単一ノードでレプリカが 1 以上のインデックスは、通常 yellow になります。</span></dd></dl>
+        <dl class="stats"><div><dt>ノード</dt><dd>1</dd></div><div><dt>アクティブなシャード</dt><dd>3</dd></div><div><dt>未割り当てのシャード</dt><dd>3</dd></div><div><dt>初期化中・移動中</dt><dd>0</dd></div></dl>
+      </section>
+      <section class="card" aria-labelledby="c-ix2"><h2 id="c-ix2">インデックス</h2>
+        <div class="toolbar"><span class="count">3 件</span></div>
+        <div class="tablewrap"><table class="dt">
+          <caption class="sr-only">インデックス一覧。名前の昇順</caption>
+          <thead><tr><th scope="col" aria-sort="ascending">インデックス名</th><th scope="col">状態</th><th scope="col" class="num">ドキュメント件数</th><th scope="col" class="num">プライマリ</th><th scope="col" class="num">レプリカ</th></tr></thead>
+          <tbody>
+            <tr><td data-label="インデックス名"><span class="mono">demo-docs-000001</span></td><td data-label="状態"><span class="tag tag--warning"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>yellow</span></td><td class="num" data-label="ドキュメント件数">12,846</td><td class="num" data-label="プライマリ">1</td><td class="num" data-label="レプリカ">1</td></tr>
+            <tr><td data-label="インデックス名"><span class="mono">demo-store-jobs</span></td><td data-label="状態"><span class="tag tag--warning"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>yellow</span></td><td class="num" data-label="ドキュメント件数">1,204</td><td class="num" data-label="プライマリ">1</td><td class="num" data-label="レプリカ">1</td></tr>
+            <tr><td data-label="インデックス名"><span class="mono">demo-store-sources</span></td><td data-label="状態"><span class="tag tag--warning"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>yellow</span></td><td class="num" data-label="ドキュメント件数">6</td><td class="num" data-label="プライマリ">1</td><td class="num" data-label="レプリカ">1</td></tr>
+          </tbody></table></div>
+      </section>
+      <section class="card" aria-labelledby="c-sh2"><h2 id="c-sh2">シャードの配置</h2>
+        <ul class="legend" aria-label="凡例"><li><span class="sh sh--p">P0</span><span>プライマリ</span></li><li><span class="sh sh--r">R0</span><span>レプリカ</span></li><li><span class="sh sh--uw"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>R0</span><span>未割り当て(点線)</span></li></ul>
+        <div class="tablewrap"><table class="dt mx">
+          <caption class="sr-only">シャードの配置。行はインデックス、列はノードと未割り当て</caption>
+          <thead><tr><th scope="col">インデックス</th><th scope="col">demo-node-1</th><th scope="col">未割り当て</th></tr></thead>
+          <tbody>
+            <tr><th scope="row"><span class="mono">demo-docs-000001</span></th><td data-label="demo-node-1"><span class="shs"><span class="sh sh--p">P0<span class="sr-only">(プライマリ。割り当て済み)</span></span></span></td><td data-label="未割り当て"><span class="shs"><span class="sh sh--uw"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>R0<span class="sr-only">(レプリカ。未割り当て)</span></span></span></td></tr>
+            <tr><th scope="row"><span class="mono">demo-store-jobs</span></th><td data-label="demo-node-1"><span class="shs"><span class="sh sh--p">P0<span class="sr-only">(プライマリ。割り当て済み)</span></span></span></td><td data-label="未割り当て"><span class="shs"><span class="sh sh--uw"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>R0<span class="sr-only">(レプリカ。未割り当て)</span></span></span></td></tr>
+            <tr><th scope="row"><span class="mono">demo-store-sources</span></th><td data-label="demo-node-1"><span class="shs"><span class="sh sh--p">P0<span class="sr-only">(プライマリ。割り当て済み)</span></span></span></td><td data-label="未割り当て"><span class="shs"><span class="sh sh--uw"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>R0<span class="sr-only">(レプリカ。未割り当て)</span></span></span></td></tr>
+          </tbody></table></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ===== red ===== -->
+<div class="state" id="o1-red">
+<h3>red: 未割り当てのプライマリシャードがある</h3>
+<p class="cap t2">ページ上部にエラーのアラートを出す(取得は成功しているので <span class="mono">role="status"</span>)。インデックス一覧は通常と同じ形のため、ここでは省略している。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
+    <div class="stack">
+      <div class="alert alert--error" role="status"><svg class="ic" aria-hidden="true"><use href="#i-fail"/></svg><div class="body"><p class="ttl">未割り当てのプライマリシャードがあります</p><p>demo-docs-000001 のプライマリシャード(P0)が割り当てられていません。このインデックスの検索や登録に影響する可能性があります。</p></div></div>
+      <section class="card" aria-labelledby="c-cl3"><h2 id="c-cl3">クラスタの状態</h2>
+        <dl class="kv"><dt>クラスタ名</dt><dd class="mono">demo-cluster</dd><dt>状態</dt><dd><span class="tag tag--error"><svg class="ic" aria-hidden="true"><use href="#i-fail"/></svg>red(異常)</span><span class="cap t2 sub">一部のプライマリシャードが割り当てられていません。該当するインデックスの検索や登録に影響する可能性があります。</span></dd></dl>
+        <dl class="stats"><div><dt>ノード</dt><dd>1</dd></div><div><dt>アクティブなシャード</dt><dd>2</dd></div><div><dt>未割り当てのシャード</dt><dd>4</dd></div><div><dt>初期化中・移動中</dt><dd>0</dd></div></dl>
+      </section>
+      <section class="card" aria-labelledby="c-sh3"><h2 id="c-sh3">シャードの配置</h2>
+        <ul class="legend" aria-label="凡例"><li><span class="sh sh--p">P0</span><span>プライマリ</span></li><li><span class="sh sh--r">R0</span><span>レプリカ</span></li><li><span class="sh sh--ue"><svg class="ic" aria-hidden="true"><use href="#i-fail"/></svg>P0</span><span>未割り当てのプライマリ(点線・赤)</span></li><li><span class="sh sh--uw"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>R0</span><span>未割り当てのレプリカ(点線)</span></li></ul>
+        <div class="tablewrap"><table class="dt mx">
+          <caption class="sr-only">シャードの配置。行はインデックス、列はノードと未割り当て</caption>
+          <thead><tr><th scope="col">インデックス</th><th scope="col">demo-node-1</th><th scope="col">未割り当て</th></tr></thead>
+          <tbody>
+            <tr><th scope="row"><span class="mono">demo-docs-000001</span></th><td class="empty" data-label="demo-node-1"><span class="none">—<span class="sr-only">シャードなし</span></span></td><td data-label="未割り当て"><span class="shs"><span class="sh sh--ue"><svg class="ic" aria-hidden="true"><use href="#i-fail"/></svg>P0<span class="sr-only">(プライマリ。未割り当て)</span></span><span class="sh sh--uw"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>R0<span class="sr-only">(レプリカ。未割り当て)</span></span></span></td></tr>
+            <tr><th scope="row"><span class="mono">demo-store-jobs</span></th><td data-label="demo-node-1"><span class="shs"><span class="sh sh--p">P0<span class="sr-only">(プライマリ。割り当て済み)</span></span></span></td><td data-label="未割り当て"><span class="shs"><span class="sh sh--uw"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>R0<span class="sr-only">(レプリカ。未割り当て)</span></span></span></td></tr>
+            <tr><th scope="row"><span class="mono">demo-store-sources</span></th><td data-label="demo-node-1"><span class="shs"><span class="sh sh--p">P0<span class="sr-only">(プライマリ。割り当て済み)</span></span></span></td><td data-label="未割り当て"><span class="shs"><span class="sh sh--uw"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>R0<span class="sr-only">(レプリカ。未割り当て)</span></span></span></td></tr>
+          </tbody></table></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ===== 空 ===== -->
+<div class="state" id="o1-empty">
+<h3>空: インデックスが 1 つもない</h3>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
+    <div class="stack">
+      <section class="card" aria-labelledby="c-cl4"><h2 id="c-cl4">クラスタの状態</h2>
+        <dl class="kv"><dt>クラスタ名</dt><dd class="mono">demo-cluster</dd><dt>状態</dt><dd><span class="tag tag--success"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>green(正常)</span><span class="cap t2 sub">すべてのシャードが割り当てられています。</span></dd></dl>
+        <dl class="stats"><div><dt>ノード</dt><dd>1</dd></div><div><dt>アクティブなシャード</dt><dd>0</dd></div><div><dt>未割り当てのシャード</dt><dd>0</dd></div><div><dt>初期化中・移動中</dt><dd>0</dd></div></dl>
+      </section>
+      <section class="card" aria-labelledby="c-ix4"><h2 id="c-ix4">インデックス</h2>
+        <div class="stateblock" data-testid="o1-state-empty"><div class="ill"><svg class="ic" aria-hidden="true"><use href="#i-cluster"/></svg></div><h3>インデックスがありません</h3><p class="t2">このクラスタにはインデックスが作成されていません。インデックスが作成されると、ここに一覧が表示されます。</p></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ===== 読み込み中 ===== -->
+<div class="state" id="o1-loading">
+<h3>読み込み中(初回取得)</h3>
+<p class="cap t2">見出しと「更新」は先に出し、3 つのカードの中をスケルトンにする。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div></div>
+    <div class="stack" aria-busy="true" data-testid="o1-state-loading"><p class="sr-only" role="status">OpenSearch の状態を読み込み中</p>
+      <section class="card" aria-labelledby="c-cl5"><h2 id="c-cl5">クラスタの状態</h2><div class="prog" aria-hidden="true"></div><div class="pad" style="display:grid;gap:12px"><span class="skel" style="width:30%"></span><span class="skel" style="width:20%"></span><span class="skel" style="width:60%"></span></div></section>
+      <section class="card" aria-labelledby="c-ix5"><h2 id="c-ix5">インデックス</h2>
+        <div class="skelrow"><span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span></div>
+        <div class="skelrow"><span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span></div>
+      </section>
+      <section class="card" aria-labelledby="c-sh5"><h2 id="c-sh5">シャードの配置</h2><div class="pad" style="display:grid;gap:12px"><span class="skel" style="width:80%"></span><span class="skel" style="width:70%"></span></div></section>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ===== エラー ===== -->
+<div class="state" id="o1-error">
+<h3>エラー: 取得失敗(データなし)</h3>
+<p class="cap t2">OpenSearch に接続できない場合を含む。原因が OpenSearch 側にあるときの確認先として、ダッシュボードへの導線を置く。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div></div>
+    <section class="card" aria-label="OpenSearch の状態"><div class="stateblock stateblock--error" role="alert" data-testid="o1-state-error"><div class="ill"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg></div><h3>OpenSearch の状態を取得できません</h3><p class="t2">OpenSearch に接続できなかったか、応答が返りませんでした。しばらくしてから再試行してください。解消しない場合は、ダッシュボードで opensearch と api の状態を確認してください。</p><p class="cap t2">試行時刻 2026-11-21 10:49:10 · 接続エラー(ダミー)</p><div class="rowacts"><button class="btn btn--outlined" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>再試行</button><a class="btn btn--text" href="admin-dashboard-v0.1.html">ダッシュボードを開く</a></div></div></section>
+  </div>
+</div>
+</div>
+
+<!-- ===== stale ===== -->
+<div class="state" id="o1-stale">
+<h3>エラー: 取得失敗(前回のデータを表示)</h3>
+<p class="cap t2">前回の値を表示し続け、現在の状態と異なる可能性を警告する。クラスタの状態のタグは前回の値のまま(「前回取得時」の注記つき)。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div></div>
+    <div class="stack" data-testid="o1-state-stale">
+      <div class="alert alert--warning" role="alert"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg><div class="body"><p class="ttl">最新の状態を取得できませんでした</p><p>前回取得したデータ(2026-11-21 10:48:03 時点)を表示しています。クラスタの現在の状態と異なる可能性があります。</p><div class="acts"><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>再読み込み</button></div></div></div>
+      <section class="card" aria-labelledby="c-cl6"><h2 id="c-cl6">クラスタの状態<span class="cap t2">前回取得時の値 · 最終更新(成功) 2026-11-21 10:48:03</span></h2>
+        <dl class="kv"><dt>クラスタ名</dt><dd class="mono">demo-cluster</dd><dt>状態</dt><dd><span class="tag tag--success"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>green(正常)</span><span class="cap t2 sub">前回取得時の値です。</span></dd></dl>
+        <dl class="stats"><div><dt>ノード</dt><dd>2</dd></div><div><dt>アクティブなシャード</dt><dd>6</dd></div><div><dt>未割り当てのシャード</dt><dd>0</dd></div><div><dt>初期化中・移動中</dt><dd>0</dd></div></dl>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+</section>
+</main>
+</div>
+<script>
+/* 画面枠の複製(表示用) */
+document.querySelectorAll('[data-shell]').forEach(function(app){
+  var t=document.getElementById('tpl-shell').content.cloneNode(true);
+  var a=t.querySelector('[data-key="'+app.getAttribute('data-shell')+'"]'); if(a) a.setAttribute('aria-current','page');
+  app.insertBefore(t,app.firstChild); app.classList.add('shell-ready');
+});
+/* 狭い画面のナビ開閉(☰・スクリム・Esc) */
+function setNav(app,open){
+  app.classList.toggle('nav-open',open);
+  var b=app.querySelector('[data-nav-toggle]');
+  b.setAttribute('aria-expanded',open); b.setAttribute('aria-label',open?'メニューを閉じる':'メニューを開く');
+}
+document.addEventListener('click',function(e){
+  var b=e.target.closest('[data-nav-toggle]');
+  if(b){ var app=b.closest('.app'); setNav(app,!app.classList.contains('nav-open')); return; }
+  if(e.target.classList&&e.target.classList.contains('nav-open')) setNav(e.target,false);
+});
+document.addEventListener('keydown',function(e){
+  if(e.key!=='Escape') return;
+  var open=document.querySelector('.app.nav-open'); if(open){ setNav(open,false); open.querySelector('[data-nav-toggle]').focus(); }
+});
+</script>
+</body>
+</html>

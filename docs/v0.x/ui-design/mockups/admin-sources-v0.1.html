@@ -1,0 +1,880 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin View S1 データソース一覧 v0.1(モック。承認済み(ゲートB))</title>
+<!--
+  Admin View S1 データソース一覧(静的モック。実装コードではない)
+  - 仕様の正: docs/v0.x/ui-design/admin-view-v0.1.md(S1)と design-system-v0.1.md。値が食い違う場合は仕様書を正とする。
+  - 1ファイル完結・外部通信なし・外部フォントなし。ダミーデータのみ(識別子は demo-* など、実在しない)。
+  - トークンは design-system-v0.1.html と同じ値。--v-theme-* は Vuetify の theme.colors に 1 対 1 で移せる書式。
+  - ダイアログは「開いた状態」を並べた見本(aria-modal は付けない。実装は VDialog が role=dialog・aria-modal・フォーカス管理を担う)。
+  - JavaScript は 2 つだけ: 狭い画面のナビ開閉、削除確認の識別子一致でボタンを有効にする動き。
+-->
+<style>
+:root{
+  --v-theme-background:244,246,248; --v-theme-on-background:26,37,48;
+  --v-theme-surface:255,255,255; --v-theme-on-surface:26,37,48;
+  --v-theme-surface-variant:233,237,241; --v-theme-on-surface-variant:70,83,95;
+  --v-theme-primary:29,91,135; --v-theme-on-primary:255,255,255;
+  --v-theme-primary-container:227,238,246; --v-theme-on-primary-container:18,63,95;
+  --v-theme-secondary:74,90,105; --v-theme-on-secondary:255,255,255;
+  --v-theme-secondary-container:230,234,238; --v-theme-on-secondary-container:59,72,84;
+  --v-theme-error:179,38,30; --v-theme-on-error:255,255,255;
+  --v-theme-error-container:252,232,230; --v-theme-on-error-container:122,23,18;
+  --v-theme-warning:143,90,0; --v-theme-on-warning:255,255,255;
+  --v-theme-warning-container:255,241,214; --v-theme-on-warning-container:107,66,0;
+  --v-theme-success:29,111,66; --v-theme-on-success:255,255,255;
+  --v-theme-success-container:226,243,232; --v-theme-on-success-container:17,77,46;
+  --v-theme-info:47,107,154; --v-theme-on-info:255,255,255;
+  --v-theme-info-container:225,237,247; --v-theme-on-info-container:23,63,97;
+  --v-theme-focus:11,87,208; --v-theme-ink:38,50,62;
+  --v-border-color:26,37,48; --v-border-opacity:.16; --v-medium-emphasis-opacity:.78;
+  --line-strong:111,124,136;
+  --radius-sm:2px; --radius-md:4px; --radius-lg:8px;
+  --shadow-menu:0 4px 12px rgba(26,37,48,.16);
+  --shadow-dialog:0 8px 24px rgba(26,37,48,.20);
+  --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo UI","Noto Sans JP",sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{font-size:16px;-webkit-text-size-adjust:100%}
+body{margin:0;background:rgb(var(--v-theme-background));color:rgb(var(--v-theme-on-background));font-family:var(--font-sans);font-size:.875rem;line-height:1.5714}
+h1,h2,h3,h4,p,dl,dd,ul,ol{margin:0}
+ul,ol{padding:0;list-style:none}
+a{color:rgb(var(--v-theme-primary))}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid rgb(var(--v-theme-focus));outline-offset:2px}
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.skip{position:absolute;left:8px;top:-48px;background:#fff;padding:8px 12px;border-radius:var(--radius-md);z-index:50}
+.skip:focus{top:8px}
+.ic{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.mono{font-family:var(--font-mono);font-size:.8125rem}
+.t2{color:rgb(var(--v-theme-on-surface-variant))}
+.cap{font-size:.75rem;line-height:1.5}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+
+/* ===== 見本ページの枠 ===== */
+.doc{max-width:1240px;margin:0 auto;padding:24px 24px 64px}
+.doc h1.mock-title{font-size:1.25rem;line-height:1.4;font-weight:600}
+.index{margin:16px 0 8px;padding:12px 16px;background:rgb(var(--v-theme-surface));border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));border-radius:var(--radius-lg);display:grid;gap:8px}
+.index ul{display:flex;flex-wrap:wrap;gap:4px 16px}
+.index b{font-weight:600}
+.index a{display:inline-block;padding:4px 0}
+.sec{margin-top:40px;scroll-margin-top:16px}
+.sec>h2{font-size:1rem;line-height:1.5;font-weight:600;padding-bottom:8px;border-bottom:1px solid rgba(var(--v-border-color),var(--v-border-opacity));margin-bottom:12px}
+.state{margin-top:24px;scroll-margin-top:16px}
+.state>h3{font-size:.875rem;font-weight:600;margin-bottom:4px}
+.state>.cap{margin-bottom:8px;max-width:90ch}
+.grid2{display:grid;gap:24px 16px;grid-template-columns:repeat(2,minmax(0,1fr))}
+.grid2>.state{display:flex;flex-direction:column}
+.grid2>.state>.dframe{flex:1}
+
+/* ===== タグ・ボタン・フォーム・アラート(design-system と同じ) ===== */
+.tag{--tg-bg:var(--v-theme-secondary-container);--tg-fg:var(--v-theme-on-secondary-container);display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px 0 6px;border-radius:var(--radius-md);font-size:.75rem;line-height:1;font-weight:600;white-space:nowrap;background:rgb(var(--tg-bg));color:rgb(var(--tg-fg))}
+.tag .ic{width:16px;height:16px}
+.tag--success{--tg-bg:var(--v-theme-success-container);--tg-fg:var(--v-theme-on-success-container)}
+.tag--warning{--tg-bg:var(--v-theme-warning-container);--tg-fg:var(--v-theme-on-warning-container)}
+.tag--error{--tg-bg:var(--v-theme-error-container);--tg-fg:var(--v-theme-on-error-container)}
+.tag--info{--tg-bg:var(--v-theme-info-container);--tg-fg:var(--v-theme-on-info-container)}
+.tag--outline{background:transparent;box-shadow:inset 0 0 0 1px currentColor}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:36px;padding:0 16px;border-radius:var(--radius-md);border:1px solid transparent;background:none;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap}
+.btn .ic{width:18px;height:18px}
+.btn--primary{background:rgb(var(--v-theme-primary));color:rgb(var(--v-theme-on-primary))}
+.btn--tonal{background:rgb(var(--v-theme-primary-container));color:rgb(var(--v-theme-on-primary-container))}
+.btn--outlined{border-color:rgb(var(--line-strong));background:rgb(var(--v-theme-surface))}
+.btn--text{color:rgb(var(--v-theme-primary));padding:0 12px}
+.btn--danger{background:rgb(var(--v-theme-error));color:rgb(var(--v-theme-on-error))}
+.btn--warning{background:rgb(var(--v-theme-warning));color:rgb(var(--v-theme-on-warning))}
+.btn--icon{width:36px;padding:0}
+.btn--sm{min-height:32px;padding:0 12px}
+.btn--sm.btn--icon{width:32px;padding:0}
+.btn:disabled,.btn[aria-disabled="true"]{background:rgba(var(--v-border-color),.12);color:rgba(var(--v-theme-on-surface),.46);cursor:not-allowed;border-color:transparent}
+.btn:hover:not(:disabled){filter:brightness(.94)}
+.btn--text:hover:not(:disabled){background:rgba(var(--v-theme-primary),.08);filter:none}
+.field{display:grid;gap:4px}
+.field>label{font-weight:600;display:block}
+.help{font-size:.75rem;line-height:1.5;color:rgb(var(--v-theme-on-surface-variant));display:flex;gap:6px;align-items:flex-start;min-height:18px}
+.help .ic{width:16px;height:16px;margin-top:1px}
+.help--ok{color:rgb(var(--v-theme-success));font-weight:600}
+.input{height:40px;width:100%;border:1px solid rgb(var(--line-strong));border-radius:var(--radius-md);padding:0 12px;background:rgb(var(--v-theme-surface));min-width:0}
+.input:focus-visible{border-color:rgb(var(--v-theme-primary));outline-offset:1px}
+.select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,#46535F 50%),linear-gradient(135deg,#46535F 50%,transparent 50%);background-position:calc(100% - 18px) 17px,calc(100% - 13px) 17px;background-size:5px 5px;background-repeat:no-repeat;padding-right:32px}
+.alert{--tn:var(--v-theme-info);--ct:var(--v-theme-info-container);--on:var(--v-theme-on-info-container);display:flex;gap:12px;align-items:flex-start;padding:12px 16px;border-radius:var(--radius-md);background:rgb(var(--ct));color:rgb(var(--on));border:1px solid rgba(var(--tn),.35);border-left:4px solid rgb(var(--tn))}
+.alert>.ic{margin-top:1px;color:rgb(var(--tn))}
+.alert .body{flex:1;min-width:0;display:grid;gap:2px}
+.alert .ttl{font-weight:600}
+.alert .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.alert{min-width:0}
+.alert .acts .btn,.dialog .da .btn{white-space:normal;text-align:center;height:auto;padding-top:6px;padding-bottom:6px}
+.dialog .dh>div,.dialog .db>*{min-width:0}
+.dialog .db,.dialog .dh h4,.alert .body{overflow-wrap:anywhere}
+.alert--warning{--tn:var(--v-theme-warning);--ct:var(--v-theme-warning-container);--on:var(--v-theme-on-warning-container)}
+.alert--error{--tn:var(--v-theme-error);--ct:var(--v-theme-error-container);--on:var(--v-theme-on-error-container)}
+.card{background:rgb(var(--v-theme-surface));border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));border-radius:var(--radius-lg);overflow:hidden}
+.stateblock{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:48px 24px}
+.stateblock .ill{width:48px;height:48px;border-radius:var(--radius-lg);display:flex;align-items:center;justify-content:center;background:rgb(var(--v-theme-surface-variant));color:rgb(var(--v-theme-on-surface-variant))}
+.stateblock .ill .ic{width:28px;height:28px}
+.stateblock--error .ill{background:rgb(var(--v-theme-error-container));color:rgb(var(--v-theme-error))}
+.stateblock h3{font-size:1rem;font-weight:600}
+.stateblock p{max-width:50ch}
+.skel{display:block;height:14px;border-radius:var(--radius-sm);background:linear-gradient(90deg,#E9EDF1 25%,#F4F6F8 40%,#E9EDF1 60%);background-size:300% 100%;animation:shimmer 1.4s ease-in-out infinite}
+@keyframes shimmer{from{background-position:100% 0}to{background-position:0 0}}
+.prog{height:2px;background:rgba(var(--v-theme-primary),.18);overflow:hidden;position:relative}
+.prog::after{content:"";position:absolute;inset:0 auto 0 0;width:35%;background:rgb(var(--v-theme-primary));animation:slide 1.2s ease-in-out infinite}
+@keyframes slide{from{left:-35%}to{left:100%}}
+@media (prefers-reduced-motion:reduce){.skel,.prog::after{animation:none}.prog::after{width:100%;opacity:.5}}
+.snack{display:flex;align-items:center;gap:12px;padding:10px 12px 10px 16px;background:rgb(var(--v-theme-ink));color:#fff;border-radius:var(--radius-md);box-shadow:var(--shadow-menu);max-width:520px}
+.snack a{color:#9CC9EE;font-weight:600}
+.snack .x{flex:none;margin-left:auto;background:none;border:0;color:#fff;width:32px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:var(--radius-md);cursor:pointer}
+
+/* ===== シェル ===== */
+.app{position:relative;display:grid;grid-template-columns:232px minmax(0,1fr);background:rgb(var(--v-theme-background));border:1px solid rgba(var(--v-border-color),.28);border-radius:var(--radius-lg);overflow:hidden}
+.topbar{position:relative;z-index:6;display:none;align-items:center;gap:8px;height:48px;padding:0 8px;background:rgb(var(--v-theme-surface));border-bottom:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+.topbar .brand{font-weight:600}
+.sidebar{background:rgb(var(--v-theme-surface-variant));padding:16px 12px;display:flex;flex-direction:column;gap:4px;border-right:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+.sidebar .brand{display:flex;align-items:center;gap:10px;padding:4px 12px 16px;font-size:1rem;font-weight:600;line-height:1.2}
+.sidebar .brand svg{width:24px;height:24px;flex:none}
+.sidebar .brand small{display:block;font-size:.75rem;font-weight:400;color:rgb(var(--v-theme-on-surface-variant))}
+.sidebar hr{border:0;border-top:1px solid rgba(var(--v-border-color),.2);margin:8px 12px}
+.navi{display:flex;align-items:center;gap:12px;min-height:40px;padding:0 12px;border-radius:var(--radius-md);color:rgb(var(--v-theme-on-surface));text-decoration:none}
+.navi:hover{background:rgba(var(--v-theme-primary),.08)}
+.navi .ic{color:rgb(var(--v-theme-on-surface-variant))}
+.navi[aria-current="page"]{background:rgb(var(--v-theme-surface));font-weight:600;box-shadow:inset 3px 0 0 rgb(var(--v-theme-primary))}
+.navi[aria-current="page"] .ic{color:rgb(var(--v-theme-primary))}
+.sidebar .grow{flex:1}
+.navi .ext{margin-left:auto;width:16px;height:16px}
+.main{padding:24px 32px 40px;min-width:0}
+.pagehead{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;margin-bottom:16px}
+.pagehead h1{font-size:1.25rem;line-height:1.4;font-weight:600}
+.pagehead .desc{margin-top:2px;max-width:70ch}
+.pagehead .acts{display:flex;gap:8px;flex-wrap:wrap}
+
+/* ===== データテーブル(一覧テンプレート) ===== */
+.toolbar{display:flex;align-items:center;gap:12px;padding:8px 16px;min-height:52px}
+.toolbar .count{font-weight:600}
+.toolbar .grow{flex:1}
+.mobile-sort{display:none}
+.tablewrap{overflow-x:auto}
+.dt{width:100%;border-collapse:collapse}
+.dt th{background:rgb(var(--v-theme-surface-variant));font-size:.75rem;font-weight:600;color:rgb(var(--v-theme-on-surface-variant));text-align:left;padding:0 16px;height:40px;white-space:nowrap}
+.dt th button{background:none;border:0;padding:8px 0;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:4px;color:inherit}
+.dt th button .ic{width:14px;height:14px}
+.dt th button:focus-visible{outline-offset:-2px}
+.dt td.c-act.none{color:inherit}
+.dt td{padding:10px 16px;border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity));vertical-align:middle}
+.dt tbody tr:hover{background:rgba(var(--v-theme-primary),.05)}
+.dt td.num,.dt th.num{text-align:right}
+.dt .sub{display:block;margin-top:2px}
+.rowacts{display:flex;gap:8px;justify-content:flex-end;align-items:center}
+.pager{display:flex;justify-content:flex-end;align-items:center;gap:16px;flex-wrap:wrap;padding:8px 16px;border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+.pager .per{display:flex;align-items:center;gap:8px}
+.pager .per select{height:32px;width:72px}
+.skelrow{display:grid;grid-template-columns:1.6fr 1fr .7fr 1.4fr 1.3fr;gap:24px;padding:22px 16px;border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+.menu{position:absolute;right:16px;top:calc(100% - 4px);z-index:3;min-width:176px;background:rgb(var(--v-theme-surface));border-radius:var(--radius-md);box-shadow:var(--shadow-menu);border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));padding:4px}
+.menu a,.menu button{display:flex;gap:12px;align-items:center;width:100%;min-height:40px;padding:0 12px;border:0;background:none;text-align:left;text-decoration:none;color:rgb(var(--v-theme-on-surface));border-radius:var(--radius-sm);cursor:pointer}
+.menu a:hover,.menu button:hover{background:rgba(var(--v-theme-primary),.08)}
+.menu .danger{color:rgb(var(--v-theme-error))}
+.menu hr{border:0;border-top:1px solid rgba(var(--v-border-color),.2);margin:4px 0}
+
+/* ===== ダイアログ ===== */
+.dframe{position:relative;border-radius:var(--radius-lg);padding:24px;background:linear-gradient(rgba(26,37,48,.52),rgba(26,37,48,.52)),repeating-linear-gradient(0deg,#EEF1F4 0 14px,#F8F9FB 14px 40px);display:flex;justify-content:center;align-items:flex-start}
+.dialog{--band:transparent;width:min(560px,100%);background:rgb(var(--v-theme-surface));border-radius:var(--radius-lg);box-shadow:var(--shadow-dialog);border-top:4px solid var(--band);overflow:hidden}
+.dialog--e{--band:rgb(var(--v-theme-error))}
+.dialog--w{--band:rgb(var(--v-theme-warning))}
+.dialog .dh{display:flex;gap:12px;align-items:flex-start;padding:20px 24px 8px}
+.dialog .dh .ic{margin-top:2px;color:rgb(var(--v-theme-primary))}
+.dialog--e .dh .ic{color:rgb(var(--v-theme-error))}
+.dialog--w .dh .ic{color:rgb(var(--v-theme-warning))}
+.dialog .dh h4{font-size:1rem;line-height:1.5;font-weight:600}
+.dialog .db{padding:4px 24px 16px;display:grid;gap:12px}
+.dialog .da{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;padding:12px 24px 20px}
+.dialog .da .why{flex:1 1 100%;text-align:right;font-size:.75rem;color:rgb(var(--v-theme-on-surface-variant))}
+.callout{padding:12px;border-radius:var(--radius-md);background:rgb(var(--ct,var(--v-theme-surface-variant)));color:rgb(var(--on,var(--v-theme-on-surface)))}
+.callout--error{--ct:var(--v-theme-error-container);--on:var(--v-theme-on-error-container)}
+.callout--warning{--ct:var(--v-theme-warning-container);--on:var(--v-theme-on-warning-container)}
+.callout ul{list-style:disc;padding-left:20px;margin-top:4px}
+.callout .ttl{font-weight:600}
+.check{display:flex;gap:8px;align-items:flex-start}
+.check input{width:18px;height:18px;margin:2px 0 0;accent-color:rgb(var(--v-theme-primary))}
+.optgroup{border:0;margin:0;padding:0;display:grid;gap:8px;min-width:0}
+.optgroup legend{font-weight:600;padding:0;margin-bottom:4px}
+.opt{display:grid;grid-template-columns:20px minmax(0,1fr);gap:2px 12px;padding:12px;border:1px solid rgba(var(--v-border-color),.28);border-radius:var(--radius-md);background:rgb(var(--v-theme-surface))}
+.opt>input{width:18px;height:18px;margin:2px 0 0;accent-color:rgb(var(--v-theme-primary))}
+.opt .ttl{font-weight:600}
+.opt .dsc{grid-column:2;font-size:.75rem;line-height:1.5;color:rgb(var(--v-theme-on-surface-variant))}
+.opt .more{grid-column:1/-1;margin-top:8px;display:grid;gap:8px}
+.opt--on-e{border-color:rgb(var(--v-theme-error));box-shadow:inset 0 0 0 1px rgb(var(--v-theme-error))}
+.opt--on-w{border-color:rgb(var(--v-theme-warning));box-shadow:inset 0 0 0 1px rgb(var(--v-theme-warning))}
+.kvs{display:grid;grid-template-columns:auto 1fr;gap:2px 12px}
+.kvs dt{color:rgb(var(--v-theme-on-surface-variant))}
+
+/* ===== レスポンシブ(Vuetify v4: md=840, lg=1145) ===== */
+/* 840px 以上: サイドバー常時表示(ユーザー指示による変更。旧: 1145px 以上)。
+   840〜1144px: 表の列を省略する(実行周期を隠す)。表のカード幅 720px 未満: 行の主操作をアイコンのみにする。
+   840px 未満: 上部バー+ドロワー、表を行ごとのカードに積む。600px 未満: タップ領域 44px */
+.card{container-type:inline-size}
+@media (max-width:1144px){
+  .grid2{grid-template-columns:minmax(0,1fr)}
+  .main{padding:20px 24px 32px}
+  .dt th:nth-child(2),.dt td[data-label="実行周期"]{display:none}
+  .dt th,.dt td{padding-left:12px;padding-right:12px}
+}
+@media (min-width:840px){
+  @container (max-width:719px){
+    .c-act .btn--tonal{font-size:0;gap:0;width:32px;padding:0}
+    .c-act .btn--tonal .ic{width:18px;height:18px}
+    .c-act .btn--outlined:not(.btn--icon){white-space:normal;max-width:96px;line-height:1.3;padding:4px 8px;text-align:left}
+  }
+}
+@media (max-width:839px){
+  .app{grid-template-columns:minmax(0,1fr)}
+  .topbar{display:flex}
+  .sidebar{display:none}
+  .app.nav-open .sidebar{display:flex;position:absolute;z-index:5;left:0;top:48px;bottom:0;width:272px;box-shadow:var(--shadow-dialog)}
+  .app.nav-open::after{content:"";position:absolute;inset:48px 0 0 0;background:rgba(26,37,48,.4);z-index:4}
+  .dt th:nth-child(2),.dt td[data-label="実行周期"]{display:flex}
+  .dt th,.dt td{padding-left:0;padding-right:0}
+  .main{padding:16px}
+  .mobile-sort{display:block}
+  .toolbar{flex-wrap:wrap}
+  .tablewrap{overflow:visible}
+  .dt td.c-act.none{display:none}
+  .dt{min-width:0}
+  .dt,.dt tbody,.dt tr,.dt td{display:block}
+  .dt thead{display:none}
+  .dt tr{padding:12px 16px;border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+  .dt td{border:0;padding:4px 0;display:flex;gap:12px;justify-content:space-between;align-items:flex-start;text-align:left}
+  .dt td::before{content:attr(data-label);flex:0 0 88px;color:rgb(var(--v-theme-on-surface-variant));font-size:.75rem;padding-top:3px}
+  .dt td.c-id{padding-bottom:6px}
+  .dt td.c-id::before{display:none}
+  .dt td.num{text-align:left;justify-content:flex-start}
+  .dt td.c-act{padding-top:10px}
+  .dt td.c-act::before{display:none}
+  .dt td.c-act .rowacts{width:100%;justify-content:flex-start}
+  .dt td>div,.dt td>span:not(.tag){min-width:0;flex:1;text-align:left}
+  .skelrow{grid-template-columns:1fr;gap:10px}
+  .dframe{padding:12px}
+  .dialog .dh,.dialog .db,.dialog .da{padding-left:16px;padding-right:16px}
+  .pager{justify-content:flex-start}
+}
+@media (max-width:599px){
+  .doc{padding:16px 16px 48px}
+  .btn,.btn--sm{min-height:44px}
+  .btn--sm.btn--icon,.btn--icon{width:44px}
+  .input,.pager .per select{height:44px}
+  .dframe{padding:16px}
+  .mobile-sort select{height:44px !important}
+  .menu a,.menu button{min-height:44px}
+  .snack .x{width:44px;height:44px}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l5.5 3.5-5.5 3.5z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M7.8 12.4l2.9 2.9 5.6-6"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3.8L21.2 20H2.8z"/><path d="M12 10v4.2M12 17.3v.1"/></symbol>
+  <symbol id="i-fail" viewBox="0 0 24 24"><path d="M8.6 3h6.8L21 8.6v6.8L15.4 21H8.6L3 15.4V8.6z"/><path d="M9 9l6 6M15 9l-6 6"/></symbol>
+  <symbol id="i-cancel" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M5.7 5.7l12.6 12.6"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-lock-open" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.4-2"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.6v.1"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.6v.1"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6.5 7l1 13h9l1-13M10 11v5M14 11v5"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20l1-4L16.5 4.5a2 2 0 0 1 3 3L8 19z"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.6" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5"/></symbol>
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></symbol>
+  <symbol id="i-jobs" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h4"/></symbol>
+  <symbol id="i-docs" viewBox="0 0 24 24"><path d="M6 3h8l4 4v5M6 3v18h6"/><circle cx="16.5" cy="17" r="3"/><path d="M18.7 19.3L21 21.6"/></symbol>
+  <symbol id="i-cluster" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="6" rx="1.5"/><rect x="4" y="14" width="16" height="6" rx="1.5"/><path d="M8 7v.1M8 17v.1"/></symbol>
+  <symbol id="i-dash" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="8" rx="1"/><rect x="13" y="4" width="7" height="5" rx="1"/><rect x="4" y="14" width="7" height="6" rx="1"/><rect x="13" y="11" width="7" height="9" rx="1"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 24 24"><path d="M12 19V5M6 11l6-6 6 6"/></symbol>
+  <symbol id="i-hourglass" viewBox="0 0 24 24"><path d="M7 3h10M7 21h10M8 3c0 5 4 5 4 9s-4 4-4 9M16 3c0 5-4 5-4 9s4 4 4 9"/></symbol>
+  <symbol id="i-wave" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" rx="5" fill="#1D5B87" stroke="none"/><path d="M4.5 14c2-3.2 4-3.2 5.5 0s3.5 3.2 5.5 0 2.500-2.500 3.500-2.500" stroke="#fff" fill="none"/><path d="M7 8.5h3" stroke="#fff"/></symbol>
+</svg>
+<a class="skip" href="#main">メインコンテンツへ移動</a>
+
+<div class="doc">
+<header>
+  <h1 class="mock-title">Admin View S1 データソース一覧 v0.1(静的モック。承認済み(ゲート B 2026-11-21。840〜1144px の列の省略とサイドバー 840px はゲート C 2026-11-22 に承認))</h1>
+  <p class="t2" style="margin-top:4px;max-width:80ch">仕様は <span class="mono">admin-view-v0.1.md</span>(S1)。ダミーデータのみ。状態ごとに画面を並べている。URL ハッシュ(例: <span class="mono">#state-empty</span>)で直接開ける。画面幅を変えると 375 / 768 / 1280px の見え方を確認できる。</p>
+  <nav class="index" aria-label="状態一覧">
+    <div><b>一覧の状態</b>
+      <ul>
+        <li><a href="#state-normal">通常</a></li>
+        <li><a href="#state-empty">空</a></li>
+        <li><a href="#state-error">エラー(取得失敗・データなし)</a></li>
+        <li><a href="#state-stale">エラー(取得失敗・前回データ表示)</a></li>
+        <li><a href="#state-loading">読み込み中</a></li>
+        <li><a href="#state-menu">行メニュー(開いた状態)</a></li>
+        <li><a href="#state-snackbar">操作後の通知</a></li>
+      </ul></div>
+    <div><b>クロール起動ダイアログ</b>
+      <ul>
+        <li><a href="#dlg-crawl">指定なし</a></li>
+        <li><a href="#dlg-crawl-force">強制削除モード</a></li>
+        <li><a href="#dlg-crawl-rewrite">再書き込みモード</a></li>
+        <li><a href="#dlg-reject-lock">拒否: ロック保持中</a></li>
+        <li><a href="#dlg-reject-stale">拒否: ロック保持中(リース切れ)</a></li>
+        <li><a href="#dlg-reject-maint">拒否: メンテナンス中</a></li>
+        <li><a href="#dlg-reject-deleting">拒否: 削除中</a></li>
+      </ul></div>
+    <div><b>データソース削除</b>
+      <ul>
+        <li><a href="#dlg-delete">入力前(操作できる)</a></li>
+        <li><a href="#dlg-delete-match">一致後</a></li>
+      </ul></div>
+    <div><b>他画面でも使う危険操作の見本</b>
+      <ul>
+        <li><a href="#dlg-rerun">失敗ジョブの再実行(指定を引き継ぐ)</a></li>
+        <li><a href="#dlg-unlock">ロック解放</a></li>
+        <li><a href="#dlg-cancel">ジョブの取消</a></li>
+      </ul></div>
+  </nav>
+</header>
+
+<main id="main">
+
+<!-- ================================================================= -->
+<section class="sec" aria-labelledby="h-list">
+<h2 id="h-list">一覧の状態</h2>
+
+<!-- ---------- 通常 ---------- -->
+<div class="state" id="state-normal">
+<h3>通常</h3>
+<p class="cap t2">8 件(ダミー)。成功・実行中・一部成功・失敗・失敗(リース切れ)・未実行・削除中(削除ジョブ失敗 / 実行中)の見え方を含む。</p>
+<div class="app">
+  <div class="topbar"><button class="btn btn--text btn--icon" type="button" data-nav-toggle aria-label="メニューを開く" aria-expanded="false"><svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg></button><span class="brand">Loreley 管理</span></div>
+  <nav class="sidebar" aria-label="メインメニュー">
+    <div class="brand"><svg aria-hidden="true"><use href="#i-wave"/></svg><span>Loreley<small>管理</small></span></div>
+    <a class="navi" href="#state-normal"><svg class="ic" aria-hidden="true"><use href="#i-dash"/></svg>ダッシュボード</a><hr>
+    <a class="navi" href="#state-normal" aria-current="page"><svg class="ic" aria-hidden="true"><use href="#i-db"/></svg>データソース</a>
+    <a class="navi" href="#state-normal"><svg class="ic" aria-hidden="true"><use href="#i-jobs"/></svg>ジョブ</a><hr>
+    <a class="navi" href="#state-normal"><svg class="ic" aria-hidden="true"><use href="#i-docs"/></svg>文書の確認</a>
+    <a class="navi" href="#state-normal"><svg class="ic" aria-hidden="true"><use href="#i-cluster"/></svg>OpenSearch</a>
+    <div class="grow"></div>
+    <a class="navi" href="#state-normal" target="_blank" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#i-ext"/></svg>OpenSearch Dashboards<span class="sr-only">(別タブで開く。設定されている場合のみ表示)</span></a>
+  </nav>
+  <div class="main">
+    <div class="pagehead">
+      <div><h1>データソース</h1><p class="desc t2">クロール対象のデータソースを管理します。実行周期の時刻は Asia/Tokyo(Crawler の設定)で解釈されます。</p></div>
+      <div class="acts"><a class="btn btn--primary" href="#state-normal"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>データソースを登録</a></div>
+    </div>
+    <section class="card" aria-label="データソース一覧">
+      <div class="toolbar">
+        <span class="count">8 件</span><span class="grow"></span>
+        <div class="mobile-sort"><label class="sr-only" for="sort-n">並べ替え</label><select class="input select" id="sort-n" style="height:36px;width:150px"><option>識別子(昇順)</option><option>登録文書数(多い順)</option></select></div>
+        <span class="cap t2">最終更新 2026-11-21 10:42:07</span>
+        <button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button>
+      </div>
+      <div class="tablewrap">
+      <table class="dt">
+        <caption class="sr-only">データソース一覧。識別子の昇順</caption>
+        <thead><tr>
+          <th scope="col" aria-sort="ascending"><button type="button">識別子<svg class="ic" aria-hidden="true"><use href="#i-sort"/></svg></button></th>
+          <th scope="col">実行周期</th>
+          <th scope="col" class="num" aria-sort="none"><button type="button">登録文書数</button></th>
+          <th scope="col">最終クロール</th>
+          <th scope="col"><span class="sr-only">操作</span></th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="c-id" data-label="識別子"><a class="mono" href="#state-normal">demo-handbook</a></td>
+            <td data-label="実行周期"><span class="mono">0 3 * * *</span></td>
+            <td class="num" data-label="登録文書数">1,284</td>
+            <td data-label="最終クロール"><div><span class="tag tag--success"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>成功</span><span class="cap t2 sub">2026-11-21 03:02</span></div></td>
+            <td class="c-act"><div class="rowacts"><button class="btn btn--tonal btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>クロール起動<span class="sr-only">(demo-handbook)</span></button><button class="btn btn--outlined btn--icon btn--sm" type="button" aria-label="demo-handbook のその他の操作" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-dots"/></svg></button></div></td>
+          </tr>
+          <tr>
+            <td class="c-id" data-label="識別子"><a class="mono" href="#state-normal">demo-manuals</a></td>
+            <td data-label="実行周期"><span class="t2">手動のみ</span></td>
+            <td class="num" data-label="登録文書数">0</td>
+            <td data-label="最終クロール"><span class="t2">未実行<span class="sr-only">(クロールの記録がありません)</span></span></td>
+            <td class="c-act"><div class="rowacts"><button class="btn btn--tonal btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>クロール起動<span class="sr-only">(demo-manuals)</span></button><button class="btn btn--outlined btn--icon btn--sm" type="button" aria-label="demo-manuals のその他の操作" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-dots"/></svg></button></div></td>
+          </tr>
+          <tr>
+            <td class="c-id" data-label="識別子"><a class="mono" href="#state-normal">demo-notes-archive</a></td>
+            <td data-label="実行周期"><span class="mono">0 2 * * 1</span></td>
+            <td class="num" data-label="登録文書数">587</td>
+            <td data-label="最終クロール"><div><span class="tag tag--error"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg>失敗(リース切れ)</span><span class="cap t2 sub">ロック未解放 · 2026-11-19 02:00</span></div></td>
+            <td class="c-act"><div class="rowacts"><button class="btn btn--tonal btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>クロール起動<span class="sr-only">(demo-notes-archive)</span></button><button class="btn btn--outlined btn--icon btn--sm" type="button" aria-label="demo-notes-archive のその他の操作" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-dots"/></svg></button></div></td>
+          </tr>
+          <tr>
+            <td class="c-id" data-label="識別子"><a class="mono" href="#state-normal">demo-old-share</a></td>
+            <td data-label="実行周期"><span class="t2">手動のみ</span></td>
+            <td class="num" data-label="登録文書数">2,015</td>
+            <td data-label="最終クロール"><div><span class="tag tag--warning"><svg class="ic" aria-hidden="true"><use href="#i-hourglass"/></svg>削除中</span><span class="cap t2 sub">削除ジョブが失敗しました</span></div></td>
+            <td class="c-act"><div class="rowacts"><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>削除を再実行<span class="sr-only">(demo-old-share)</span></button></div></td>
+          </tr>
+          <tr>
+            <td class="c-id" data-label="識別子"><a class="mono" href="#state-normal">demo-shared-docs</a></td>
+            <td data-label="実行周期"><span class="mono">30 */6 * * *</span></td>
+            <td class="num" data-label="登録文書数">12,906</td>
+            <td data-label="最終クロール"><div><span class="tag tag--info"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>実行中</span><span class="cap t2 sub">開始 2026-11-21 10:41</span></div></td>
+            <td class="c-act"><div class="rowacts"><button class="btn btn--tonal btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>クロール起動<span class="sr-only">(demo-shared-docs)</span></button><button class="btn btn--outlined btn--icon btn--sm" type="button" aria-label="demo-shared-docs のその他の操作" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-dots"/></svg></button></div></td>
+          </tr>
+          <tr>
+            <td class="c-id" data-label="識別子"><a class="mono" href="#state-normal">demo-team-notes</a></td>
+            <td data-label="実行周期"><span class="mono">0 4 * * 0</span></td>
+            <td class="num" data-label="登録文書数">210</td>
+            <td data-label="最終クロール"><div><span class="tag tag--warning"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>一部成功</span><span class="cap t2 sub">2026-11-21 04:05</span></div></td>
+            <td class="c-act"><div class="rowacts"><button class="btn btn--tonal btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>クロール起動<span class="sr-only">(demo-team-notes)</span></button><button class="btn btn--outlined btn--icon btn--sm" type="button" aria-label="demo-team-notes のその他の操作" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-dots"/></svg></button></div></td>
+          </tr>
+          <tr>
+            <td class="c-id" data-label="識別子"><a class="mono" href="#state-normal">demo-tmp-share</a></td>
+            <td data-label="実行周期"><span class="t2">手動のみ</span></td>
+            <td class="num" data-label="登録文書数">340</td>
+            <td data-label="最終クロール"><div><span class="tag tag--warning"><svg class="ic" aria-hidden="true"><use href="#i-hourglass"/></svg>削除中</span><span class="cap t2 sub">削除ジョブの完了を待ってください</span></div></td>
+            <td class="c-act none"><span class="sr-only">削除中のため操作できません</span></td>
+          </tr>
+          <tr>
+            <td class="c-id" data-label="識別子"><a class="mono" href="#state-normal">demo-wiki-export</a></td>
+            <td data-label="実行周期"><span class="t2">手動のみ</span></td>
+            <td class="num" data-label="登録文書数">3,402</td>
+            <td data-label="最終クロール"><div><span class="tag tag--error"><svg class="ic" aria-hidden="true"><use href="#i-fail"/></svg>失敗</span><span class="cap t2 sub">2026-11-20 18:10</span></div></td>
+            <td class="c-act"><div class="rowacts"><button class="btn btn--tonal btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>クロール起動<span class="sr-only">(demo-wiki-export)</span></button><button class="btn btn--outlined btn--icon btn--sm" type="button" aria-label="demo-wiki-export のその他の操作" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-dots"/></svg></button></div></td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="pager">
+        <div class="per"><label for="pp-n">1 ページの件数</label><select class="input select" id="pp-n"><option>25</option><option>50</option><option>100</option></select></div>
+        <span>1–8 / 8 件</span>
+        <div class="rowacts"><button class="btn btn--outlined btn--icon btn--sm" type="button" aria-label="前のページ" disabled><svg class="ic" aria-hidden="true"><use href="#i-chev-l"/></svg></button><button class="btn btn--outlined btn--icon btn--sm" type="button" aria-label="次のページ" disabled><svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg></button></div>
+      </div>
+    </section>
+  </div>
+</div>
+</div>
+
+<!-- ---------- 空 ---------- -->
+<div class="state" id="state-empty">
+<h3>空(データソースが 0 件)</h3>
+<p class="cap t2">見出しの主操作はそのまま残し、空状態の案内には同じ操作を tonal ボタンで置く(主操作は 1 画面に 1 つ)。</p>
+<div class="app">
+  <div class="topbar"><button class="btn btn--text btn--icon" type="button" data-nav-toggle aria-label="メニューを開く" aria-expanded="false"><svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg></button><span class="brand">Loreley 管理</span></div>
+  <nav class="sidebar" aria-label="メインメニュー">
+    <div class="brand"><svg aria-hidden="true"><use href="#i-wave"/></svg><span>Loreley<small>管理</small></span></div>
+    <a class="navi" href="#state-empty"><svg class="ic" aria-hidden="true"><use href="#i-dash"/></svg>ダッシュボード</a><hr>
+    <a class="navi" href="#state-empty" aria-current="page"><svg class="ic" aria-hidden="true"><use href="#i-db"/></svg>データソース</a>
+    <a class="navi" href="#state-empty"><svg class="ic" aria-hidden="true"><use href="#i-jobs"/></svg>ジョブ</a><hr>
+    <a class="navi" href="#state-empty"><svg class="ic" aria-hidden="true"><use href="#i-docs"/></svg>文書の確認</a>
+    <a class="navi" href="#state-empty"><svg class="ic" aria-hidden="true"><use href="#i-cluster"/></svg>OpenSearch</a>
+  </nav>
+  <div class="main">
+    <div class="pagehead">
+      <div><h1>データソース</h1><p class="desc t2">クロール対象のデータソースを管理します。実行周期の時刻は Asia/Tokyo(Crawler の設定)で解釈されます。</p></div>
+      <div class="acts"><a class="btn btn--primary" href="#state-empty"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>データソースを登録</a></div>
+    </div>
+    <section class="card" aria-label="データソース一覧">
+      <div class="stateblock">
+        <div class="ill"><svg class="ic" aria-hidden="true"><use href="#i-db"/></svg></div>
+        <h3>データソースがまだ登録されていません</h3>
+        <p class="t2">データソースを登録すると、クロールを実行して文書を検索できるようになります。</p>
+        <a class="btn btn--tonal" href="#state-empty"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>データソースを登録</a>
+      </div>
+    </section>
+  </div>
+</div>
+</div>
+
+<!-- ---------- エラー(データなし) ---------- -->
+<div class="state" id="state-error">
+<h3>エラー(取得失敗・表示できるデータがない)</h3>
+<p class="cap t2">初回の取得に失敗した場合。原因と次の行動を示し、再試行を置く。</p>
+<div class="app">
+  <div class="topbar"><button class="btn btn--text btn--icon" type="button" data-nav-toggle aria-label="メニューを開く" aria-expanded="false"><svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg></button><span class="brand">Loreley 管理</span></div>
+  <nav class="sidebar" aria-label="メインメニュー">
+    <div class="brand"><svg aria-hidden="true"><use href="#i-wave"/></svg><span>Loreley<small>管理</small></span></div>
+    <a class="navi" href="#state-error"><svg class="ic" aria-hidden="true"><use href="#i-dash"/></svg>ダッシュボード</a><hr>
+    <a class="navi" href="#state-error" aria-current="page"><svg class="ic" aria-hidden="true"><use href="#i-db"/></svg>データソース</a>
+    <a class="navi" href="#state-error"><svg class="ic" aria-hidden="true"><use href="#i-jobs"/></svg>ジョブ</a><hr>
+    <a class="navi" href="#state-error"><svg class="ic" aria-hidden="true"><use href="#i-docs"/></svg>文書の確認</a>
+    <a class="navi" href="#state-error"><svg class="ic" aria-hidden="true"><use href="#i-cluster"/></svg>OpenSearch</a>
+  </nav>
+  <div class="main">
+    <div class="pagehead">
+      <div><h1>データソース</h1><p class="desc t2">クロール対象のデータソースを管理します。実行周期の時刻は Asia/Tokyo(Crawler の設定)で解釈されます。</p></div>
+      <div class="acts"><a class="btn btn--primary" href="#state-error"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>データソースを登録</a></div>
+    </div>
+    <section class="card" aria-label="データソース一覧">
+      <div class="stateblock stateblock--error" role="alert">
+        <div class="ill"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg></div>
+        <h3>データソースを取得できません</h3>
+        <p class="t2">Admin API に接続できませんでした。しばらくしてから再試行してください。解消しない場合は api コンテナの状態を確認してください。</p>
+        <p class="cap t2">試行時刻 2026-11-21 10:43:20 · 通信エラー(ダミー)</p>
+        <button class="btn btn--outlined" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>再試行</button>
+      </div>
+    </section>
+  </div>
+</div>
+</div>
+
+<!-- ---------- エラー(前回データ表示) ---------- -->
+<div class="state" id="state-stale">
+<h3>エラー(取得失敗・前回のデータを表示)</h3>
+<p class="cap t2">自動・手動の再取得に失敗しても、前回取得できたデータは消さない。警告に最終成功時刻を出し、表の上に残す。</p>
+<div class="app">
+  <div class="topbar"><button class="btn btn--text btn--icon" type="button" data-nav-toggle aria-label="メニューを開く" aria-expanded="false"><svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg></button><span class="brand">Loreley 管理</span></div>
+  <nav class="sidebar" aria-label="メインメニュー">
+    <div class="brand"><svg aria-hidden="true"><use href="#i-wave"/></svg><span>Loreley<small>管理</small></span></div>
+    <a class="navi" href="#state-stale"><svg class="ic" aria-hidden="true"><use href="#i-dash"/></svg>ダッシュボード</a><hr>
+    <a class="navi" href="#state-stale" aria-current="page"><svg class="ic" aria-hidden="true"><use href="#i-db"/></svg>データソース</a>
+    <a class="navi" href="#state-stale"><svg class="ic" aria-hidden="true"><use href="#i-jobs"/></svg>ジョブ</a><hr>
+    <a class="navi" href="#state-stale"><svg class="ic" aria-hidden="true"><use href="#i-docs"/></svg>文書の確認</a>
+    <a class="navi" href="#state-stale"><svg class="ic" aria-hidden="true"><use href="#i-cluster"/></svg>OpenSearch</a>
+  </nav>
+  <div class="main">
+    <div class="pagehead">
+      <div><h1>データソース</h1><p class="desc t2">クロール対象のデータソースを管理します。実行周期の時刻は Asia/Tokyo(Crawler の設定)で解釈されます。</p></div>
+      <div class="acts"><a class="btn btn--primary" href="#state-stale"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>データソースを登録</a></div>
+    </div>
+    <section class="card" aria-label="データソース一覧">
+      <div style="padding:12px 16px 0">
+        <div class="alert alert--warning" role="alert">
+          <svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>
+          <div class="body"><p class="ttl">最新の状態を取得できませんでした</p><p>前回取得したデータ(2026-11-21 10:42:07 時点)を表示しています。実際の状態と異なる可能性があります。</p>
+            <div class="acts"><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>再読み込み</button></div></div>
+        </div>
+      </div>
+      <div class="toolbar"><span class="count">3 件</span><span class="grow"></span><span class="cap t2">最終更新(成功) 2026-11-21 10:42:07</span></div>
+      <div class="tablewrap">
+      <table class="dt">
+        <caption class="sr-only">データソース一覧(前回取得したデータ)</caption>
+        <thead><tr><th scope="col" aria-sort="ascending"><button type="button">識別子<svg class="ic" aria-hidden="true"><use href="#i-sort"/></svg></button></th><th scope="col">実行周期</th><th scope="col" class="num">登録文書数</th><th scope="col">最終クロール</th><th scope="col"><span class="sr-only">操作</span></th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="c-id" data-label="識別子"><a class="mono" href="#state-stale">demo-handbook</a></td>
+            <td data-label="実行周期"><span class="mono">0 3 * * *</span></td>
+            <td class="num" data-label="登録文書数">1,284</td>
+            <td data-label="最終クロール"><div><span class="tag tag--success"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>成功</span><span class="cap t2 sub">2026-11-21 03:02</span></div></td>
+            <td class="c-act"><div class="rowacts"><button class="btn btn--tonal btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>クロール起動<span class="sr-only">(demo-handbook)</span></button><button class="btn btn--outlined btn--icon btn--sm" type="button" aria-label="demo-handbook のその他の操作" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-dots"/></svg></button></div></td>
+          </tr>
+          <tr>
+            <td class="c-id" data-label="識別子"><a class="mono" href="#state-stale">demo-shared-docs</a></td>
+            <td data-label="実行周期"><span class="mono">30 */6 * * *</span></td>
+            <td class="num" data-label="登録文書数">12,906</td>
+            <td data-label="最終クロール"><div><span class="tag tag--info"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>実行中</span><span class="cap t2 sub">開始 2026-11-21 10:41</span></div></td>
+            <td class="c-act"><div class="rowacts"><button class="btn btn--tonal btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>クロール起動<span class="sr-only">(demo-shared-docs)</span></button><button class="btn btn--outlined btn--icon btn--sm" type="button" aria-label="demo-shared-docs のその他の操作" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-dots"/></svg></button></div></td>
+          </tr>
+          <tr>
+            <td class="c-id" data-label="識別子"><a class="mono" href="#state-stale">demo-wiki-export</a></td>
+            <td data-label="実行周期"><span class="t2">手動のみ</span></td>
+            <td class="num" data-label="登録文書数">3,402</td>
+            <td data-label="最終クロール"><div><span class="tag tag--error"><svg class="ic" aria-hidden="true"><use href="#i-fail"/></svg>失敗</span><span class="cap t2 sub">2026-11-20 18:10</span></div></td>
+            <td class="c-act"><div class="rowacts"><button class="btn btn--tonal btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>クロール起動<span class="sr-only">(demo-wiki-export)</span></button><button class="btn btn--outlined btn--icon btn--sm" type="button" aria-label="demo-wiki-export のその他の操作" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-dots"/></svg></button></div></td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+    </section>
+  </div>
+</div>
+</div>
+
+<!-- ---------- 読み込み中 ---------- -->
+<div class="state" id="state-loading">
+<h3>読み込み中(初回取得)</h3>
+<p class="cap t2">表と同じ列構成のスケルトンを 5 行出す。見出し・主操作は先に表示する。再取得では表を消さず、カード上端に細い進行バーだけを出す(design-system の状態見本)。</p>
+<div class="app">
+  <div class="topbar"><button class="btn btn--text btn--icon" type="button" data-nav-toggle aria-label="メニューを開く" aria-expanded="false"><svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg></button><span class="brand">Loreley 管理</span></div>
+  <nav class="sidebar" aria-label="メインメニュー">
+    <div class="brand"><svg aria-hidden="true"><use href="#i-wave"/></svg><span>Loreley<small>管理</small></span></div>
+    <a class="navi" href="#state-loading"><svg class="ic" aria-hidden="true"><use href="#i-dash"/></svg>ダッシュボード</a><hr>
+    <a class="navi" href="#state-loading" aria-current="page"><svg class="ic" aria-hidden="true"><use href="#i-db"/></svg>データソース</a>
+    <a class="navi" href="#state-loading"><svg class="ic" aria-hidden="true"><use href="#i-jobs"/></svg>ジョブ</a><hr>
+    <a class="navi" href="#state-loading"><svg class="ic" aria-hidden="true"><use href="#i-docs"/></svg>文書の確認</a>
+    <a class="navi" href="#state-loading"><svg class="ic" aria-hidden="true"><use href="#i-cluster"/></svg>OpenSearch</a>
+  </nav>
+  <div class="main">
+    <div class="pagehead">
+      <div><h1>データソース</h1><p class="desc t2">クロール対象のデータソースを管理します。実行周期の時刻は Asia/Tokyo(Crawler の設定)で解釈されます。</p></div>
+      <div class="acts"><a class="btn btn--primary" href="#state-loading"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>データソースを登録</a></div>
+    </div>
+    <section class="card" aria-label="データソース一覧" aria-busy="true">
+      <div class="prog" aria-hidden="true"></div>
+      <div class="toolbar"><span class="skel" style="width:48px"></span><span class="grow"></span><button class="btn btn--outlined btn--sm" type="button" disabled><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div>
+      <p class="sr-only" role="status">データソース一覧を読み込み中</p>
+      <div class="skelrow"><span class="skel"></span><span class="skel" style="width:70%"></span><span class="skel" style="width:50%"></span><span class="skel"></span><span class="skel" style="width:80%"></span></div>
+      <div class="skelrow"><span class="skel"></span><span class="skel" style="width:70%"></span><span class="skel" style="width:50%"></span><span class="skel"></span><span class="skel" style="width:80%"></span></div>
+      <div class="skelrow"><span class="skel"></span><span class="skel" style="width:70%"></span><span class="skel" style="width:50%"></span><span class="skel"></span><span class="skel" style="width:80%"></span></div>
+      <div class="skelrow"><span class="skel"></span><span class="skel" style="width:70%"></span><span class="skel" style="width:50%"></span><span class="skel"></span><span class="skel" style="width:80%"></span></div>
+      <div class="skelrow"><span class="skel"></span><span class="skel" style="width:70%"></span><span class="skel" style="width:50%"></span><span class="skel"></span><span class="skel" style="width:80%"></span></div>
+    </section>
+  </div>
+</div>
+</div>
+
+<!-- ---------- 行メニュー ---------- -->
+<div class="state" id="state-menu">
+<h3>行メニュー(開いた状態)</h3>
+<p class="cap t2">「その他の操作」の中身は編集と削除。削除は赤字・区切り線の下に置き、選ぶと「要入力確認」のダイアログが開く。</p>
+<div style="background:rgb(var(--v-theme-background));border:1px solid rgba(var(--v-border-color),.28);border-radius:var(--radius-lg);padding:16px;min-height:200px">
+  <div class="card" style="position:relative;overflow:visible;max-width:640px">
+    <div class="toolbar" style="min-height:64px"><span class="mono">demo-handbook</span><span class="grow"></span>
+      <div class="rowacts"><button class="btn btn--tonal btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>クロール起動</button><button class="btn btn--outlined btn--icon btn--sm" type="button" aria-label="demo-handbook のその他の操作" aria-expanded="true" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-dots"/></svg></button></div>
+      <div class="menu" role="menu" aria-label="demo-handbook の操作">
+        <a href="#state-menu" role="menuitem"><svg class="ic" aria-hidden="true"><use href="#i-pencil"/></svg>編集</a>
+        <hr>
+        <button type="button" role="menuitem" class="danger"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>削除…</button>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ---------- 操作後の通知 ---------- -->
+<div class="state" id="state-snackbar">
+<h3>操作後の通知(スナックバー)</h3>
+<p class="cap t2">受付の成功だけをスナックバーで知らせる(1 つだけ・6 秒)。失敗は各ダイアログ内のアラートに残す。</p>
+<div style="display:grid;gap:12px">
+  <div class="snack" role="status"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span>クロールを受け付けました(ジョブ ID: <span class="mono">job-0006-demo</span>)<a href="#state-snackbar" style="margin-left:8px">ジョブを表示</a></span><button class="x" type="button" aria-label="通知を閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+  <div class="snack" role="status"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg><span>データソース demo-handbook の削除を受け付けました。完了まで「削除中」と表示されます。</span><button class="x" type="button" aria-label="通知を閉じる"><svg class="ic" aria-hidden="true"><use href="#i-close"/></svg></button></div>
+</div>
+</div>
+</section>
+
+<!-- ================================================================= -->
+<section class="sec" aria-labelledby="h-dlg">
+<h2 id="h-dlg">クロール起動ダイアログ(AF-3・AF-6)</h2>
+<p class="cap t2" style="max-width:90ch;margin-bottom:8px">行の「クロール起動」で開く。強制削除・再書き込みモードは手動起動のときだけ指定できる(既定はどちらもオフ)。オプションをオンにすると、その場で影響を説明する欄と確認チェックが開き、確認するまで実行ボタンは無効のまま。</p>
+<div class="grid2">
+
+<div class="state" id="dlg-crawl" style="margin-top:0">
+<h3>指定なし(要確認・標準)</h3>
+<div class="dframe"><div class="dialog" role="dialog" aria-labelledby="t-crawl">
+  <div class="dh"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg><h4 id="t-crawl">クロールを起動</h4></div>
+  <div class="db">
+    <p>データソース <span class="mono">demo-handbook</span> のクロールを起動します。起動後はジョブとして実行され、状態は「ジョブ」で確認できます。</p>
+    <fieldset class="optgroup"><legend>起動オプション(手動起動のみ)</legend>
+      <label class="opt"><input type="checkbox"><span class="ttl">強制削除モード</span><span class="dsc">削除の割合ルール・最小件数ルールを無視して削除します。</span></label>
+      <label class="opt"><input type="checkbox"><span class="ttl">再書き込みモード</span><span class="dsc">差分チェックをせず、全文書を再書き込みします。</span></label>
+    </fieldset>
+  </div>
+  <div class="da"><button class="btn btn--text" type="button">キャンセル</button><button class="btn btn--primary" type="button">クロールを起動</button></div>
+</div></div>
+</div>
+
+<div class="state" id="dlg-crawl-force" style="margin-top:0">
+<h3>強制削除モードを選択(要確認・警告つき)</h3>
+<div class="dframe"><div class="dialog dialog--e" role="dialog" aria-labelledby="t-force">
+  <div class="dh"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg><h4 id="t-force">クロールを起動</h4></div>
+  <div class="db">
+    <p>データソース <span class="mono">demo-handbook</span> のクロールを起動します。</p>
+    <fieldset class="optgroup"><legend>起動オプション(手動起動のみ)</legend>
+      <div class="opt opt--on-e"><input type="checkbox" id="o-force" checked><label for="o-force" class="ttl">強制削除モード</label><span class="dsc">削除の割合ルール・最小件数ルールを無視して削除します。</span>
+        <div class="more">
+          <div class="callout callout--error"><p class="ttl">次のようになります</p><ul><li>削除対象が割合のしきい値を超えていても削除されます。</li><li>TTL が経過した文書だけが対象です。経過していない文書は消えません。</li><li>削除された文書は検索から消え、元に戻せません。</li></ul></div>
+          <label class="check"><input type="checkbox"><span>割合ルールを無視して削除されることを理解しました</span></label>
+        </div></div>
+      <label class="opt"><input type="checkbox"><span class="ttl">再書き込みモード</span><span class="dsc">差分チェックをせず、全文書を再書き込みします。</span></label>
+    </fieldset>
+  </div>
+  <div class="da"><button class="btn btn--text" type="button">キャンセル</button><button class="btn btn--danger" type="button" disabled aria-describedby="w-force">強制削除モードで起動</button><span class="why" id="w-force">確認にチェックすると起動できます。</span></div>
+</div></div>
+</div>
+
+<div class="state" id="dlg-crawl-rewrite" style="margin-top:0">
+<h3>再書き込みモードを選択(要確認・警告つき)</h3>
+<div class="dframe"><div class="dialog dialog--w" role="dialog" aria-labelledby="t-rw">
+  <div class="dh"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg><h4 id="t-rw">クロールを起動</h4></div>
+  <div class="db">
+    <p>データソース <span class="mono">demo-handbook</span> のクロールを起動します。</p>
+    <fieldset class="optgroup"><legend>起動オプション(手動起動のみ)</legend>
+      <label class="opt"><input type="checkbox"><span class="ttl">強制削除モード</span><span class="dsc">削除の割合ルール・最小件数ルールを無視して削除します。</span></label>
+      <div class="opt opt--on-w"><input type="checkbox" id="o-rw" checked><label for="o-rw" class="ttl">再書き込みモード</label><span class="dsc">差分チェックをせず、全文書を再書き込みします。</span>
+        <div class="more">
+          <div class="callout callout--warning"><p class="ttl">実行前に確認してください</p><ul><li>全文書を書き直すため、時間がかかります。削除の判断には影響しません。</li><li>要約を有効にしている場合は、全文書が「要約未生成」に戻ります。実行前に Indexer の要約生成を止め、終えておく必要があります(手順は Indexer の運用手順)。</li></ul></div>
+          <label class="check"><input type="checkbox" checked><span>上記を確認しました</span></label>
+        </div></div>
+    </fieldset>
+  </div>
+  <div class="da"><button class="btn btn--text" type="button">キャンセル</button><button class="btn btn--warning" type="button">再書き込みモードで起動</button></div>
+</div></div>
+</div>
+
+<div class="state" id="dlg-reject-lock" style="margin-top:0">
+<h3>起動拒否: ロック保持中(lock_held)</h3>
+<div class="dframe"><div class="dialog" role="dialog" aria-labelledby="t-lock">
+  <div class="dh"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg><h4 id="t-lock">クロールを起動</h4></div>
+  <div class="db">
+    <div class="alert alert--error" role="alert"><svg class="ic" aria-hidden="true"><use href="#i-fail"/></svg>
+      <div class="body"><p class="ttl">起動できませんでした: 別のジョブが実行中です</p>
+        <p>データソースのクロールは同時に 1 つだけ実行できます。</p>
+        <dl class="kvs" style="margin-top:6px"><dt>実行中のジョブ</dt><dd><span class="mono">job-0002-demo</span>(クロール・実行中)</dd><dt>リース期限</dt><dd>2026-11-21 10:47</dd></dl>
+        <p style="margin-top:6px"><b>指定した強制削除モードは反映されていません。</b>起動していないため、実行中のジョブにも反映されません。</p>
+        <div class="acts"><a class="btn btn--outlined btn--sm" href="#dlg-reject-lock">ジョブを表示</a></div></div>
+    </div>
+  </div>
+  <div class="da"><button class="btn btn--text" type="button">閉じる</button></div>
+</div></div>
+</div>
+
+<div class="state" id="dlg-reject-stale" style="margin-top:0">
+<h3>起動拒否: ロック保持中・リース切れ(AF-7 へ案内。表示は承認済み(ゲート B。AF-U-3(a)))</h3>
+<div class="dframe"><div class="dialog" role="dialog" aria-labelledby="t-stale">
+  <div class="dh"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg><h4 id="t-stale">クロールを起動</h4></div>
+  <div class="db">
+    <div class="alert alert--warning" role="alert"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg>
+      <div class="body"><p class="ttl">起動できませんでした: 止まったジョブのロックが残っています</p>
+        <p>ジョブ <span class="mono">job-0004-demo</span> はリース期限(2026-11-19 02:10)を過ぎて止まっています。成功扱いにはなっていません。ロックを解放してから、もう一度起動してください。</p>
+        <div class="acts"><a class="btn btn--outlined btn--sm" href="#dlg-reject-stale"><svg class="ic" aria-hidden="true"><use href="#i-lock-open"/></svg>ジョブ詳細でロックを解放</a></div></div>
+    </div>
+  </div>
+  <div class="da"><button class="btn btn--text" type="button">閉じる</button></div>
+</div></div>
+</div>
+
+<div class="state" id="dlg-reject-maint" style="margin-top:0">
+<h3>起動拒否: メンテナンス中(maintenance_enabled。AF-19)</h3>
+<div class="dframe"><div class="dialog" role="dialog" aria-labelledby="t-maint">
+  <div class="dh"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg><h4 id="t-maint">クロールを起動</h4></div>
+  <div class="db">
+    <div class="alert alert--error" role="alert"><svg class="ic" aria-hidden="true"><use href="#i-fail"/></svg>
+      <div class="body"><p class="ttl">起動できませんでした: メンテナンス中です</p><p>メンテナンスが終わるまでクロールを起動できません。メンテナンスの解除は運用者が行います。解除後にもう一度起動してください。</p></div>
+    </div>
+  </div>
+  <div class="da"><button class="btn btn--text" type="button">閉じる</button></div>
+</div></div>
+</div>
+
+<div class="state" id="dlg-reject-deleting" style="margin-top:0">
+<h3>起動拒否: 削除中(source_deleting)</h3>
+<div class="dframe"><div class="dialog" role="dialog" aria-labelledby="t-del">
+  <div class="dh"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg><h4 id="t-del">クロールを起動</h4></div>
+  <div class="db">
+    <div class="alert alert--error" role="alert"><svg class="ic" aria-hidden="true"><use href="#i-fail"/></svg>
+      <div class="body"><p class="ttl">起動できませんでした: このデータソースは削除中です</p><p>削除が終わるまで、クロールの起動と設定の更新はできません。削除が失敗した場合は、一覧の「削除を再実行」で再開してください。</p></div>
+    </div>
+  </div>
+  <div class="da"><button class="btn btn--text" type="button">閉じる</button></div>
+</div></div>
+</div>
+
+</div>
+</section>
+
+<!-- ================================================================= -->
+<section class="sec" aria-labelledby="h-del">
+<h2 id="h-del">データソースの削除(AF-16。要入力確認)</h2>
+<p class="cap t2" style="max-width:90ch;margin-bottom:8px">行メニューの「削除…」で開く。対象の識別子を入力して一致するまで、削除ボタンは無効。最初のフォーカスは入力欄(削除ボタンではない)。</p>
+<div class="grid2">
+
+<div class="state" id="dlg-delete" style="margin-top:0">
+<h3>入力前(この見本は実際に入力できる。識別子は demo-handbook)</h3>
+<div class="dframe"><div class="dialog dialog--e" role="dialog" aria-labelledby="t-d1" aria-describedby="d-desc">
+  <div class="dh"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><h4 id="t-d1">データソース「demo-handbook」を削除</h4></div>
+  <div class="db">
+    <div class="callout callout--error" id="d-desc"><p class="ttl">取り消せません</p><ul><li>索引済みの文書(1,284 件)が検索から消えます。</li><li>スキップ・原本サイズ超過の記録、削除の記録、設定が消えます。</li><li>削除は進行中に取り消せません。途中で失敗した場合は、同じ操作をやり直します。</li></ul></div>
+    <div class="field"><label for="d-in">確認のため、識別子 <span class="mono">demo-handbook</span> を入力してください</label>
+      <input class="input mono" id="d-in" autocomplete="off" spellcheck="false" data-expect="demo-handbook" aria-describedby="d-help">
+      <span class="help" id="d-help" aria-live="polite"></span></div>
+  </div>
+  <div class="da"><button class="btn btn--text" type="button">キャンセル</button><button class="btn btn--danger" type="button" id="d-btn" disabled aria-describedby="d-why">データソースを削除</button><span class="why" id="d-why">識別子を入力すると削除できます。</span></div>
+</div></div>
+</div>
+
+<div class="state" id="dlg-delete-match" style="margin-top:0">
+<h3>識別子が一致した後</h3>
+<div class="dframe"><div class="dialog dialog--e" role="dialog" aria-labelledby="t-d2">
+  <div class="dh"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg><h4 id="t-d2">データソース「demo-handbook」を削除</h4></div>
+  <div class="db">
+    <div class="callout callout--error"><p class="ttl">取り消せません</p><ul><li>索引済みの文書(1,284 件)が検索から消えます。</li><li>スキップ・原本サイズ超過の記録、削除の記録、設定が消えます。</li><li>削除は進行中に取り消せません。途中で失敗した場合は、同じ操作をやり直します。</li></ul></div>
+    <div class="field"><label for="d2-in">確認のため、識別子 <span class="mono">demo-handbook</span> を入力してください</label>
+      <input class="input mono" id="d2-in" value="demo-handbook" autocomplete="off" spellcheck="false">
+      <span class="help help--ok"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>識別子が一致しました</span></div>
+  </div>
+  <div class="da"><button class="btn btn--text" type="button">キャンセル</button><button class="btn btn--danger" type="button">データソースを削除</button></div>
+</div></div>
+</div>
+
+</div>
+</section>
+
+<!-- ================================================================= -->
+<section class="sec" aria-labelledby="h-samples">
+<h2 id="h-samples">他画面でも使う危険操作の見本(ジョブ画面は第 2 段階。型だけ先に確認する)</h2>
+<div class="grid2">
+
+<div class="state" id="dlg-rerun" style="margin-top:0">
+<h3>失敗ジョブの再実行(AF-5。元の指定を引き継ぐ。承認済み(ゲート C。#5)。帯と実行ボタンは最も重い指定の色=強制削除を含むので赤)</h3>
+<div class="dframe"><div class="dialog dialog--e" role="dialog" aria-labelledby="t-rr">
+  <div class="dh"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg><h4 id="t-rr">ジョブを再実行しますか</h4></div>
+  <div class="db">
+    <p>データソース <span class="mono">demo-wiki-export</span> の失敗したジョブ <span class="mono">job-0005-demo</span> を、同じ指定で新しいジョブとして起動します。</p>
+    <dl class="kvs"><dt>引き継ぐ指定</dt><dd style="display:flex;gap:8px;flex-wrap:wrap"><span class="tag tag--error tag--outline"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>強制削除モード: あり</span><span class="tag tag--warning tag--outline"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>再書き込みモード: あり</span></dd></dl>
+    <div class="callout callout--error"><p class="ttl">強制削除モード</p><ul><li>割合ルール・最小件数ルールを無視して削除します。TTL が経過していない文書は消えません。</li></ul></div>
+    <div class="callout callout--warning"><p class="ttl">再書き込みモード</p><ul><li>要約を有効にしている場合は、実行前に Indexer の要約生成を止めて終えてください。</li></ul></div>
+    <label class="check"><input type="checkbox"><span>引き継がれる指定とその影響を確認しました</span></label>
+  </div>
+  <div class="da"><button class="btn btn--text" type="button">キャンセル</button><button class="btn btn--danger" type="button" disabled aria-describedby="rr-why">同じ指定で再実行</button><span class="why" id="rr-why">確認にチェックすると再実行できます。</span></div>
+</div></div>
+</div>
+
+<div class="state" id="dlg-unlock" style="margin-top:0">
+<h3>ロック解放(AF-7。要確認・警告つき)</h3>
+<div class="dframe"><div class="dialog dialog--w" role="dialog" aria-labelledby="t-ul">
+  <div class="dh"><svg class="ic" aria-hidden="true"><use href="#i-lock-open"/></svg><h4 id="t-ul">ロックを解放しますか</h4></div>
+  <div class="db">
+    <p>データソース <span class="mono">demo-notes-archive</span> のジョブ <span class="mono">job-0004-demo</span> は、リース期限(2026-11-19 02:10)を過ぎて止まっています。</p>
+    <div class="callout callout--warning"><p class="ttl">解放すると次のようになります</p><ul><li>ジョブは「失敗(ロック解放済み)」になります。</li><li>ジョブは再起動されません。解放後にクロールを起動し直してください。</li></ul></div>
+    <label class="check"><input type="checkbox" checked><span>ジョブが動いていないことを確認しました</span></label>
+  </div>
+  <div class="da"><button class="btn btn--text" type="button">キャンセル</button><button class="btn btn--warning" type="button">ロックを解放</button></div>
+</div></div>
+</div>
+
+<div class="state" id="dlg-cancel" style="margin-top:0">
+<h3>ジョブの取消(AF-4。要確認・標準)</h3>
+<div class="dframe"><div class="dialog" role="dialog" aria-labelledby="t-cn">
+  <div class="dh"><svg class="ic" aria-hidden="true"><use href="#i-cancel"/></svg><h4 id="t-cn">ジョブを取消しますか</h4></div>
+  <div class="db"><p>実行中のジョブ <span class="mono">job-0002-demo</span>(データソース <span class="mono">demo-shared-docs</span>)の取消を要求します。取消の完了は、ジョブの状態で確認してください。</p></div>
+  <div class="da"><button class="btn btn--text" type="button">キャンセル</button><button class="btn btn--primary" type="button">取消を要求</button></div>
+</div></div>
+</div>
+
+</div>
+</section>
+
+</main>
+</div>
+<script>
+/* 1) 狭い画面のナビ開閉(見せ方の確認用。実装では VNavigationDrawer が担う) */
+function setNav(app,open){
+  app.classList.toggle('nav-open',open);
+  var b=app.querySelector('[data-nav-toggle]');
+  b.setAttribute('aria-expanded',open); b.setAttribute('aria-label',open?'メニューを閉じる':'メニューを開く');
+}
+document.addEventListener('click',function(e){
+  var b=e.target.closest('[data-nav-toggle]');
+  if(b){ var app=b.closest('.app'); setNav(app,!app.classList.contains('nav-open')); return; }
+  /* スクリム(.app の ::after)のクリックで閉じる */
+  if(e.target.classList&&e.target.classList.contains('nav-open')) setNav(e.target,false);
+});
+document.addEventListener('keydown',function(e){
+  if(e.key!=='Escape') return;
+  var open=document.querySelector('.app.nav-open'); if(open){ setNav(open,false); open.querySelector('[data-nav-toggle]').focus(); }
+});
+/* 2) 削除確認: 識別子の完全一致(前後の空白は無視)でだけボタンを有効にする */
+(function(){
+  var input=document.getElementById('d-in'), btn=document.getElementById('d-btn'), help=document.getElementById('d-help'), why=document.getElementById('d-why');
+  if(!input) return;
+  input.addEventListener('input',function(){
+    var v=input.value.trim(), ok=v===input.dataset.expect;
+    btn.disabled=!ok; why.textContent=ok?'':'識別子を入力すると削除できます。'; help.className='help'+(ok?' help--ok':'');
+    help.textContent=v===''?'':(ok?'識別子が一致しました':'識別子が一致しません');
+  });
+})();
+</script>
+</body>
+</html>

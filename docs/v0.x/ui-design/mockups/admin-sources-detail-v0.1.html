@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin View S2 データソース詳細・S3 登録・S4 編集 v0.1(モック。承認済み(ゲートC))</title>
+<!--
+  Admin View G1 データソース(S2 詳細・S3 登録・S4 編集)の静的モック。実装コードではない。
+  - 仕様の正: docs/v0.x/ui-design/admin/sources-v0.1.md と design-system-v0.1.md。値が食い違う場合は仕様書を正とする。
+  - 1ファイル完結・外部通信なし・外部フォントなし。ダミーデータのみ(識別子は demo-* など、実在しない)。
+  - トークンは design-system-v0.1.html と同じ値。S1 一覧と起動・削除ダイアログは admin-sources-v0.1.html を参照。
+  - JavaScript は 2 つだけ: (1) 画面枠(サイドバー・上部バー)の複製(同じ枠を状態ごとに繰り返すための表示用。実装では route meta 駆動のナビが担う)、(2) 狭い画面のナビ開閉(スクリム・Esc でも閉じる)。
+  - ダイアログは「開いた状態」を並べた見本(aria-modal は付けない。実装は VDialog が担う)。
+-->
+<style>
+:root{
+  --v-theme-background:244,246,248; --v-theme-on-background:26,37,48;
+  --v-theme-surface:255,255,255; --v-theme-on-surface:26,37,48;
+  --v-theme-surface-variant:233,237,241; --v-theme-on-surface-variant:70,83,95;
+  --v-theme-primary:29,91,135; --v-theme-on-primary:255,255,255;
+  --v-theme-primary-container:227,238,246; --v-theme-on-primary-container:18,63,95;
+  --v-theme-secondary-container:230,234,238; --v-theme-on-secondary-container:59,72,84;
+  --v-theme-error:179,38,30; --v-theme-on-error:255,255,255;
+  --v-theme-error-container:252,232,230; --v-theme-on-error-container:122,23,18;
+  --v-theme-warning:143,90,0; --v-theme-on-warning:255,255,255;
+  --v-theme-warning-container:255,241,214; --v-theme-on-warning-container:107,66,0;
+  --v-theme-success:29,111,66; --v-theme-success-container:226,243,232; --v-theme-on-success-container:17,77,46;
+  --v-theme-info:47,107,154; --v-theme-info-container:225,237,247; --v-theme-on-info-container:23,63,97;
+  --v-theme-focus:11,87,208; --v-theme-ink:38,50,62;
+  --v-border-color:26,37,48; --v-border-opacity:.16;
+  --line-strong:111,124,136;
+  --radius-sm:2px; --radius-md:4px; --radius-lg:8px;
+  --shadow-menu:0 4px 12px rgba(26,37,48,.16); --shadow-dialog:0 8px 24px rgba(26,37,48,.20);
+  --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo UI","Noto Sans JP",sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{font-size:16px;-webkit-text-size-adjust:100%}
+body{margin:0;background:rgb(var(--v-theme-background));color:rgb(var(--v-theme-on-background));font-family:var(--font-sans);font-size:.875rem;line-height:1.5714}
+h1,h2,h3,h4,p,dl,dd,ul,ol{margin:0}
+ul,ol{padding:0;list-style:none}
+a{color:rgb(var(--v-theme-primary))}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid rgb(var(--v-theme-focus));outline-offset:2px}
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.skip{position:absolute;left:8px;top:-48px;background:#fff;padding:8px 12px;border-radius:var(--radius-md);z-index:50}
+.skip:focus{top:8px}
+.ic{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.mono{font-family:var(--font-mono);font-size:.8125rem}
+.t2{color:rgb(var(--v-theme-on-surface-variant))}
+.cap{font-size:.75rem;line-height:1.5}
+
+/* 見本ページの枠 */
+.doc{max-width:1240px;margin:0 auto;padding:24px 24px 64px}
+.doc h1.mock-title{font-size:1.25rem;line-height:1.4;font-weight:600}
+.index{margin:16px 0 8px;padding:12px 16px;background:rgb(var(--v-theme-surface));border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));border-radius:var(--radius-lg);display:grid;gap:8px}
+.index ul{display:flex;flex-wrap:wrap;gap:4px 16px}
+.index b{font-weight:600}
+.index a{display:inline-block;padding:4px 0}
+.sec{margin-top:40px;scroll-margin-top:16px}
+.sec>h2{font-size:1rem;line-height:1.5;font-weight:600;padding-bottom:8px;border-bottom:1px solid rgba(var(--v-border-color),var(--v-border-opacity));margin-bottom:12px}
+.state{margin-top:24px;scroll-margin-top:16px}
+.state>h3{font-size:.875rem;font-weight:600;margin-bottom:4px}
+.state>.cap{margin-bottom:8px;max-width:90ch}
+.grid2{display:grid;gap:24px 16px;grid-template-columns:repeat(2,minmax(0,1fr))}
+
+/* 部品(design-system と同じ) */
+.tag{--tg-bg:var(--v-theme-secondary-container);--tg-fg:var(--v-theme-on-secondary-container);display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px 0 6px;border-radius:var(--radius-md);font-size:.75rem;line-height:1;font-weight:600;white-space:nowrap;background:rgb(var(--tg-bg));color:rgb(var(--tg-fg))}
+.tag .ic{width:16px;height:16px}
+.tag--success{--tg-bg:var(--v-theme-success-container);--tg-fg:var(--v-theme-on-success-container)}
+.tag--warning{--tg-bg:var(--v-theme-warning-container);--tg-fg:var(--v-theme-on-warning-container)}
+.tag--error{--tg-bg:var(--v-theme-error-container);--tg-fg:var(--v-theme-on-error-container)}
+.tag--info{--tg-bg:var(--v-theme-info-container);--tg-fg:var(--v-theme-on-info-container)}
+.tag--outline{background:transparent;box-shadow:inset 0 0 0 1px currentColor}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:36px;padding:0 16px;border-radius:var(--radius-md);border:1px solid transparent;background:none;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap}
+.btn .ic{width:18px;height:18px}
+.btn--primary{background:rgb(var(--v-theme-primary));color:rgb(var(--v-theme-on-primary))}
+.btn--tonal{background:rgb(var(--v-theme-primary-container));color:rgb(var(--v-theme-on-primary-container))}
+.btn--outlined{border-color:rgb(var(--line-strong));background:rgb(var(--v-theme-surface))}
+.btn--text{color:rgb(var(--v-theme-primary));padding:0 12px}
+.btn--danger{background:rgb(var(--v-theme-error));color:rgb(var(--v-theme-on-error))}
+.btn--warning{background:rgb(var(--v-theme-warning));color:rgb(var(--v-theme-on-warning))}
+.btn--icon{width:36px;padding:0}
+.btn--sm{min-height:32px;padding:0 12px}
+.btn--sm.btn--icon{width:32px;padding:0}
+.btn:disabled,.btn[aria-disabled="true"]{background:rgba(var(--v-border-color),.12);color:rgba(var(--v-theme-on-surface),.46);cursor:not-allowed;border-color:transparent}
+.btn:hover:not(:disabled){filter:brightness(.94)}
+.btn--text:hover:not(:disabled){background:rgba(var(--v-theme-primary),.08);filter:none}
+.alert .acts .btn,.dialog .da .btn{white-space:normal;text-align:center;height:auto;padding-top:6px;padding-bottom:6px}
+.field{display:grid;gap:4px}
+.field>label,.field>.lbl{font-weight:600;display:block}
+.req{display:inline-block;margin-left:8px;vertical-align:1px;font-size:.75rem;font-weight:600;color:rgb(var(--v-theme-on-surface-variant));border:1px solid rgba(var(--v-border-color),.4);border-radius:var(--radius-sm);padding:0 6px;line-height:1.5}
+.help{font-size:.75rem;line-height:1.5;color:rgb(var(--v-theme-on-surface-variant))}
+.help .ic{width:16px;height:16px;display:inline-block;vertical-align:-3px;margin-right:6px}
+.help--warn{color:rgb(var(--v-theme-on-warning-container));font-weight:600}
+.help--warn .ic{color:rgb(var(--v-theme-warning))}
+.input{height:40px;width:100%;border:1px solid rgb(var(--line-strong));border-radius:var(--radius-md);padding:0 12px;background:rgb(var(--v-theme-surface));min-width:0}
+.input::placeholder{color:#66727E}
+.input:focus-visible{border-color:rgb(var(--v-theme-primary));outline-offset:1px}
+.input[readonly]{background:rgb(var(--v-theme-surface-variant));border-style:dashed}
+.input:disabled{background:rgb(var(--v-theme-surface-variant));color:rgba(var(--v-theme-on-surface),.6);border-style:dashed}
+.affix{display:flex;align-items:stretch;max-width:280px}
+.affix .input{border-top-right-radius:0;border-bottom-right-radius:0}
+.affix .suffix{display:flex;align-items:center;padding:0 12px;border:1px solid rgb(var(--line-strong));border-left:0;border-radius:0 var(--radius-md) var(--radius-md) 0;background:rgb(var(--v-theme-surface-variant));color:rgb(var(--v-theme-on-surface-variant));white-space:nowrap}
+.field--error .input,.field--error .affix .suffix{border-color:rgb(var(--v-theme-error))}
+.field--error .input{box-shadow:inset 0 0 0 1px rgb(var(--v-theme-error))}
+.errmsg{display:flex;gap:6px;align-items:flex-start;font-size:.75rem;line-height:1.5;color:rgb(var(--v-theme-error));font-weight:600}
+.errmsg .ic{width:16px;height:16px;margin-top:1px}
+.select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,#46535F 50%),linear-gradient(135deg,#46535F 50%,transparent 50%);background-position:calc(100% - 18px) 17px,calc(100% - 13px) 17px;background-size:5px 5px;background-repeat:no-repeat;padding-right:32px}
+.check{display:flex;gap:8px;align-items:flex-start}
+.check input{width:18px;height:18px;margin:2px 0 0;accent-color:rgb(var(--v-theme-primary))}
+.alert{--tn:var(--v-theme-info);--ct:var(--v-theme-info-container);--on:var(--v-theme-on-info-container);display:flex;gap:12px;align-items:flex-start;min-width:0;padding:12px 16px;border-radius:var(--radius-md);background:rgb(var(--ct));color:rgb(var(--on));border:1px solid rgba(var(--tn),.35);border-left:4px solid rgb(var(--tn))}
+.alert>.ic{margin-top:1px;color:rgb(var(--tn))}
+.alert .body{flex:1;min-width:0;display:grid;gap:2px;overflow-wrap:anywhere}
+.alert .ttl{font-weight:600}
+.alert .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.alert--warning{--tn:var(--v-theme-warning);--ct:var(--v-theme-warning-container);--on:var(--v-theme-on-warning-container)}
+.alert--error{--tn:var(--v-theme-error);--ct:var(--v-theme-error-container);--on:var(--v-theme-on-error-container)}
+.card{background:rgb(var(--v-theme-surface));border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));border-radius:var(--radius-lg);overflow:hidden}
+.card>h2,.card>.card-h{font-size:1rem;line-height:1.5;font-weight:600;padding:12px 16px;border-bottom:1px solid rgba(var(--v-border-color),var(--v-border-opacity));display:flex;align-items:center;justify-content:space-between;gap:12px}
+.card .pad{padding:16px}
+.card .foot{padding:8px 16px;border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+.kv{display:grid;grid-template-columns:200px minmax(0,1fr);margin:0}
+.kv dt,.kv dd{padding:10px 16px;border-bottom:1px solid rgba(var(--v-border-color),.08)}
+.kv dt{color:rgb(var(--v-theme-on-surface-variant))}
+.kv dd{overflow-wrap:anywhere}
+.kv dt:last-of-type,.kv dd:last-of-type{border-bottom:0}
+.kv .none{color:rgb(var(--v-theme-on-surface-variant))}
+.kv .sub{display:block}
+.stateblock{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:48px 24px}
+.stateblock .ill{width:48px;height:48px;border-radius:var(--radius-lg);display:flex;align-items:center;justify-content:center;background:rgb(var(--v-theme-surface-variant));color:rgb(var(--v-theme-on-surface-variant))}
+.stateblock .ill .ic{width:28px;height:28px}
+.stateblock--error .ill{background:rgb(var(--v-theme-error-container));color:rgb(var(--v-theme-error))}
+.stateblock h3{font-size:1rem;font-weight:600}
+.stateblock p{max-width:50ch}
+.skel{display:block;height:14px;border-radius:var(--radius-sm);background:linear-gradient(90deg,#E9EDF1 25%,#F4F6F8 40%,#E9EDF1 60%);background-size:300% 100%;animation:shimmer 1.4s ease-in-out infinite}
+@keyframes shimmer{from{background-position:100% 0}to{background-position:0 0}}
+.prog{height:2px;background:rgba(var(--v-theme-primary),.18);overflow:hidden;position:relative}
+.prog::after{content:"";position:absolute;inset:0 auto 0 0;width:35%;background:rgb(var(--v-theme-primary));animation:slide 1.2s ease-in-out infinite}
+@keyframes slide{from{left:-35%}to{left:100%}}
+@media (prefers-reduced-motion:reduce){.skel,.prog::after{animation:none}.prog::after{width:100%;opacity:.5}}
+
+/* シェル */
+.app{position:relative;display:block;background:rgb(var(--v-theme-background));border:1px solid rgba(var(--v-border-color),.28);border-radius:var(--radius-lg);overflow:hidden}
+.app.shell-ready{display:grid;grid-template-columns:232px minmax(0,1fr)}
+.topbar{position:relative;z-index:6;display:none;align-items:center;gap:8px;height:48px;padding:0 8px;background:rgb(var(--v-theme-surface));border-bottom:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+.topbar .brand{font-weight:600}
+.sidebar{background:rgb(var(--v-theme-surface-variant));padding:16px 12px;display:flex;flex-direction:column;gap:4px;border-right:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+.sidebar .brand{display:flex;align-items:center;gap:10px;padding:4px 12px 16px;font-size:1rem;font-weight:600;line-height:1.2}
+.sidebar .brand svg{width:24px;height:24px;flex:none}
+.sidebar .brand small{display:block;font-size:.75rem;font-weight:400;color:rgb(var(--v-theme-on-surface-variant))}
+.sidebar hr{border:0;border-top:1px solid rgba(var(--v-border-color),.2);margin:8px 12px}
+.navi{display:flex;align-items:center;gap:12px;min-height:40px;padding:0 12px;border-radius:var(--radius-md);color:rgb(var(--v-theme-on-surface));text-decoration:none}
+.navi:hover{background:rgba(var(--v-theme-primary),.08)}
+.navi .ic{color:rgb(var(--v-theme-on-surface-variant))}
+.navi[aria-current="page"]{background:rgb(var(--v-theme-surface));font-weight:600;box-shadow:inset 3px 0 0 rgb(var(--v-theme-primary))}
+.navi[aria-current="page"] .ic{color:rgb(var(--v-theme-primary))}
+.sidebar .grow{flex:1}
+.main{padding:24px 32px 40px;min-width:0}
+.crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:4px;margin-bottom:4px}
+.crumbs .ic{width:16px;height:16px;color:rgb(var(--v-theme-on-surface-variant))}
+.crumbs a{text-decoration:none;padding:2px 0}
+.crumbs a:hover{text-decoration:underline}
+.pagehead{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;margin-bottom:16px}
+.pagehead h1{font-size:1.25rem;line-height:1.4;font-weight:600;display:flex;align-items:center;gap:12px;flex-wrap:wrap;overflow-wrap:anywhere}
+.pagehead .desc{margin-top:2px;max-width:70ch}
+.pagehead .acts{display:flex;gap:8px;flex-wrap:wrap}
+.stack{display:grid;gap:16px;min-width:0}
+.cols2{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}
+
+/* G1 固有 */
+.lock{display:grid;gap:8px}
+.lock .row1{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-weight:600}
+.lock .guide{font-size:.75rem;color:rgb(var(--v-theme-on-surface-variant))}
+.sections{display:grid;gap:16px;max-width:720px}
+.form{display:grid;gap:20px}
+.formacts{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;align-items:center}
+.formacts .why{flex:1 1 100%;text-align:right;font-size:.75rem;color:rgb(var(--v-theme-on-surface-variant))}
+.sp{display:inline-block;width:16px;height:16px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin 1s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.sp{animation:none}}
+
+/* ダイアログ */
+.dframe{position:relative;border-radius:var(--radius-lg);padding:24px;background:linear-gradient(rgba(26,37,48,.52),rgba(26,37,48,.52)),repeating-linear-gradient(0deg,#EEF1F4 0 14px,#F8F9FB 14px 40px);display:flex;justify-content:center;align-items:flex-start}
+.dialog{--band:transparent;width:min(560px,100%);background:rgb(var(--v-theme-surface));border-radius:var(--radius-lg);box-shadow:var(--shadow-dialog);border-top:4px solid var(--band);overflow:hidden}
+.dialog--w{--band:rgb(var(--v-theme-warning))}
+.dialog .dh{display:flex;gap:12px;align-items:flex-start;padding:20px 24px 8px}
+.dialog .dh .ic{margin-top:2px;color:rgb(var(--v-theme-warning))}
+.dialog .dh h4{font-size:1rem;line-height:1.5;font-weight:600;overflow-wrap:anywhere}
+.dialog .db{padding:4px 24px 16px;display:grid;gap:12px;overflow-wrap:anywhere}
+.dialog .db>*{min-width:0}
+.dialog .da{display:flex;justify-content:flex-end;flex-wrap:wrap;gap:8px;padding:12px 24px 20px}
+.dialog .da .why{flex:1 1 100%;text-align:right;font-size:.75rem;color:rgb(var(--v-theme-on-surface-variant))}
+.callout{padding:12px;border-radius:var(--radius-md);background:rgb(var(--ct));color:rgb(var(--on))}
+.callout--warning{--ct:var(--v-theme-warning-container);--on:var(--v-theme-on-warning-container)}
+.callout ul{list-style:disc;padding-left:20px;margin-top:4px}
+.callout .ttl{font-weight:600}
+
+/* レスポンシブ: 840px 以上=サイドバー常時表示(ユーザー指示。旧 1145px)。840px 未満=上部バー+ドロワー。600px 未満=44px */
+@media (max-width:1144px){
+  .grid2{grid-template-columns:minmax(0,1fr)}
+  .cols2{grid-template-columns:minmax(0,1fr)}
+  .main{padding:20px 24px 32px}
+}
+@media (max-width:839px){
+  .app.shell-ready{grid-template-columns:minmax(0,1fr)}
+  .topbar{display:flex}
+  .sidebar{display:none}
+  .app.nav-open .sidebar{display:flex;position:absolute;z-index:5;left:0;top:48px;bottom:0;width:272px;box-shadow:var(--shadow-dialog)}
+  .app.nav-open::after{content:"";position:absolute;inset:48px 0 0 0;background:rgba(26,37,48,.4);z-index:4}
+  .main{padding:16px}
+  .dframe{padding:12px}
+  .dialog .dh,.dialog .db,.dialog .da{padding-left:16px;padding-right:16px}
+}
+@media (max-width:599px){
+  .doc{padding:16px 16px 48px}
+  .btn,.btn--sm{min-height:44px}
+  .btn--sm.btn--icon,.btn--icon{width:44px}
+  .input{height:44px}
+  .kv{grid-template-columns:minmax(0,1fr)}
+  .kv dt{padding-bottom:0;border-bottom:0;font-size:.75rem}
+  .dframe{padding:16px}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M10 8.5l5.5 3.5-5.5 3.5z"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M7.8 12.4l2.9 2.9 5.6-6"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3.8L21.2 20H2.8z"/><path d="M12 10v4.2M12 17.3v.1"/></symbol>
+  <symbol id="i-fail" viewBox="0 0 24 24"><path d="M8.6 3h6.8L21 8.6v6.8L15.4 21H8.6L3 15.4V8.6z"/><path d="M9 9l6 6M15 9l-6 6"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></symbol>
+  <symbol id="i-lock-open" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 7.4-2"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.6v.1"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.6v.1"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6.5 7l1 13h9l1-13M10 11v5M14 11v5"/></symbol>
+  <symbol id="i-pencil" viewBox="0 0 24 24"><path d="M4 20l1-4L16.5 4.5a2 2 0 0 1 3 3L8 19z"/></symbol>
+  <symbol id="i-dots" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.6" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5"/></symbol>
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></symbol>
+  <symbol id="i-jobs" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h4"/></symbol>
+  <symbol id="i-docs" viewBox="0 0 24 24"><path d="M6 3h8l4 4v5M6 3v18h6"/><circle cx="16.5" cy="17" r="3"/><path d="M18.7 19.3L21 21.6"/></symbol>
+  <symbol id="i-cluster" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="6" rx="1.5"/><rect x="4" y="14" width="16" height="6" rx="1.5"/><path d="M8 7v.1M8 17v.1"/></symbol>
+  <symbol id="i-dash" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="8" rx="1"/><rect x="13" y="4" width="7" height="5" rx="1"/><rect x="4" y="14" width="7" height="6" rx="1"/><rect x="13" y="11" width="7" height="9" rx="1"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-hourglass" viewBox="0 0 24 24"><path d="M7 3h10M7 21h10M8 3c0 5 4 5 4 9s-4 4-4 9M16 3c0 5-4 5-4 9s4 4 4 9"/></symbol>
+  <symbol id="i-wave" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" rx="5" fill="#1D5B87" stroke="none"/><path d="M4.5 14c2-3.2 4-3.2 5.5 0s3.5 3.2 5.5 0 2.5-2.5 3.5-2.5" stroke="#fff" fill="none"/><path d="M7 8.5h3" stroke="#fff"/></symbol>
+</svg>
+
+<!-- 画面枠(上部バー+サイドバー)。状態ごとの繰り返しを避けるため、data-shell を持つ .app に複製する(表示用の JS)。 -->
+<template id="tpl-shell">
+  <div class="topbar"><button class="btn btn--text btn--icon" type="button" data-nav-toggle aria-label="メニューを開く" aria-expanded="false"><svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg></button><span class="brand">Loreley 管理</span></div>
+  <nav class="sidebar" aria-label="メインメニュー">
+    <div class="brand"><svg aria-hidden="true"><use href="#i-wave"/></svg><span>Loreley<small>管理</small></span></div>
+    <a class="navi" href="admin-dashboard-v0.1.html" data-key="dashboard"><svg class="ic" aria-hidden="true"><use href="#i-dash"/></svg>ダッシュボード</a><hr>
+    <a class="navi" href="admin-sources-v0.1.html" data-key="sources"><svg class="ic" aria-hidden="true"><use href="#i-db"/></svg>データソース</a>
+    <a class="navi" href="admin-jobs-v0.1.html" data-key="jobs"><svg class="ic" aria-hidden="true"><use href="#i-jobs"/></svg>ジョブ</a><hr>
+    <a class="navi" href="admin-documents-v0.1.html" data-key="documents"><svg class="ic" aria-hidden="true"><use href="#i-docs"/></svg>文書の確認</a>
+    <a class="navi" href="admin-opensearch-v0.1.html" data-key="opensearch"><svg class="ic" aria-hidden="true"><use href="#i-cluster"/></svg>OpenSearch</a>
+    <div class="grow"></div>
+    <a class="navi" href="#" target="_blank" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#i-ext"/></svg>OpenSearch Dashboards<span class="sr-only">(別タブで開く。設定されている場合のみ表示)</span></a>
+  </nav>
+</template>
+<noscript><p style="padding:8px 16px;background:#FFF1D6;color:#6B4200">このモックは、画面枠(サイドバー・上部バー)の表示に JavaScript を使います。JavaScript を有効にしてください。</p></noscript>
+<a class="skip" href="#main">メインコンテンツへ移動</a>
+
+<div class="doc">
+<header>
+  <h1 class="mock-title">Admin View S2 データソース詳細・S3 登録・S4 編集 v0.1(静的モック。承認済み(ゲート C 2026-11-22))</h1>
+  <p class="t2" style="margin-top:4px;max-width:80ch">仕様は <span class="mono">admin/sources-v0.1.md</span>。ダミーデータのみ。S1 一覧と、クロール起動・データソース削除のダイアログは <a href="admin-sources-v0.1.html">admin-sources-v0.1.html</a> を参照(同じ部品を S2 からも開く)。URL ハッシュ(例: <span class="mono">#s2-lock</span>)で直接開ける。</p>
+  <nav class="index" aria-label="状態一覧">
+    <div><b>S2 データソース詳細</b>
+      <ul>
+        <li><a href="#s2-normal">通常</a></li>
+        <li><a href="#s2-lock">ロック状態の 6 種(AF-7)</a></li>
+        <li><a href="#s2-nojob">直近のジョブなし(未実行)</a></li>
+        <li><a href="#s2-deleting">削除中</a></li>
+        <li><a href="#s2-loading">読み込み中</a></li>
+        <li><a href="#s2-notfound">エラー(見つからない)</a></li>
+        <li><a href="#s2-error">エラー(取得失敗)</a></li>
+        <li><a href="#s2-stale">エラー(前回データ表示)</a></li>
+        <li><a href="#dlg-unlock-orphan">ダイアログ: 孤児ロックの解放</a></li>
+      </ul></div>
+    <div><b>S3 データソース登録</b>
+      <ul>
+        <li><a href="#s3-normal">通常(入力前)</a></li>
+        <li><a href="#s3-errors">検証エラー(クライアント+サーバー)</a></li>
+        <li><a href="#s3-saving">保存中</a></li>
+      </ul></div>
+    <div><b>S4 データソース編集</b>
+      <ul>
+        <li><a href="#s4-normal">通常</a></li>
+        <li><a href="#s4-tz">タイムゾーン取得不可+cron エラー</a></li>
+        <li><a href="#s4-submit-error">保存の失敗</a></li>
+        <li><a href="#s4-deleting">削除中(編集不可)</a></li>
+        <li><a href="#s4-loading">読み込み中</a></li>
+        <li><a href="#s4-error">エラー(取得失敗)</a></li>
+      </ul></div>
+  </nav>
+</header>
+
+<main id="main">
+
+<!-- ================================ S2 ================================ -->
+<section class="sec" aria-labelledby="h-s2">
+<h2 id="h-s2">S2 データソース詳細(AF-2・AF-15・AF-7・AF-8)</h2>
+
+<div class="state" id="s2-normal">
+<h3>通常</h3>
+<p class="cap t2">左に設定値、右にロック状態・直近のジョブ・インデックス(幅 1145px 以上で 2 列。それ未満は 1 列)。主操作は「クロール起動」。</p>
+<div class="app" data-shell="sources">
+  <div class="main">
+    <nav class="crumbs" aria-label="パンくず"><a href="#s2-normal">データソース</a><svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg><span class="t2" aria-current="page">demo-handbook</span></nav>
+    <div class="pagehead">
+      <div><h1><span class="mono" style="font-size:1.25rem">demo-handbook</span><span class="tag tag--success"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>成功</span></h1><p class="desc t2">最終クロール 2026-11-21 03:02</p></div>
+      <div class="acts">
+        <button class="btn btn--outlined" type="button"><svg class="ic" aria-hidden="true"><use href="#i-pencil"/></svg>編集</button>
+        <button class="btn btn--primary" type="button"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>クロール起動</button>
+        <button class="btn btn--outlined btn--icon" type="button" aria-label="demo-handbook のその他の操作" aria-haspopup="menu"><svg class="ic" aria-hidden="true"><use href="#i-dots"/></svg></button>
+      </div>
+    </div>
+    <div class="cols2">
+      <section class="card" aria-labelledby="n-set"><h2 id="n-set">設定値</h2>
+        <dl class="kv">
+          <dt>識別子</dt><dd class="mono">demo-handbook</dd>
+          <dt>種別</dt><dd>ローカルディレクトリ / ファイル共有</dd>
+          <dt>取得元のパス</dt><dd class="mono">/mnt/dummy/handbook</dd>
+          <dt>実行周期</dt><dd><span class="mono">0 3 * * *</span><span class="sub cap t2">Asia/Tokyo(Crawler の設定)で解釈</span></dd>
+          <dt>TTL</dt><dd>30 日</dd>
+          <dt>削除の割合しきい値</dt><dd>20 %</dd>
+          <dt>最小件数</dt><dd>10 件</dd>
+        </dl>
+      </section>
+      <div class="stack">
+        <section class="card" aria-labelledby="n-lock"><h2 id="n-lock">ロック状態</h2>
+          <div class="pad lock"><div class="row1"><svg class="ic" aria-hidden="true" style="color:rgb(var(--v-theme-success))"><use href="#i-check"/></svg>ロックはありません</div><p class="guide">クロールを起動できます。</p></div>
+        </section>
+        <section class="card" aria-labelledby="n-job"><h2 id="n-job">直近のジョブ</h2>
+          <dl class="kv">
+            <dt>ジョブ ID</dt><dd><a class="mono" href="admin-jobs-v0.1.html#j2-succeeded">job-0001-demo</a></dd>
+            <dt>状態</dt><dd><span class="tag tag--success"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>成功</span></dd>
+            <dt>起動</dt><dd>定期</dd>
+            <dt>起動時の指定</dt><dd>強制削除モード: なし / 再書き込みモード: なし</dd>
+            <dt>開始 / 終了</dt><dd>2026-11-21 03:00 / 2026-11-21 03:02</dd>
+          </dl>
+          <div class="foot"><a href="admin-jobs-v0.1.html#j1-normal">このデータソースのジョブをすべて表示</a></div>
+        </section>
+        <section class="card" aria-labelledby="n-idx"><h2 id="n-idx">インデックス</h2>
+          <dl class="kv"><dt>登録文書数</dt><dd>1,284 件<span class="sub cap t2">数え方(抽出失敗の文書を含むか)は Admin API 設計で確定</span></dd></dl>
+          <div class="foot"><a href="admin-documents-v0.1.html#x1-skipped">スキップ・抽出失敗などを確認する(文書の確認)</a></div>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="state" id="s2-lock">
+<h3>ロック状態の 6 種(AF-7。導出。ゲート C 承認済み。取得経路は Admin API 設計)</h3>
+<p class="cap t2">ロック状態カードだけを並べた見本。解放の操作は「ロックを解放…」(DLG-5)で、解放できないときは理由と次の行動を案内する。ボタンの色は確認ダイアログの中だけ warning にする。</p>
+<div class="grid2">
+  <section class="card" aria-label="ロックなし"><h2>ロック状態</h2><div class="pad lock"><div class="row1"><svg class="ic" aria-hidden="true" style="color:rgb(var(--v-theme-success))"><use href="#i-check"/></svg>ロックはありません</div><p class="guide">クロールを起動できます。</p></div></section>
+  <section class="card" aria-label="実行中のジョブがロックを保持"><h2>ロック状態</h2><div class="pad lock">
+    <div class="row1"><span class="tag tag--info"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>実行中</span>ジョブが実行中です</div>
+    <p>ジョブ <a class="mono" href="admin-jobs-v0.1.html#j2-running">job-0002-demo</a> がロックを保持しています(リース期限 2026-11-21 10:47)。</p>
+    <p class="guide">実行中のジョブのロックは解放できません。止めるには、ジョブ詳細で「取消」を使います。</p>
+    <div><a class="btn btn--outlined btn--sm" href="admin-jobs-v0.1.html#j2-running">ジョブを表示</a></div></div></section>
+  <section class="card" aria-label="リース切れのロック"><h2>ロック状態</h2><div class="pad lock">
+    <div class="alert alert--warning" role="status"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg><div class="body"><p class="ttl">止まったジョブのロックが残っています</p><p>ジョブ <a class="mono" href="admin-jobs-v0.1.html#j2-lease">job-0004-demo</a> はリース期限(2026-11-19 02:10)を過ぎて止まっています。クロールの起動は「ロック保持中」で拒否されます。</p>
+      <div class="acts"><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-lock-open"/></svg>ロックを解放…</button><a class="btn btn--text btn--sm" href="admin-jobs-v0.1.html#j2-lease">ジョブを表示</a></div></div></div></div></section>
+  <section class="card" aria-label="孤児ロック"><h2>ロック状態</h2><div class="pad lock">
+    <div class="alert alert--warning" role="status"><svg class="ic" aria-hidden="true"><use href="#i-lock"/></svg><div class="body"><p class="ttl">動いているジョブのないロックが残っています(孤児ロック)</p><p>対応するジョブ記録がない、またはジョブが終了済みです。クロールの起動は「ロック保持中」で拒否されます。</p>
+      <div class="acts"><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-lock-open"/></svg>ロックを解放…</button></div></div></div>
+    <p class="guide">承認済み(ゲート C): 孤児ロックの解放の入口をこの画面に置く(機能設計書には入口の記載がない)。</p></div></section>
+  <section class="card" aria-label="削除ジョブがロックを保持"><h2>ロック状態</h2><div class="pad lock">
+    <div class="row1"><span class="tag tag--warning"><svg class="ic" aria-hidden="true"><use href="#i-hourglass"/></svg>削除中</span>削除ジョブがロックを保持しています</div>
+    <p>ジョブ <a class="mono" href="admin-jobs-v0.1.html#j2-source-delete">job-0009-demo</a>(ソース削除。リース期限 2026-11-21 10:50)</p>
+    <p class="guide">削除ジョブのロックは、リース期限内は解放できません。完了を待ってください。</p></div></section>
+  <section class="card" aria-label="取得直後のロック"><h2>ロック状態</h2><div class="pad lock">
+    <div class="row1"><svg class="ic" aria-hidden="true" style="color:rgb(var(--v-theme-warning))"><use href="#i-clock"/></svg>ロックを取得した直後です</div>
+    <p class="guide">受付の途中の可能性があるため、解放できません。しばらくしてから再読み込みしてください。</p>
+    <div><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>再読み込み</button></div></div></section>
+</div>
+</div>
+
+<div class="state" id="s2-nojob">
+<h3>直近のジョブなし(未実行)</h3>
+<p class="cap t2">一度もクロールしていないデータソース。「直近のジョブ」カードが空状態になり、起動を促す。</p>
+<div style="max-width:520px"><section class="card" aria-label="直近のジョブ(なし)"><h2>直近のジョブ</h2>
+  <div class="stateblock" style="padding:28px 24px"><p class="t2">まだクロールしていません。「クロール起動」で最初のクロールを実行できます。</p></div></section></div>
+</div>
+
+<div class="state" id="s2-deleting">
+<h3>削除中(status=deleting)</h3>
+<p class="cap t2">起動・編集はできない(拒否されるため出さない)。削除ジョブが失敗しているときだけ「削除を再実行」を出す。</p>
+<div class="app" data-shell="sources">
+  <div class="main">
+    <nav class="crumbs" aria-label="パンくず"><a href="#s2-deleting">データソース</a><svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg><span class="t2" aria-current="page">demo-old-share</span></nav>
+    <div class="pagehead">
+      <div><h1><span class="mono" style="font-size:1.25rem">demo-old-share</span><span class="tag tag--warning"><svg class="ic" aria-hidden="true"><use href="#i-hourglass"/></svg>削除中</span></h1></div>
+      <div class="acts"><button class="btn btn--outlined" type="button"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg>削除を再実行</button></div>
+    </div>
+    <div class="stack">
+      <div class="alert alert--warning" role="status"><svg class="ic" aria-hidden="true"><use href="#i-hourglass"/></svg><div class="body"><p class="ttl">このデータソースは削除中です</p><p>削除ジョブ <a class="mono" href="admin-jobs-v0.1.html#j2-source-delete">job-0007-demo</a> が失敗しました。削除が終わるまで、クロールの起動と設定の更新はできません。「削除を再実行」で再開してください。</p></div></div>
+      <section class="card" aria-labelledby="d-set"><h2 id="d-set">設定値</h2>
+        <dl class="kv"><dt>識別子</dt><dd class="mono">demo-old-share</dd><dt>種別</dt><dd>ローカルディレクトリ / ファイル共有</dd><dt>実行周期</dt><dd class="none">手動のみ</dd><dt>TTL</dt><dd>30 日</dd><dt>削除の割合しきい値</dt><dd>20 %</dd><dt>最小件数</dt><dd>10 件</dd></dl></section>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="state" id="s2-loading">
+<h3>読み込み中</h3>
+<p class="cap t2">パンくず・見出し領域は先に出し、カードの中をスケルトンにする(見出しの識別子は URL から分かる)。</p>
+<div class="app" data-shell="sources">
+  <div class="main" aria-busy="true"><p class="sr-only" role="status">データソース詳細を読み込み中</p>
+    <nav class="crumbs" aria-label="パンくず"><a href="#s2-loading">データソース</a><svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg><span class="t2" aria-current="page">demo-handbook</span></nav>
+    <div class="pagehead"><h1><span class="mono" style="font-size:1.25rem">demo-handbook</span></h1></div>
+    <div class="cols2">
+      <section class="card" aria-hidden="true"><h2>設定値</h2><div class="pad" style="display:grid;gap:16px"><span class="skel" style="width:60%"></span><span class="skel"></span><span class="skel" style="width:80%"></span><span class="skel" style="width:50%"></span><span class="skel"></span><span class="skel" style="width:70%"></span></div></section>
+      <div class="stack"><section class="card" aria-hidden="true"><h2>直近のジョブ</h2><div class="pad" style="display:grid;gap:16px"><span class="skel"></span><span class="skel" style="width:70%"></span><span class="skel" style="width:85%"></span></div></section></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="state" id="s2-notfound">
+<h3>エラー(データソースが見つからない)</h3>
+<div class="app" data-shell="sources">
+  <div class="main">
+    <nav class="crumbs" aria-label="パンくず"><a href="#s2-notfound">データソース</a><svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg><span class="t2" aria-current="page">demo-missing</span></nav>
+    <div class="pagehead"><h1><span class="mono" style="font-size:1.25rem">demo-missing</span></h1></div>
+    <section class="card"><div class="stateblock stateblock--error" role="alert"><div class="ill"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg></div><h3>データソースが見つかりません</h3><p class="t2">識別子 <span class="mono">demo-missing</span> のデータソースは登録されていないか、削除されました。一覧で確認してください。</p><a class="btn btn--outlined" href="admin-sources-v0.1.html">データソース一覧へ戻る</a></div></section>
+  </div>
+</div>
+</div>
+
+<div class="state" id="s2-error">
+<h3>エラー(取得失敗・表示できるデータがない)</h3>
+<div class="app" data-shell="sources">
+  <div class="main">
+    <nav class="crumbs" aria-label="パンくず"><a href="#s2-error">データソース</a><svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg><span class="t2" aria-current="page">demo-handbook</span></nav>
+    <div class="pagehead"><h1><span class="mono" style="font-size:1.25rem">demo-handbook</span></h1></div>
+    <section class="card"><div class="stateblock stateblock--error" role="alert"><div class="ill"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg></div><h3>データソースの詳細を取得できません</h3><p class="t2">Admin API に接続できませんでした。しばらくしてから再試行してください。解消しない場合は api コンテナの状態を確認してください。</p><p class="cap t2">試行時刻 2026-11-21 10:43:20 · 通信エラー(ダミー)</p><button class="btn btn--outlined" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>再試行</button></div></section>
+  </div>
+</div>
+</div>
+
+<div class="state" id="s2-stale">
+<h3>エラー(取得失敗・前回のデータを表示)</h3>
+<div class="app" data-shell="sources">
+  <div class="main">
+    <nav class="crumbs" aria-label="パンくず"><a href="#s2-stale">データソース</a><svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg><span class="t2" aria-current="page">demo-handbook</span></nav>
+    <div class="pagehead"><div><h1><span class="mono" style="font-size:1.25rem">demo-handbook</span><span class="tag tag--success"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>成功</span></h1></div>
+      <div class="acts"><button class="btn btn--outlined" type="button"><svg class="ic" aria-hidden="true"><use href="#i-pencil"/></svg>編集</button><button class="btn btn--primary" type="button"><svg class="ic" aria-hidden="true"><use href="#i-play"/></svg>クロール起動</button></div></div>
+    <div class="stack">
+      <div class="alert alert--warning" role="alert"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg><div class="body"><p class="ttl">最新の状態を取得できませんでした</p><p>前回取得したデータ(2026-11-21 10:42:07 時点)を表示しています。ロック状態などが実際と異なる可能性があります。</p><div class="acts"><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>再読み込み</button></div></div></div>
+      <section class="card" aria-labelledby="st-set"><h2 id="st-set">設定値<span class="cap t2" style="font-weight:400">最終更新(成功) 2026-11-21 10:42:07</span></h2><dl class="kv"><dt>識別子</dt><dd class="mono">demo-handbook</dd><dt>実行周期</dt><dd class="mono">0 3 * * *</dd><dt>TTL</dt><dd>30 日</dd></dl></section>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="state" id="dlg-unlock-orphan">
+<h3>ダイアログ: 孤児ロックの解放(DLG-5。要確認・警告つき。承認済み(ゲート C))</h3>
+<div style="max-width:620px"><div class="dframe"><div class="dialog dialog--w" role="dialog" aria-labelledby="t-uo">
+  <div class="dh"><svg class="ic" aria-hidden="true"><use href="#i-lock-open"/></svg><h4 id="t-uo">ロックを解放しますか</h4></div>
+  <div class="db">
+    <p>データソース <span class="mono">demo-handbook</span> に、動いているジョブのないロックが残っています。</p>
+    <div class="callout callout--warning"><p class="ttl">解放すると次のようになります</p><ul><li>ロックだけが消えます。対応するジョブはないため、ジョブの状態は変わりません。</li><li>ジョブは起動されません。解放後にクロールを起動してください。</li></ul></div>
+    <label class="check"><input type="checkbox"><span>ジョブが動いていないことを確認しました</span></label>
+  </div>
+  <div class="da"><button class="btn btn--text" type="button">キャンセル</button><button class="btn btn--warning" type="button" disabled aria-describedby="uo-why">ロックを解放</button><span class="why" id="uo-why">確認にチェックすると解放できます。</span></div>
+</div></div></div>
+<p class="cap t2" style="margin-top:8px">解放できない場合(リース期限内の実行中・実行待ち、取得直後)は 409 の理由を、ダイアログ内のアラート(消えない)で示す: 「解放できませんでした: ジョブが実行中です。取消を使ってください」など。リース切れのジョブのロックでは、解放するとジョブが「失敗(ロック解放済み)」になる旨を警告枠に書く(J2 のダイアログ見本を参照)。</p>
+</div>
+</section>
+
+<!-- ================================ S3 ================================ -->
+<section class="sec" aria-labelledby="h-s3">
+<h2 id="h-s3">S3 データソース登録(AF-1)</h2>
+
+<div class="state" id="s3-normal">
+<h3>通常(入力前)</h3>
+<p class="cap t2">必須項目は空欄で始める(既定値を補わない。AF-U-7。承認済み(ゲート C。#2))。項目の例は「例:」で示す。</p>
+<div class="app" data-shell="sources">
+  <div class="main">
+    <nav class="crumbs" aria-label="パンくず"><a href="#s3-normal">データソース</a><svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg><span class="t2" aria-current="page">登録</span></nav>
+    <div class="pagehead"><h1>データソースを登録</h1></div>
+    <form class="sections" onsubmit="return false" aria-label="データソースの登録">
+      <section class="card" aria-labelledby="s3a"><h2 id="s3a">基本</h2><div class="pad form">
+        <div class="field"><label for="s3-id">識別子(source_id)<span class="req">必須</span></label><input class="input mono" id="s3-id" autocomplete="off" spellcheck="false" placeholder="例: demo-handbook" aria-describedby="s3-id-h"><span class="help" id="s3-id-h">半角英数字で始まり、半角英数字と . _ - が使えます(256 文字まで)。登録後は変更できません。</span></div>
+        <div class="field"><label for="s3-type">種別<span class="req">必須</span></label><select class="input select" id="s3-type"><option>ローカルディレクトリ / ファイル共有</option></select><span class="help">登録後は変更できません。</span></div>
+      </div></section>
+      <section class="card" aria-labelledby="s3b"><h2 id="s3b">取得設定</h2><div class="pad form">
+        <div class="field"><label for="s3-path">取得元のパス<span class="req">必須</span></label><input class="input mono" id="s3-path" autocomplete="off" spellcheck="false" placeholder="例: /mnt/dummy/handbook" aria-describedby="s3-path-h"><span class="help" id="s3-path-h">Crawler のコンテナから見たパス。保存時に接続の確認はしません。接続できない場合は、クロールを起動したときにジョブが失敗します。</span></div>
+      </div></section>
+      <section class="card" aria-labelledby="s3c"><h2 id="s3c">実行周期</h2><div class="pad form">
+        <div class="field"><label for="s3-cron">cron 式</label><input class="input mono" id="s3-cron" autocomplete="off" spellcheck="false" placeholder="例: 0 3 * * *" aria-describedby="s3-cron-h"><span class="help" id="s3-cron-h">分 時 日 月 曜日の 5 項目を空白 1 つで区切ります(例: 0 3 * * * は毎日 3:00)。空にすると手動のみで実行します。この cron は <b>Asia/Tokyo</b>(Crawler の設定)で解釈されます。</span></div>
+      </div></section>
+      <section class="card" aria-labelledby="s3d"><h2 id="s3d">削除の判断</h2><div class="pad form">
+        <div class="field"><label for="s3-ttl">TTL<span class="req">必須</span></label><div class="affix"><input class="input" id="s3-ttl" inputmode="numeric" autocomplete="off" placeholder="例: 30" aria-describedby="s3-ttl-h"><span class="suffix">日</span></div><span class="help" id="s3-ttl-h">最後に見つかった日時(存在確認日時)からこの日数を過ぎた文書が、削除の対象になります。1 以上の整数。</span></div>
+        <div class="field"><label for="s3-th">削除の割合しきい値<span class="req">必須</span></label><div class="affix"><input class="input" id="s3-th" inputmode="decimal" autocomplete="off" placeholder="例: 20" aria-describedby="s3-th-h"><span class="suffix">%</span></div><span class="help" id="s3-th-h">削除対象が、削除前の登録文書数のこの割合を超えると、そのクロールでは削除しません。0 以上 100 未満。</span></div>
+        <div class="field"><label for="s3-min">最小件数<span class="req">必須</span></label><div class="affix"><input class="input" id="s3-min" inputmode="numeric" autocomplete="off" placeholder="例: 10" aria-describedby="s3-min-h"><span class="suffix">件</span></div><span class="help" id="s3-min-h">削除対象がこの件数以下なら、割合に関わらず削除します。0 以上の整数。</span></div>
+      </div></section>
+      <div class="formacts"><button class="btn btn--text" type="button">キャンセル</button><button class="btn btn--primary" type="submit">登録</button></div>
+    </form>
+  </div>
+</div>
+</div>
+
+<div class="state" id="s3-errors">
+<h3>検証エラー(送信時。クライアントの範囲検証+サーバーが返した項目別エラー)</h3>
+<p class="cap t2">上部に件数付きのエラー要約(項目へのリンク付き)を出し、フォーカスを移す。サーバー(Crawler)が返した項目別のエラー(既に登録済みの識別子、cron の形式、取得設定)も同じ形で項目の下に出す。</p>
+<div class="app" data-shell="sources">
+  <div class="main">
+    <nav class="crumbs" aria-label="パンくず"><a href="#s3-errors">データソース</a><svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg><span class="t2" aria-current="page">登録</span></nav>
+    <div class="pagehead"><h1>データソースを登録</h1></div>
+    <form class="sections" onsubmit="return false" aria-label="データソースの登録">
+      <div class="alert alert--error" role="alert" tabindex="-1"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg><div class="body"><p class="ttl">入力内容を確認してください(5 件)</p>
+        <ul style="list-style:disc;padding-left:20px"><li><a href="#e-id">識別子</a>: この識別子は既に登録されています</li><li><a href="#e-cron">cron 式</a>: 5 項目の cron 式で入力してください</li><li><a href="#e-ttl">TTL</a>: 1 以上の整数で入力してください</li><li><a href="#e-th">削除の割合しきい値</a>: 0 以上 100 未満で入力してください</li><li><a href="#e-min">最小件数</a>: 0 以上の整数で入力してください</li></ul></div></div>
+      <section class="card" aria-labelledby="e3a"><h2 id="e3a">基本</h2><div class="pad form">
+        <div class="field field--error"><label for="e-id">識別子(source_id)<span class="req">必須</span></label><input class="input mono" id="e-id" value="demo-handbook" aria-invalid="true" aria-describedby="e-id-m"><span class="errmsg" id="e-id-m"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>この識別子は既に登録されています。別の識別子を入力してください</span></div>
+      </div></section>
+      <section class="card" aria-labelledby="e3c"><h2 id="e3c">実行周期</h2><div class="pad form">
+        <div class="field field--error"><label for="e-cron">cron 式</label><input class="input mono" id="e-cron" value="every day" aria-invalid="true" aria-describedby="e-cron-m"><span class="errmsg" id="e-cron-m"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>5 項目の cron 式で入力してください(例: 0 3 * * *)</span></div>
+      </div></section>
+      <section class="card" aria-labelledby="e3d"><h2 id="e3d">削除の判断</h2><div class="pad form">
+        <div class="field field--error"><label for="e-ttl">TTL<span class="req">必須</span></label><div class="affix"><input class="input" id="e-ttl" value="0" aria-invalid="true" aria-describedby="e-ttl-m"><span class="suffix">日</span></div><span class="errmsg" id="e-ttl-m"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>1 以上の整数で入力してください</span></div>
+        <div class="field field--error"><label for="e-th">削除の割合しきい値<span class="req">必須</span></label><div class="affix"><input class="input" id="e-th" value="120" aria-invalid="true" aria-describedby="e-th-m"><span class="suffix">%</span></div><span class="errmsg" id="e-th-m"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>0 以上 100 未満で入力してください</span></div>
+        <div class="field field--error"><label for="e-min">最小件数<span class="req">必須</span></label><div class="affix"><input class="input" id="e-min" value="" aria-invalid="true" aria-describedby="e-min-m"><span class="suffix">件</span></div><span class="errmsg" id="e-min-m"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>0 以上の整数で入力してください</span></div>
+      </div></section>
+      <div class="formacts"><button class="btn btn--text" type="button">キャンセル</button><button class="btn btn--primary" type="submit">登録</button></div>
+    </form>
+  </div>
+</div>
+</div>
+
+<div class="state" id="s3-saving">
+<h3>保存中</h3>
+<p class="cap t2">送信中はボタンを無効にして二重送信を防ぎ、ボタン内に進行を示す。入力欄は変更不可にしない(失敗時に直せるよう、読み取り専用にもしない)。</p>
+<div style="max-width:720px" class="card"><div class="pad"><div class="formacts"><button class="btn btn--text" type="button">キャンセル</button><button class="btn btn--primary" type="button" disabled aria-describedby="sv-why"><span class="sp" aria-hidden="true"></span>登録中…</button><span class="why" id="sv-why" role="status">登録しています。完了すると詳細画面に移動します。</span></div></div></div>
+</div>
+</section>
+
+<!-- ================================ S4 ================================ -->
+<section class="sec" aria-labelledby="h-s4">
+<h2 id="h-s4">S4 データソース編集(AF-1)</h2>
+
+<div class="state" id="s4-normal">
+<h3>通常(現在値を表示。全置換の更新)</h3>
+<p class="cap t2">識別子と種別は登録後に変更できない(読み取り専用。破線の枠)。実行中のジョブには反映されない旨を上部の情報アラートで示す。</p>
+<div class="app" data-shell="sources">
+  <div class="main">
+    <nav class="crumbs" aria-label="パンくず"><a href="#s4-normal">データソース</a><svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg><a href="#s4-normal">demo-handbook</a><svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg><span class="t2" aria-current="page">編集</span></nav>
+    <div class="pagehead"><h1>データソースを編集<span class="mono" style="font-size:1.25rem">demo-handbook</span></h1></div>
+    <form class="sections" onsubmit="return false" aria-label="データソースの編集">
+      <div class="alert" role="note"><svg class="ic" aria-hidden="true"><use href="#i-info"/></svg><div class="body"><p>保存した設定は、次に開始するジョブから使われます。実行中のジョブには反映されません(実行待ちのジョブには、開始時に反映されます)。</p></div></div>
+      <section class="card" aria-labelledby="s4a"><h2 id="s4a">基本</h2><div class="pad form">
+        <div class="field"><label for="s4-id">識別子(source_id)</label><input class="input mono" id="s4-id" value="demo-handbook" readonly aria-describedby="s4-id-h"><span class="help" id="s4-id-h">登録後は変更できません。</span></div>
+        <div class="field"><label for="s4-type">種別</label><input class="input" id="s4-type" value="ローカルディレクトリ / ファイル共有" readonly aria-describedby="s4-type-h"><span class="help" id="s4-type-h">登録後は変更できません。</span></div>
+      </div></section>
+      <section class="card" aria-labelledby="s4b"><h2 id="s4b">取得設定</h2><div class="pad form">
+        <div class="field"><label for="s4-path">取得元のパス<span class="req">必須</span></label><input class="input mono" id="s4-path" value="/mnt/dummy/handbook" spellcheck="false"></div>
+      </div></section>
+      <section class="card" aria-labelledby="s4c"><h2 id="s4c">実行周期</h2><div class="pad form">
+        <div class="field"><label for="s4-cron">cron 式</label><input class="input mono" id="s4-cron" value="0 3 * * *" spellcheck="false" aria-describedby="s4-cron-h"><span class="help" id="s4-cron-h">空にすると手動のみで実行します。この cron は <b>Asia/Tokyo</b>(Crawler の設定)で解釈されます。</span></div>
+      </div></section>
+      <section class="card" aria-labelledby="s4d"><h2 id="s4d">削除の判断</h2><div class="pad form">
+        <div class="field"><label for="s4-ttl">TTL<span class="req">必須</span></label><div class="affix"><input class="input" id="s4-ttl" inputmode="numeric" value="30"><span class="suffix">日</span></div></div>
+        <div class="field"><label for="s4-th">削除の割合しきい値<span class="req">必須</span></label><div class="affix"><input class="input" id="s4-th" inputmode="decimal" value="20"><span class="suffix">%</span></div></div>
+        <div class="field"><label for="s4-min">最小件数<span class="req">必須</span></label><div class="affix"><input class="input" id="s4-min" inputmode="numeric" value="10"><span class="suffix">件</span></div></div>
+      </div></section>
+      <div class="formacts"><button class="btn btn--text" type="button">キャンセル</button><button class="btn btn--primary" type="submit">保存</button></div>
+    </form>
+  </div>
+</div>
+</div>
+
+<div class="state" id="s4-tz">
+<h3>適用タイムゾーンを取得できない+cron の形式エラー(AF-U-13。承認済み(ゲート C。#6))</h3>
+<p class="cap t2">タイムゾーンを取得できなくても入力は止めない。警告の文言で「時刻のずれに注意」を示す。</p>
+<div style="max-width:720px" class="card"><div class="pad form">
+  <div class="field field--error"><label for="tz-cron">cron 式</label><input class="input mono" id="tz-cron" value="0 3 * *" aria-invalid="true" aria-describedby="tz-m tz-h"><span class="errmsg" id="tz-m"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>5 項目の cron 式で入力してください(例: 0 3 * * *)</span>
+    <span class="help help--warn" id="tz-h"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>適用されるタイムゾーンを取得できません。Crawler の設定を確認してください。意図した時刻とずれる可能性があります。</span></div>
+</div></div>
+</div>
+
+<div class="state" id="s4-submit-error">
+<h3>保存の失敗(通信エラー・Crawler の応答エラー)</h3>
+<p class="cap t2">入力内容は残したまま、フォーム上部に消えないアラートを出す(スナックバーは使わない)。項目別のエラーは S3 の検証エラーと同じ形。</p>
+<div style="max-width:720px"><div class="alert alert--error" role="alert"><svg class="ic" aria-hidden="true"><use href="#i-fail"/></svg><div class="body"><p class="ttl">設定を保存できませんでした</p><p>Crawler に接続できません。入力内容はそのままです。時間をおいて、もう一度保存してください。</p></div></div></div>
+</div>
+
+<div class="state" id="s4-deleting">
+<h3>削除中(編集不可)</h3>
+<p class="cap t2">status=deleting のデータソースは更新できない。入力欄を無効にし、保存ボタンの理由を示す。</p>
+<div class="app" data-shell="sources">
+  <div class="main">
+    <nav class="crumbs" aria-label="パンくず"><a href="#s4-deleting">データソース</a><svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg><a href="#s4-deleting">demo-old-share</a><svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg><span class="t2" aria-current="page">編集</span></nav>
+    <div class="pagehead"><h1>データソースを編集<span class="mono" style="font-size:1.25rem">demo-old-share</span></h1></div>
+    <div class="sections">
+      <div class="alert alert--warning" role="status"><svg class="ic" aria-hidden="true"><use href="#i-hourglass"/></svg><div class="body"><p class="ttl">このデータソースは削除中のため、編集できません</p><p>削除が終わるまで、設定は更新できません。</p></div></div>
+      <section class="card" aria-label="設定値(編集不可)"><div class="pad form">
+        <div class="field"><label for="dl-cron">cron 式</label><input class="input mono" id="dl-cron" value="" disabled></div>
+        <div class="field"><label for="dl-ttl">TTL</label><div class="affix"><input class="input" id="dl-ttl" value="30" disabled><span class="suffix">日</span></div></div>
+      </div></section>
+      <div class="formacts"><a class="btn btn--text" href="#s4-deleting">詳細へ戻る</a><button class="btn btn--primary" type="button" disabled aria-describedby="dl-why">保存</button><span class="why" id="dl-why">削除中のため保存できません。</span></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="state" id="s4-loading">
+<h3>読み込み中(現在値の取得)</h3>
+<div class="app" data-shell="sources">
+  <div class="main" aria-busy="true"><p class="sr-only" role="status">設定を読み込み中</p>
+    <nav class="crumbs" aria-label="パンくず"><a href="#s4-loading">データソース</a><svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg><a href="#s4-loading">demo-handbook</a><svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg><span class="t2" aria-current="page">編集</span></nav>
+    <div class="pagehead"><h1>データソースを編集<span class="mono" style="font-size:1.25rem">demo-handbook</span></h1></div>
+    <div class="sections"><section class="card" aria-hidden="true"><div class="pad" style="display:grid;gap:18px"><span class="skel" style="width:30%"></span><span class="skel" style="height:40px"></span><span class="skel" style="width:30%"></span><span class="skel" style="height:40px"></span><span class="skel" style="width:30%"></span><span class="skel" style="height:40px"></span></div></section></div>
+  </div>
+</div>
+</div>
+
+<div class="state" id="s4-error">
+<h3>エラー(現在値を取得できない)</h3>
+<p class="cap t2">全置換の更新は現在値が前提のため、取得できないときはフォームを出さない(空のフォームで上書きする事故を防ぐ)。</p>
+<div class="app" data-shell="sources">
+  <div class="main">
+    <nav class="crumbs" aria-label="パンくず"><a href="#s4-error">データソース</a><svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg><a href="#s4-error">demo-handbook</a><svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg><span class="t2" aria-current="page">編集</span></nav>
+    <div class="pagehead"><h1>データソースを編集<span class="mono" style="font-size:1.25rem">demo-handbook</span></h1></div>
+    <section class="card"><div class="stateblock stateblock--error" role="alert"><div class="ill"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg></div><h3>現在の設定を取得できません</h3><p class="t2">設定を安全に更新するには、現在の値が必要です。しばらくしてから再試行してください。</p><button class="btn btn--outlined" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>再試行</button></div></section>
+  </div>
+</div>
+</div>
+</section>
+
+</main>
+</div>
+<script>
+/* 画面枠の複製(表示用) */
+document.querySelectorAll('[data-shell]').forEach(function(app){
+  var t=document.getElementById('tpl-shell').content.cloneNode(true);
+  var a=t.querySelector('[data-key="'+app.getAttribute('data-shell')+'"]'); if(a) a.setAttribute('aria-current','page');
+  app.insertBefore(t,app.firstChild); app.classList.add('shell-ready');
+});
+/* 狭い画面のナビ開閉(☰・スクリム・Esc) */
+function setNav(app,open){
+  app.classList.toggle('nav-open',open);
+  var b=app.querySelector('[data-nav-toggle]');
+  b.setAttribute('aria-expanded',open); b.setAttribute('aria-label',open?'メニューを閉じる':'メニューを開く');
+}
+document.addEventListener('click',function(e){
+  var b=e.target.closest('[data-nav-toggle]');
+  if(b){ var app=b.closest('.app'); setNav(app,!app.classList.contains('nav-open')); return; }
+  if(e.target.classList&&e.target.classList.contains('nav-open')) setNav(e.target,false);
+});
+document.addEventListener('keydown',function(e){
+  if(e.key!=='Escape') return;
+  var open=document.querySelector('.app.nav-open'); if(open){ setNav(open,false); open.querySelector('[data-nav-toggle]').focus(); }
+});
+</script>
+</body>
+</html>
