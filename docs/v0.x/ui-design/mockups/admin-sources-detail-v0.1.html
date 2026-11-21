@@ -9,7 +9,8 @@
   - 仕様の正: docs/v0.x/ui-design/admin/sources-v0.1.md と design-system-v0.1.md。値が食い違う場合は仕様書を正とする。
   - 1ファイル完結・外部通信なし・外部フォントなし。ダミーデータのみ(識別子は demo-* など、実在しない)。
   - トークンは design-system-v0.1.html と同じ値。S1 一覧と起動・削除ダイアログは admin-sources-v0.1.html を参照。
-  - JavaScript は 2 つだけ: (1) 画面枠(サイドバー・上部バー)の複製(同じ枠を状態ごとに繰り返すための表示用。実装では route meta 駆動のナビが担う)、(2) 狭い画面のナビ開閉(スクリム・Esc でも閉じる)。
+  - JavaScript は 3 つだけ: (1) 画面枠(サイドバー・上部バー)の複製(同じ枠を状態ごとに繰り返すための表示用。実装では route meta 駆動のナビが担う)、(2) 狭い画面のナビ開閉(スクリム・Esc でも閉じる)、(3) 取得設定(file_system の connector_config 5 項目。ユーザー指示 2026-11-22・#38)の表示用の組み立てと、パターン一覧の追加・削除・検証、スイッチ、エラー要約からの移動(ダミーデータ。検索・API の処理ではない)。
+  - 承認区分(#38): ユーザー指示による承認済みは「connector_config の全項目を設定できる状態にすること」(S3・S4 のフォーム。「全ての項目」は FS 設計書の 5 項目と解釈=設計書による導出)だけ。S2 での全項目の表示は、設定画面で全項目を確認する流れからの導出(案。ユーザー確認事項)で、明示の指示ではない。部品・文言・折りたたみなどの具体値はすべて案。
   - ダイアログは「開いた状態」を並べた見本(aria-modal は付けない。実装は VDialog が担う)。
 -->
 <style>
@@ -168,6 +169,65 @@ button,input,select{font:inherit;color:inherit}
 .stack{display:grid;gap:16px;min-width:0}
 .cols2{display:grid;gap:16px;grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:start}
 
+/* 取得設定(file_system の connector_config 5 項目。S3・S4・S2) */
+.opt{display:inline-block;margin-left:8px;vertical-align:1px;font-size:.75rem;font-weight:400;color:rgb(var(--v-theme-on-surface-variant))}
+.adv{border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));border-radius:var(--radius-md);background:rgb(var(--v-theme-surface))}
+.adv>summary{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;min-height:44px;padding:8px 12px;cursor:pointer;list-style:none;font-weight:600}
+.adv>summary::-webkit-details-marker{display:none}
+.adv>summary .chev{width:18px;height:18px;flex:none}
+.adv[open]>summary .chev{transform:rotate(90deg)}
+.adv>summary .advsum{font-weight:400;font-size:.75rem;line-height:1.5;color:rgb(var(--v-theme-on-surface-variant));flex:1 1 220px;min-width:0;overflow-wrap:anywhere}
+.advbody{display:grid;gap:20px;padding:16px 12px;border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+.extnote{display:grid;gap:4px;padding:8px 12px;border-radius:var(--radius-md);background:rgb(var(--v-theme-surface-variant))}
+.extnote .exts{display:flex;flex-wrap:wrap;gap:4px 8px}
+.extnote .exts .mono{padding:0 6px;border-radius:var(--radius-sm);background:rgb(var(--v-theme-surface));border:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+.plrows{display:grid;gap:8px;margin:0;padding:0;list-style:none}
+.plrow{display:grid;grid-template-columns:28px minmax(0,1fr) 40px;gap:0 8px;align-items:start}
+.plrow .no{padding-top:10px;text-align:right;font-size:.75rem;line-height:1.5;color:rgb(var(--v-theme-on-surface-variant));font-variant-numeric:tabular-nums}
+.plrow .plin{display:grid;gap:4px;min-width:0}
+.plrow .btn--icon{width:40px;height:40px;padding:0}
+.plrow--err .input{border-color:rgb(var(--v-theme-error));box-shadow:inset 0 0 0 1px rgb(var(--v-theme-error))}
+.plbytes{font-size:.75rem;line-height:1.5;color:rgb(var(--v-theme-on-surface-variant));font-variant-numeric:tabular-nums}
+.plbytes--over{color:rgb(var(--v-theme-error));font-weight:600}
+.plempty{padding:10px 12px;border:1px dashed rgba(var(--v-border-color),.4);border-radius:var(--radius-md);color:rgb(var(--v-theme-on-surface-variant))}
+.plfoot{display:flex;align-items:center;gap:8px 12px;flex-wrap:wrap}
+.plcount{font-size:.75rem;color:rgb(var(--v-theme-on-surface-variant));font-variant-numeric:tabular-nums}
+.plcount--max{color:rgb(var(--v-theme-on-warning-container));font-weight:600}
+.ghelp{border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));border-radius:var(--radius-md)}
+.ghelp>summary{display:flex;align-items:center;gap:8px;min-height:40px;padding:6px 12px;cursor:pointer;list-style:none;font-weight:600;color:rgb(var(--v-theme-primary))}
+.ghelp>summary::-webkit-details-marker{display:none}
+.ghelp>summary .chev{width:16px;height:16px;flex:none}
+.ghelp[open]>summary .chev{transform:rotate(90deg)}
+.ghelp .gbody{display:grid;gap:8px;padding:4px 12px 12px;font-size:.8125rem}
+.ghelp dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:4px 12px;margin:0}
+.ghelp dt,.ghelp dd{margin:0}
+.ghelp code,.pats .mono{font-family:var(--font-mono);font-size:.8125rem}
+.ghelp ul{list-style:disc;padding-left:20px;display:grid;gap:2px}
+.swrow{display:flex;gap:12px;align-items:flex-start}
+.sw{appearance:none;-webkit-appearance:none;flex:none;width:36px;height:20px;margin:2px 0 0;border-radius:10px;background:rgb(var(--line-strong));position:relative;cursor:pointer}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff}
+.sw:checked{background:rgb(var(--v-theme-primary))}
+.sw:checked::after{left:18px}
+.swbody{display:grid;gap:2px;min-width:0}
+.swbody>label{font-weight:600;cursor:pointer}
+.swst{display:inline-block;margin-left:8px;font-size:.75rem;font-weight:400;white-space:nowrap;color:rgb(var(--v-theme-on-surface-variant))}
+.sumi{display:inline-block;white-space:nowrap;margin-right:6px}
+.kv--wide{grid-template-columns:240px minmax(0,1fr)}
+.plws{display:flex;gap:6px;align-items:flex-start}
+.plws .ic{flex:none;margin:1px 0 0}
+.pats{margin:4px 0 0;padding:0;list-style:none;display:grid;gap:2px}
+.pats li{overflow-wrap:anywhere}
+.kv .cnt{font-weight:600}
+@media (max-width:599px){
+  .plrow{grid-template-columns:22px minmax(0,1fr) 44px}
+  .plrow .btn--icon{width:44px;height:44px}
+  .swrow{min-height:44px}
+  .adv>summary{padding:8px 10px}
+  .ghelp>summary{min-height:44px}
+  .kv--wide{grid-template-columns:minmax(0,1fr)}
+  .advbody{padding:16px 10px}
+}
+
 /* G1 固有 */
 .lock{display:grid;gap:8px}
 .lock .row1{display:flex;gap:8px;align-items:center;flex-wrap:wrap;font-weight:600}
@@ -246,6 +306,7 @@ button,input,select{font:inherit;color:inherit}
   <symbol id="i-cluster" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="6" rx="1.5"/><rect x="4" y="14" width="16" height="6" rx="1.5"/><path d="M8 7v.1M8 17v.1"/></symbol>
   <symbol id="i-dash" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="8" rx="1"/><rect x="13" y="4" width="7" height="5" rx="1"/><rect x="4" y="14" width="7" height="6" rx="1"/><rect x="13" y="11" width="7" height="9" rx="1"/></symbol>
   <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
   <symbol id="i-hourglass" viewBox="0 0 24 24"><path d="M7 3h10M7 21h10M8 3c0 5 4 5 4 9s-4 4-4 9M16 3c0 5-4 5-4 9s4 4 4 9"/></symbol>
   <symbol id="i-wave" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" rx="5" fill="#1D5B87" stroke="none"/><path d="M4.5 14c2-3.2 4-3.2 5.5 0s3.5 3.2 5.5 0 2.5-2.5 3.5-2.5" stroke="#fff" fill="none"/><path d="M7 8.5h3" stroke="#fff"/></symbol>
 </svg>
@@ -275,6 +336,8 @@ button,input,select{font:inherit;color:inherit}
     <div><b>S2 データソース詳細</b>
       <ul>
         <li><a href="#s2-normal">通常</a></li>
+        <li><a href="#s2-config-default">取得設定が既定(5 項目)</a></li>
+        <li><a href="#s2-config-many">取得設定: パターンが多い・オン</a></li>
         <li><a href="#s2-lock">ロック状態の 6 種(AF-7)</a></li>
         <li><a href="#s2-nojob">直近のジョブなし(未実行)</a></li>
         <li><a href="#s2-deleting">削除中</a></li>
@@ -288,6 +351,9 @@ button,input,select{font:inherit;color:inherit}
       <ul>
         <li><a href="#s3-normal">通常(入力前)</a></li>
         <li><a href="#s3-errors">検証エラー(クライアント+サーバー)</a></li>
+        <li><a href="#s3-config">取得設定を開いた状態(5 項目)</a></li>
+        <li><a href="#s3-config-errors">取得設定の入力エラー(項目・行別)</a></li>
+        <li><a href="#s3-config-many">パターンが多い(100 件・長いパターン)</a></li>
         <li><a href="#s3-saving">保存中</a></li>
       </ul></div>
     <div><b>S4 データソース編集</b>
@@ -295,6 +361,8 @@ button,input,select{font:inherit;color:inherit}
         <li><a href="#s4-normal">通常</a></li>
         <li><a href="#s4-tz">タイムゾーン取得不可+cron エラー</a></li>
         <li><a href="#s4-submit-error">保存の失敗</a></li>
+        <li><a href="#s4-config-server">保存の失敗: 取得設定の検証エラー(項目別)</a></li>
+        <li><a href="#s4-config-default">取得設定がすべて既定(閉じて始める)</a></li>
         <li><a href="#s4-deleting">削除中(編集不可)</a></li>
         <li><a href="#s4-loading">読み込み中</a></li>
         <li><a href="#s4-error">エラー(取得失敗)</a></li>
@@ -324,10 +392,14 @@ button,input,select{font:inherit;color:inherit}
     </div>
     <div class="cols2">
       <section class="card" aria-labelledby="n-set"><h2 id="n-set">設定値</h2>
-        <dl class="kv">
+        <dl class="kv kv--wide">
           <dt>識別子</dt><dd class="mono">demo-handbook</dd>
           <dt>種別</dt><dd>ローカルディレクトリ / ファイル共有</dd>
           <dt>取得元のパス</dt><dd class="mono">/mnt/dummy/handbook</dd>
+          <dt>追加で対象にするパターン</dt><dd><span class="cnt">1 件</span><ul class="pats"><li class="mono">**/*.rst</li></ul><span class="sub cap t2">既定の拡張子(.txt .md .markdown .html .htm .pdf)に追加で対象にします。</span></dd>
+          <dt>除外するパターン</dt><dd><span class="cnt">3 件</span><ul class="pats"><li class="mono">**/lost+found</li><li class="mono">archive/**</li><li class="mono">**/node_modules/**</li></ul></dd>
+          <dt>シンボリックリンクをたどる</dt><dd>いいえ<span class="t2">(既定)</span></dd>
+          <dt>隠しファイルを対象にする</dt><dd>いいえ<span class="t2">(既定)</span><span class="sub cap t2">名前が「.」で始まるファイル・ディレクトリ</span></dd>
           <dt>実行周期</dt><dd><span class="mono">0 3 * * *</span><span class="sub cap t2">Asia/Tokyo(Crawler の設定)で解釈</span></dd>
           <dt>TTL</dt><dd>30 日</dd>
           <dt>削除の割合しきい値</dt><dd>20 %</dd>
@@ -356,6 +428,45 @@ button,input,select{font:inherit;color:inherit}
     </div>
   </div>
 </div>
+</div>
+
+<div class="state" id="s2-config-default">
+<h3>設定値カード: 取得設定がすべて既定のとき</h3>
+<p class="cap t2">5 項目すべてを常に表示する。パターンがないときは「なし(既定の拡張子だけが対象)」、真偽値は「いいえ(既定)」と、既定値であることも明示する。</p>
+<div style="max-width:560px"><section class="card" aria-label="設定値(取得設定が既定)"><h2>設定値</h2>
+  <dl class="kv kv--wide">
+    <dt>識別子</dt><dd class="mono">demo-team-notes</dd>
+    <dt>種別</dt><dd>ローカルディレクトリ / ファイル共有</dd>
+    <dt>取得元のパス</dt><dd class="mono">/mnt/dummy/team-notes</dd>
+    <dt>追加で対象にするパターン</dt><dd><span class="t2">なし(既定の拡張子だけが対象)</span><span class="sub cap t2">既定の拡張子: .txt .md .markdown .html .htm .pdf(固定)</span></dd>
+    <dt>除外するパターン</dt><dd><span class="t2">なし</span></dd>
+    <dt>シンボリックリンクをたどる</dt><dd>いいえ<span class="t2">(既定)</span></dd>
+    <dt>隠しファイルを対象にする</dt><dd>いいえ<span class="t2">(既定)</span><span class="sub cap t2">名前が「.」で始まるファイル・ディレクトリ</span></dd>
+    <dt>実行周期</dt><dd><span class="none t2">手動のみ</span></dd>
+    <dt>TTL</dt><dd>30 日</dd>
+    <dt>削除の割合しきい値</dt><dd>20 %</dd>
+    <dt>最小件数</dt><dd>10 件</dd>
+  </dl></section></div>
+</div>
+
+<div class="state" id="s2-config-many">
+<h3>設定値カード: パターンが多いとき(除外 100 件・長いパターン・真偽値がオン)</h3>
+<p class="cap t2">パターンは件数と、最初の 5 件を表示し、残りは「ほか n 件を表示」で開く(開閉式)。長いパターンは折り返す(切り捨てない)。真偽値が既定と違う(オン)ときは「はい」と表示し、既定でないことが分かるようにする。</p>
+<div style="max-width:560px"><section class="card" aria-label="設定値(パターンが多い)"><h2>設定値</h2>
+  <dl class="kv kv--wide">
+    <dt>識別子</dt><dd class="mono">demo-archive-share</dd>
+    <dt>種別</dt><dd>ローカルディレクトリ / ファイル共有</dd>
+    <dt>取得元のパス</dt><dd class="mono">/mnt/dummy/archive/share/department/documents/2026/very-long-directory-name-for-wrapping-check</dd>
+    <dt>追加で対象にするパターン</dt><dd><span class="cnt">2 件</span><ul class="pats"><li class="mono">**/*.rst</li><li class="mono">@long:1024</li></ul><span class="sub cap t2">既定の拡張子(.txt .md .markdown .html .htm .pdf)に追加で対象にします。</span></dd>
+    <dt>除外するパターン</dt><dd><span class="cnt">100 件</span>(上限)<ul class="pats"><li class="mono">**/lost+found</li><li class="mono">archive/**</li><li class="mono">**/node_modules/**</li><li class="mono">**/*.draft.md</li><li class="mono">tmp/**</li></ul>
+      <details class="ghelp" style="margin-top:6px"><summary><svg class="ic chev" aria-hidden="true"><use href="#i-chev"/></svg>ほか 95 件を表示</summary><div class="gbody"><ul class="pats" data-gen="95"></ul></div></details></dd>
+    <dt>シンボリックリンクをたどる</dt><dd>はい<span class="sub cap t2">既定(いいえ)と異なります。</span></dd>
+    <dt>隠しファイルを対象にする</dt><dd>はい<span class="sub cap t2">既定(いいえ)と異なります。名前が「.」で始まるファイル・ディレクトリ</span></dd>
+    <dt>実行周期</dt><dd><span class="mono">0 3 * * *</span><span class="sub cap t2">Asia/Tokyo(Crawler の設定)で解釈</span></dd>
+    <dt>TTL</dt><dd>30 日</dd>
+    <dt>削除の割合しきい値</dt><dd>20 %</dd>
+    <dt>最小件数</dt><dd>10 件</dd>
+  </dl></section></div>
 </div>
 
 <div class="state" id="s2-lock">
@@ -485,7 +596,7 @@ button,input,select{font:inherit;color:inherit}
 
 <div class="state" id="s3-normal">
 <h3>通常(入力前)</h3>
-<p class="cap t2">必須項目は空欄で始める(既定値を補わない。AF-U-7。承認済み(ゲート C。#2))。項目の例は「例:」で示す。</p>
+<p class="cap t2">必須項目は空欄で始める(既定値を補わない。AF-U-7。承認済み(ゲート C。#2))。項目の例は「例:」で示す。取得設定は、取得元のパス(必須)だけを常に表示し、パターン・スイッチは「詳細な取得設定」(閉じて始める。クリックで開く)に置く(#38。案)。</p>
 <div class="app" data-shell="sources">
   <div class="main">
     <nav class="crumbs" aria-label="パンくず"><a href="#s3-normal">データソース</a><svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg><span class="t2" aria-current="page">登録</span></nav>
@@ -495,9 +606,7 @@ button,input,select{font:inherit;color:inherit}
         <div class="field"><label for="s3-id">識別子(source_id)<span class="req">必須</span></label><input class="input mono" id="s3-id" autocomplete="off" spellcheck="false" placeholder="例: demo-handbook" aria-describedby="s3-id-h"><span class="help" id="s3-id-h">半角英数字で始まり、半角英数字と . _ - が使えます(256 文字まで)。登録後は変更できません。</span></div>
         <div class="field"><label for="s3-type">種別<span class="req">必須</span></label><select class="input select" id="s3-type"><option>ローカルディレクトリ / ファイル共有</option></select><span class="help">登録後は変更できません。</span></div>
       </div></section>
-      <section class="card" aria-labelledby="s3b"><h2 id="s3b">取得設定</h2><div class="pad form">
-        <div class="field"><label for="s3-path">取得元のパス<span class="req">必須</span></label><input class="input mono" id="s3-path" autocomplete="off" spellcheck="false" placeholder="例: /mnt/dummy/handbook" aria-describedby="s3-path-h"><span class="help" id="s3-path-h">Crawler のコンテナから見たパス。保存時に接続の確認はしません。接続できない場合は、クロールを起動したときにジョブが失敗します。</span></div>
-      </div></section>
+      <section class="card cfgcard" data-cfg='{"p":"s3","h":"s3b","adv":false}'></section>
       <section class="card" aria-labelledby="s3c"><h2 id="s3c">実行周期</h2><div class="pad form">
         <div class="field"><label for="s3-cron">cron 式</label><input class="input mono" id="s3-cron" autocomplete="off" spellcheck="false" placeholder="例: 0 3 * * *" aria-describedby="s3-cron-h"><span class="help" id="s3-cron-h">分 時 日 月 曜日の 5 項目を空白 1 つで区切ります(例: 0 3 * * * は毎日 3:00)。空にすると手動のみで実行します。この cron は <b>Asia/Tokyo</b>(Crawler の設定)で解釈されます。</span></div>
       </div></section>
@@ -539,6 +648,31 @@ button,input,select{font:inherit;color:inherit}
 </div>
 </div>
 
+<div class="state" id="s3-config">
+<h3>取得設定(file_system の 5 項目)。「詳細な取得設定」を開いた状態(入力前)</h3>
+<p class="cap t2">取得元のパス(必須)は常に表示。パターン 2 つとスイッチ 2 つは「詳細な取得設定」(開閉式。S3 は閉じた状態で始める)に置く。パターンは 1 行 1 パターンで、「パターンを追加」で行を増やし、行ごとの削除で減らす(100 件まで)。実際に操作できる(追加・削除・入力・スイッチ)。</p>
+<div class="sections"><section class="card cfgcard" data-cfg='{"p":"s3c","h":"s3c-h","adv":true}'></section></div>
+</div>
+
+<div class="state" id="s3-config-errors">
+<h3>取得設定の入力エラー(クライアントの検証。項目別・行別)</h3>
+<p class="cap t2">送信時にエラー要約(5 件。リンクは項目・行へ移動し、閉じている「詳細な取得設定」は自動で開く)。パターンのエラーは該当の行の下に出す(「追加で対象にするパターン 3 行目」)。メッセージは Crawler の固定文と対応づけた文言(sources 2.4)。</p>
+<div class="sections">
+  <div class="alert alert--error" role="alert" tabindex="-1"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg><div class="body"><p class="ttl">入力内容を確認してください(5 件)</p>
+    <ul style="list-style:disc;padding-left:20px"><li><a href="#s3e-root" data-open>取得元のパス</a>: 「/」で始まる絶対パスで入力してください</li><li><a href="#s3e-inc-2" data-open>追加で対象にするパターン 3 行目</a>: 「**」は単独のセグメントで使います(例: **/*.md)</li><li><a href="#s3e-inc-3" data-open>追加で対象にするパターン 4 行目</a>: パターンを入力するか、この行を削除してください</li><li><a href="#s3e-exc-1" data-open>除外するパターン 2 行目</a>: 「**」を隣り合わせにできません(例: **/**)</li><li><a href="#s3e-exc-2" data-open>除外するパターン 3 行目</a>: 「\」は使えません(エスケープはありません)</li></ul></div></div>
+  <section class="card cfgcard" data-cfg='{"p":"s3e","h":"s3e-h","root":"mnt/dummy/handbook","inc":["**/*.rst","docs/**","**.md",""],"exc":["**/lost+found","a/**/**","C:\\temp"],"adv":true,"validate":true}'></section>
+</div>
+</div>
+
+<div class="state" id="s3-config-many">
+<h3>パターンが多い状態(追加で対象にするパターン 100 件=上限・1024 バイトの長いパターン・1025 バイト以上のエラー)</h3>
+<p class="cap t2">100 件に達すると「パターンを追加」が使えなくなり(<span class="mono">aria-disabled</span>)、件数は「100 / 100 件(上限)」と理由を表示する。行を削除すると再び追加できる。1 パターンは 1〜1024 バイト(UTF-8。件数・バイト数は仮値で、Admin API が値を返す。sources 2.3.2)。800 バイトを超えたら行の下にバイト数を出し、1024 を超えるとエラーにする。1 行は入力欄の中で横にスクロールする(ページは広げない)。**添字のない配列のエラー(100 件超など。貼り付けで超えた場合・サーバーが返した場合を想定)は、一覧の下(追加ボタンと件数の行の下)に出す**(この例)。</p>
+<div class="sections">
+  <div class="alert alert--error" role="alert" tabindex="-1"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg><div class="body"><p class="ttl">入力内容を確認してください(2 件)</p>
+    <ul style="list-style:disc;padding-left:20px"><li><a href="#s3m-inc-2" data-open>追加で対象にするパターン 3 行目</a>: 1 つのパターンは 1〜1,024 バイト(UTF-8)です(現在 1,030 バイト)</li><li><a href="#s3m-inc-list-add" data-open>追加で対象にするパターン</a>: パターンは 100 件までです</li></ul></div></div>
+  <section class="card cfgcard" data-cfg='{"p":"s3m","h":"s3m-h","root":"/mnt/dummy/archive","inc":["**/*.rst","@long:1024","@long:1030","@many:97"],"exc":[],"adv":true,"validate":true,"listErr":{"inc":"パターンは 100 件までです(貼り付けなどで超えた分は追加していません)"}}'></section></div>
+</div>
+
 <div class="state" id="s3-saving">
 <h3>保存中</h3>
 <p class="cap t2">送信中はボタンを無効にして二重送信を防ぎ、ボタン内に進行を示す。入力欄は変更不可にしない(失敗時に直せるよう、読み取り専用にもしない)。</p>
@@ -563,9 +697,7 @@ button,input,select{font:inherit;color:inherit}
         <div class="field"><label for="s4-id">識別子(source_id)</label><input class="input mono" id="s4-id" value="demo-handbook" readonly aria-describedby="s4-id-h"><span class="help" id="s4-id-h">登録後は変更できません。</span></div>
         <div class="field"><label for="s4-type">種別</label><input class="input" id="s4-type" value="ローカルディレクトリ / ファイル共有" readonly aria-describedby="s4-type-h"><span class="help" id="s4-type-h">登録後は変更できません。</span></div>
       </div></section>
-      <section class="card" aria-labelledby="s4b"><h2 id="s4b">取得設定</h2><div class="pad form">
-        <div class="field"><label for="s4-path">取得元のパス<span class="req">必須</span></label><input class="input mono" id="s4-path" value="/mnt/dummy/handbook" spellcheck="false"></div>
-      </div></section>
+      <section class="card cfgcard" data-cfg='{"p":"s4","h":"s4b","root":"/mnt/dummy/handbook","inc":["**/*.rst"],"exc":["**/lost+found","archive/**","**/node_modules/**"],"sym":false,"hid":false,"adv":true}'></section>
       <section class="card" aria-labelledby="s4c"><h2 id="s4c">実行周期</h2><div class="pad form">
         <div class="field"><label for="s4-cron">cron 式</label><input class="input mono" id="s4-cron" value="0 3 * * *" spellcheck="false" aria-describedby="s4-cron-h"><span class="help" id="s4-cron-h">空にすると手動のみで実行します。この cron は <b>Asia/Tokyo</b>(Crawler の設定)で解釈されます。</span></div>
       </div></section>
@@ -593,6 +725,22 @@ button,input,select{font:inherit;color:inherit}
 <h3>保存の失敗(通信エラー・Crawler の応答エラー)</h3>
 <p class="cap t2">入力内容は残したまま、フォーム上部に消えないアラートを出す(スナックバーは使わない)。項目別のエラーは S3 の検証エラーと同じ形。</p>
 <div style="max-width:720px"><div class="alert alert--error" role="alert"><svg class="ic" aria-hidden="true"><use href="#i-fail"/></svg><div class="body"><p class="ttl">設定を保存できませんでした</p><p>Crawler に接続できません。入力内容はそのままです。時間をおいて、もう一度保存してください。</p></div></div></div>
+</div>
+
+<div class="state" id="s4-config-server">
+<h3>保存の失敗: Crawler の検証エラー(<span class="mono">config_invalid</span>)を項目別に表示</h3>
+<p class="cap t2">Crawler は最初の違反 1 件を「項目名(配列は添字): 違反の種類(固定文)」で返す。Admin API が項目と固定文に分けて返す前提(申し送り)で、画面は該当の行の下に出す。入力内容は残す。この例は、画面の検証をすり抜けた違反をサーバーが拒否した想定(画面とサーバーの規則は同じだが、最終の判定はサーバー)。</p>
+<div class="sections">
+  <div class="alert alert--error" role="alert" tabindex="-1"><svg class="ic" aria-hidden="true"><use href="#i-fail"/></svg><div class="body"><p class="ttl">設定を保存できませんでした(1 件)</p>
+    <ul style="list-style:disc;padding-left:20px"><li><a href="#s4s-exc-1" data-open>除外するパターン 2 行目</a>: 「**」を隣り合わせにできません(例: **/**)</li></ul><p>入力内容はそのままです。直してから、もう一度保存してください。</p></div></div>
+  <section class="card cfgcard" data-cfg='{"p":"s4s","h":"s4s-h","root":"/mnt/dummy/handbook","inc":["**/*.rst"],"exc":["**/lost+found","archive/**/**"],"adv":true,"srv":{"exclude_patterns[1]":"`**` のセグメントが隣り合っている"}}'></section>
+</div>
+</div>
+
+<div class="state" id="s4-config-default">
+<h3>取得設定がすべて既定のとき(「詳細な取得設定」を閉じて始める)</h3>
+<p class="cap t2">S4 は、既定と違う値(パターンがある・スイッチがオン)がなければ「詳細な取得設定」を閉じて始める。見出し行の要約(追加パターン なし / 除外パターン なし / シンボリックリンク: たどらない / 隠しファイル: 対象にしない)で、閉じていても現在の設定が分かる。クリックで開ける。</p>
+<div class="sections"><section class="card cfgcard" data-cfg='{"p":"s4d","h":"s4d-h","root":"/mnt/dummy/team-notes","inc":[],"exc":[],"sym":false,"hid":false,"adv":false}'></section></div>
 </div>
 
 <div class="state" id="s4-deleting">
@@ -662,6 +810,175 @@ document.addEventListener('keydown',function(e){
   if(e.key!=='Escape') return;
   var open=document.querySelector('.app.nav-open'); if(open){ setNav(open,false); open.querySelector('[data-nav-toggle]').focus(); }
 });
+</script>
+<script>
+/* 取得設定(file_system の connector_config 5 項目)の表示用の組み立てと、パターン一覧の追加・削除・検証、スイッチ、エラー要約からの移動。
+   仕様: admin/sources-v0.1.md 2.3・2.3.1・2.3.2。上限(100 件・1024 バイト)は仮値で、実装では Admin API が返す値を使う。検索・API の処理ではない。 */
+(function(){
+var LIM={max:100,bytes:1024};
+var EXTS='.txt .md .markdown .html .htm .pdf';
+var LBL={inc:'追加で対象にするパターン',exc:'除外するパターン'};
+var KEY={inc:'include_patterns',exc:'exclude_patterns'};
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');}
+function utf8(s){return new TextEncoder().encode(s).length;}
+function num(n){return String(n).replace(/\B(?=(\d{3})+(?!\d))/g,',');}
+/* 指定バイト数ちょうどの有効なパターン(ダミー。表示確認用): 区切りのセグメントを並べ、最後の「**」の前を埋める */
+function longPat(n){ var s='',i=0; while(utf8(s+'archive-2026-section-'+i+'/**')<n-12){ s+='archive-2026-section-'+i+'/'; i++; } s+='**'; var pad=n-utf8(s); return pad>0?s.replace(/\/\*\*$/,'x'.repeat(pad)+'/**'):s; }
+function expand(v){ return /^@long:(\d+)$/.test(v)?longPat(+RegExp.$1):v; }
+function updateSum(card){
+  var p=card.querySelector('.advsum'); if(!p) return;
+  var inc=(card.querySelector('[data-k="inc"]')._v||[]).length,exc=(card.querySelector('[data-k="exc"]')._v||[]).length;
+  var sym=card.querySelector('[data-sw="sym"]').checked,hid=card.querySelector('[data-sw="hid"]').checked;
+  p.innerHTML=sumHTML(inc,exc,sym,hid);
+}
+/* 折りたたみの要約。語の途中で折り返さないよう、項目ごとにまとまりにする */
+function sumHTML(inc,exc,sym,hid){
+  return ['追加パターン '+(inc?inc+' 件':'なし'),'除外パターン '+(exc?exc+' 件':'なし'),'シンボリックリンク: '+(sym?'たどる':'たどらない'),'隠しファイル: '+(hid?'対象にする':'対象にしない')].map(function(t){return '<span class="sumi">'+t+'</span>';}).join(' ');
+}
+/* 行の下の注記(バイト数・前後の空白)と、入力欄の aria-describedby(エラー・注記の id を毎回まとめて組み立てる) */
+function notesHTML(id,v){
+  var n=utf8(v),h='';
+  if(n>800) h+='<span class="plbytes'+(n>LIM.bytes?' plbytes--over':'')+'" id="'+id+'-b">'+num(n)+' / '+num(LIM.bytes)+' バイト</span>';
+  if(v!==v.trim()) h+='<span class="help help--warn plws" id="'+id+'-w"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>前後の空白も、パターンの一部として扱われます。</span>';
+  return h;
+}
+function updateDesc(inp){ var ids=[]; inp.closest('.plin').querySelectorAll('.plbytes,.plws,.errmsg').forEach(function(x){ids.push(x.id);}); if(ids.length) inp.setAttribute('aria-describedby',ids.join(' ')); else inp.removeAttribute('aria-describedby'); }
+/* 画面の検証(Crawler の固定文と対応。FS 設計 2.2。順序は patterns.py と同じ) */
+function patMsg(s){
+  if(s==='') return 'パターンを入力するか、この行を削除してください';
+  var n=utf8(s); if(n>LIM.bytes) return '1 つのパターンは 1〜'+num(LIM.bytes)+' バイト(UTF-8)です(現在 '+num(n)+' バイト)';
+  if(s.indexOf('\u0000')>=0) return '使えない文字(NUL)が含まれています';
+  if(s.indexOf('\\')>=0) return '「\\」は使えません(エスケープはありません)';
+  var seg=s.split('/');
+  if(seg.indexOf('')>=0) return '先頭・末尾・連続する「/」は使えません';
+  if(seg.some(function(x){return x==='.'||x==='..';})) return '「.」「..」のセグメントは使えません';
+  if(seg.some(function(x){return x.indexOf('**')>=0&&x!=='**';})) return '「**」は単独のセグメントで使います(例: **/*.md)';
+  for(var i=0;i<seg.length-1;i++) if(seg[i]==='**'&&seg[i+1]==='**') return '「**」を隣り合わせにできません(例: **/**)';
+  return '';
+}
+function rootMsg(v){
+  if(v==='') return '取得元のパスを入力してください';
+  if(v.charAt(0)!=='/') return '「/」で始まる絶対パスで入力してください';
+  if(v.indexOf('\u0000')>=0) return '使えない文字(NUL)が含まれています';
+  if(v.indexOf('//')>=0) return '連続する「/」は使えません';
+  if(v.replace(/\/$/,'').split('/').some(function(x){return x==='.'||x==='..';})) return '「.」「..」のセグメントは使えません';
+  return '';
+}
+var SRV={'`**` のセグメントが隣り合っている':'「**」を隣り合わせにできません(例: **/**)'}; /* Crawler の固定文 → 画面の文言 */
+function err(id,msg){return '<span class="errmsg" id="'+id+'"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg>'+esc(msg)+'</span>';}
+function listHTML(c,k){
+  var p=c.p,id=p+'-'+k+'-list',vals=c[k]||[],lab=LBL[k],key=KEY[k].replace(/_/g,'-');
+  var help=k==='inc'
+    ?'既定の拡張子('+EXTS+')に<b>追加</b>で対象にするパターンです。対象を絞る用途には使えません(絞るには下の「除外するパターン」を使います)。<b>「docs/**」のような拡張子を問わないパターンは、対応していない形式のファイルも取り込み対象になり、抽出の失敗が大量に出ることがあります。</b>'
+    :'一致したファイル・ディレクトリを対象から除きます。ディレクトリに一致すると、配下は調べません。例: 「**/node_modules/**」。';
+  return '<div class="field plist" role="group" aria-labelledby="'+id+'-l" aria-describedby="'+id+'-h" data-k="'+k+'" data-p="'+p+'" id="'+id+'" data-testid="source-form-'+key+'">'+
+    '<span class="lbl" id="'+id+'-l">'+lab+'<span class="opt" aria-hidden="true">任意</span></span><span class="help" id="'+id+'-h">'+help+'</span>'+
+    '<ul class="plrows"></ul><div class="plfoot"><button class="btn btn--outlined btn--sm" type="button" data-add id="'+id+'-add" data-testid="source-form-'+key+'-add"><svg class="ic" aria-hidden="true"><use href="#i-plus"/></svg>パターンを追加</button><span class="plcount"></span></div>'+
+    '<span class="help help--warn plmax" hidden><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>上限の '+LIM.max+' 件に達しました。追加するには、不要な行を削除してください。</span>'+
+    '<p class="sr-only" role="status" data-status></p></div>';
+}
+function rowsHTML(L){
+  var p=L._p,k=L._k,lab=LBL[k],key=KEY[k].replace(/_/g,'-'),h='';
+  if(!L._v.length) return '<li class="plempty">パターンはありません'+(k==='inc'?'(既定の拡張子だけが対象です)':'')+'。</li>';
+  L._v.forEach(function(v,i){
+    var id=p+'-'+k+'-'+i, m=L._e[i]||'', n=utf8(v), mid=id+'-m';
+    var desc=[]; if(n>800) desc.push(id+'-b'); if(v!==v.trim()) desc.push(id+'-w'); if(m) desc.push(mid);
+    h+='<li class="plrow'+(m?' plrow--err':'')+'"><span class="no" aria-hidden="true">'+(i+1)+'</span><div class="plin"><label class="sr-only" for="'+id+'">'+lab+' '+(i+1)+' 行目</label>'+
+      '<input class="input mono" id="'+id+'" data-i="'+i+'" value="'+esc(v)+'" autocomplete="off" spellcheck="false" data-testid="source-form-'+key+'-'+i+'"'+(m?' aria-invalid="true"':'')+(desc.length?' aria-describedby="'+desc.join(' ')+'"':'')+'>'+
+      notesHTML(id,v)+(m?err(mid,m):'')+'</div>'+
+      '<button class="btn btn--outlined btn--icon" type="button" data-del="'+i+'" aria-label="'+lab+' '+(i+1)+' 行目を削除" data-testid="source-form-'+key+'-remove-'+i+'"><svg class="ic" aria-hidden="true"><use href="#i-trash"/></svg></button></li>';
+  });
+  return h;
+}
+function paint(L,focusSel){
+  L.querySelector('.plrows').innerHTML=rowsHTML(L);
+  var n=L._v.length,max=n>=LIM.max,cnt=L.querySelector('.plcount'),add=L.querySelector('[data-add]');
+  cnt.textContent=n+' / '+LIM.max+' 件'+(max?'(上限)':''); cnt.className='plcount'+(max?' plcount--max':'');
+  add.setAttribute('aria-disabled',max); L.querySelector('.plmax').hidden=!max;
+  var le=L.querySelector('.pllist-err'); if(le) le.remove();
+  /* 添字のない配列のエラー(100 件超など)は、一覧の下(追加ボタンと件数の行の下)に出す */
+  if(L._le) L.querySelector('.plfoot').insertAdjacentHTML('afterend',err(L.id+'-le',L._le).replace('class="errmsg"','class="errmsg pllist-err"'));
+  L.setAttribute('aria-describedby',L.id+'-h'+(L._le?' '+L.id+'-le':''));
+  var card=L.closest('.cfgcard'); if(card&&card.querySelector('[data-sw]')) updateSum(card);
+  if(focusSel){ var t=L.querySelector(focusSel); if(t) t.focus(); }
+}
+function say(L,t){L.querySelector('[data-status]').textContent=t;}
+function setRowErr(L,i,m){ /* 行のエラーだけを書き換える(再描画しない=フォーカスと押下を壊さない) */
+  L._e[i]=m; var li=L.querySelectorAll('.plrow')[i]; if(!li) return;
+  var inp=li.querySelector('input'),box=li.querySelector('.plin'),old=box.querySelector('.errmsg'); if(old) old.remove();
+  li.classList.toggle('plrow--err',!!m); if(m){ inp.setAttribute('aria-invalid','true'); box.insertAdjacentHTML('beforeend',err(inp.id+'-m',m)); } else { inp.removeAttribute('aria-invalid'); }
+  updateDesc(inp);
+}
+function initList(L,c,k){
+  L._p=c.p; L._k=k; L._v=(c[k]||[]).map(function(v){return expand(v);}); L._e={}; L._le=(c.listErr||{})[k]||'';
+  if(k==='inc'&&c.p==='s3m'){ var m=[]; for(var i=0;i<97;i++) m.push('docs/area-'+(i<10?'0':'')+i+'/**'); L._v=L._v.filter(function(v){return v!=='@many:97';}).concat(m); }
+  L._tt=L._v.map(function(v){return v!=='';}); /* 一度でも入力があった行(空の行のエラーは、入力があった後か送信時から出す) */
+  if(c.validate) L._v.forEach(function(v,i){ var m=patMsg(v); if(m) L._e[i]=m; });
+  if(c.srv) L._v.forEach(function(v,i){ var s=c.srv[KEY[k]+'['+i+']']; if(s) L._e[i]=SRV[s]||s; });
+  paint(L);
+}
+function cfgHTML(c){
+  var p=c.p,rm=c.validate?rootMsg(c.root||''):'';
+  if(c.srv&&c.srv.root) rm=c.srv.root;
+  var rid=p+'-root',sub=[];
+  var inc=(c.inc||[]).length,exc=(c.exc||[]).length;
+  sub.push('追加パターン '+(inc?inc+' 件':'なし')); sub.push('除外パターン '+(exc?exc+' 件':'なし')); sub.push('シンボリックリンク: '+(c.sym?'たどる':'たどらない')); sub.push('隠しファイル: '+(c.hid?'対象にする':'対象にしない'));
+  return '<h2 id="'+c.h+'">取得設定</h2><div class="pad form">'+
+   '<p class="cap t2" style="margin-top:-8px">種別「ローカルディレクトリ / ファイル共有」の設定項目です。</p>'+
+   '<div class="field'+(rm?' field--error':'')+'"><label for="'+rid+'">取得元のパス<span class="req">必須</span></label><input class="input mono" id="'+rid+'" data-root value="'+esc(c.root||'')+'" autocomplete="off" spellcheck="false" placeholder="例: /mnt/dummy/handbook" data-testid="source-form-root" aria-describedby="'+rid+'-h'+(rm?' '+rid+'-m':'')+'"'+(rm?' aria-invalid="true"':'')+'><span class="help" id="'+rid+'-h">Crawler のコンテナから見た、検索対象のディレクトリの絶対パス(「/」で始まる)。末尾の「/」は除いて保存されます。保存時に接続の確認はしません。接続できない場合は、クロールを起動したときにジョブが失敗します。</span>'+(rm?err(rid+'-m',rm):'')+'</div>'+
+   '<details class="adv" id="'+p+'-adv" data-testid="source-form-config-details"'+(c.adv?' open':'')+'><summary><svg class="ic chev" aria-hidden="true"><use href="#i-chev"/></svg>詳細な取得設定<span class="advsum">'+sumHTML(inc,exc,c.sym,c.hid)+'</span></summary><div class="advbody">'+
+   '<div class="extnote"><span class="lbl" style="font-weight:600">既定の拡張子(固定。ここでは変更できません)</span><span class="exts">'+EXTS.split(' ').map(function(x){return '<span class="mono">'+x+'</span>';}).join('')+'</span><span class="help">ファイル名の最後の拡張子(大文字小文字は区別しません)で判定します。次の 2 つのパターンで、対象を増やしたり除いたりできます。</span></div>'+
+   listHTML(c,'inc')+listHTML(c,'exc')+
+   '<details class="ghelp"><summary><svg class="ic chev" aria-hidden="true"><use href="#i-chev"/></svg>パターンの書き方と例</summary><div class="gbody"><p>パターンは、取得元のパスからの相対パス(区切りは「/」)の<b>全体</b>に一致させます。</p>'+
+   '<dl><dt><code>*</code></dt><dd>「/」以外の 0 文字以上</dd><dt><code>?</code></dt><dd>「/」以外の 1 文字</dd><dt><code>**</code></dt><dd>0 個以上のセグメント。必ず単独のセグメントで書く(<code>docs/**</code> は docs 自体と配下すべて。<code>**.md</code> は不可、<code>**/*.md</code> と書く)</dd></dl>'+
+   '<ul><li><code>docs/**</code>: docs ディレクトリとその配下すべて</li><li><code>**/*.draft.md</code>: どの深さの「.draft.md」で終わるファイルも</li><li><code>**/node_modules/**</code>: どの深さの node_modules も(配下を含む)</li><li><code>*.md</code> は取得元の直下の .md だけ(どの深さでも対象にするなら <code>**/*.md</code>)</li></ul>'+
+   '<p class="help">大文字小文字は区別します。「[ ]」「{ }」は文字そのものです。「\\」は使えません。先頭・末尾に「/」を付けず、「.」「..」のセグメントや「**」の連続(<code>**/**</code>)は使えません。同じパターンを重ねて書いても構いません。</p>'+
+   '<p class="help">名前が「.」で始まるものは、「隠しファイルを対象にする」がオフの間は、パターンに一致しても対象になりません。除外のパターンは、追加のパターンより優先されます。</p></div></details>'+
+   sw(c,'sym','シンボリックリンクをたどる','follow-symlinks','オフ(既定)のとき、シンボリックリンクはたどらず、対象にもしません。','オンにすると、リンクの先のファイル・ディレクトリも対象になります。取得元の外を指すリンク、壊れたリンク、循環するリンクは無視されます。同じファイルへのリンクが複数あると、パスごとに別の文書として登録されます。')+
+   sw(c,'hid','隠しファイルを対象にする','include-hidden','名前が「.」で始まるファイル・ディレクトリ(.git、.DS_Store など)です。オフ(既定)のとき、対象にしません。','オンにすると、名前が「.」で始まるファイル・ディレクトリも対象になります。「.git」の中のファイルや macOS の付属ファイルなどが対象になることがあります。')+
+   '</div></details></div>';
+}
+function sw(c,f,label,tid,help,warn){
+  var id=c.p+'-'+tid,on=!!c[f];
+  return '<div class="swrow"><input class="sw" type="checkbox" role="switch" id="'+id+'" data-sw="'+f+'" data-testid="source-form-'+tid+'"'+(on?' checked':'')+' aria-describedby="'+id+'-h'+(on?' '+id+'-w':'')+'"><div class="swbody"><label for="'+id+'">'+label+'<span class="swst" aria-hidden="true">'+(on?'オン':'オフ(既定)')+'</span></label><span class="help" id="'+id+'-h">'+help+'</span><span class="help help--warn" id="'+id+'-w"'+(on?'':' hidden')+'><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>'+warn+'</span></div></div>';
+}
+document.querySelectorAll('.cfgcard').forEach(function(card){
+  var c=JSON.parse(card.getAttribute('data-cfg')); card.setAttribute('aria-labelledby',c.h); card.innerHTML=cfgHTML(c);
+  initList(card.querySelector('[data-k="inc"]'),c,'inc'); initList(card.querySelector('[data-k="exc"]'),c,'exc'); updateSum(card);
+  /* 初期に見せるエラー(サーバーの項目別エラー・クライアントの検証)は、リンク先の id を持つ */
+});
+document.addEventListener('click',function(e){
+  var add=e.target.closest('[data-add]');
+  if(add){ var L=add.closest('.plist'); if(add.getAttribute('aria-disabled')==='true') return; L._v.push(''); L._tt.push(false); paint(L,'.plrow:last-child input'); say(L,L._v.length+' 行目を追加しました(全 '+L._v.length+' 件'+(L._v.length>=LIM.max?'。上限に達しました':'')+')'); return; }
+  var del=e.target.closest('[data-del]');
+  if(del){ var L2=del.closest('.plist'),i=+del.getAttribute('data-del'); L2._v.splice(i,1); L2._tt.splice(i,1); var ne={}; Object.keys(L2._e).forEach(function(k){k=+k; if(k<i) ne[k]=L2._e[k]; else if(k>i) ne[k-1]=L2._e[k];}); L2._e=ne;
+    var j=Math.min(i,L2._v.length-1); paint(L2, L2._v.length?'.plrow:nth-child('+(j+1)+') input':'[data-add]'); say(L2,(i+1)+' 行目を削除しました(残り '+L2._v.length+' 件)'); return; }
+  var link=e.target.closest('a[data-open]');
+  if(link){ var t=document.querySelector(link.getAttribute('href')); if(t){ var d=t.closest('details'); while(d){ d.open=true; d=d.parentElement&&d.parentElement.closest('details'); } e.preventDefault(); t.focus(); t.scrollIntoView({block:'center'}); } }
+});
+document.addEventListener('input',function(e){
+  var el=e.target; if(el.matches&&el.matches('input[data-i]')){ var L=el.closest('.plist'),i=+el.getAttribute('data-i'); L._v[i]=el.value; if(el.value!=='') L._tt[i]=true;
+    el.closest('.plin').querySelectorAll('.plbytes,.plws').forEach(function(x){x.remove();}); el.insertAdjacentHTML('afterend',notesHTML(el.id,el.value)); updateDesc(el); }
+});
+document.addEventListener('focusout',function(e){ /* 項目からフォーカスが外れたときに検証する。パターンは入力欄だけ(削除・追加のボタンでは何もしない)。空の行は、一度入力があった後からエラーにする */
+  var el=e.target; if(el.matches&&el.matches('input[data-i]')){ var L=el.closest('.plist'),i=+el.getAttribute('data-i'); setRowErr(L,i,(el.value===''&&!L._tt[i])?'':patMsg(el.value)); }
+  else if(el.matches&&el.matches('[data-root]')){ var f=el.closest('.field'),m=rootMsg(el.value),o=f.querySelector('.errmsg'); if(o) o.remove(); f.classList.toggle('field--error',!!m); if(m){ el.setAttribute('aria-invalid','true'); f.insertAdjacentHTML('beforeend',err(el.id+'-m',m)); el.setAttribute('aria-describedby',el.id+'-h '+el.id+'-m'); } else { el.removeAttribute('aria-invalid'); el.setAttribute('aria-describedby',el.id+'-h'); } }
+});
+document.addEventListener('keydown',function(e){ /* パターンの入力欄で Enter: フォームを送信せず、下に新しい行を追加して移る(入力が空のときは何もしない)。ボタンの Enter は通常どおり */
+  var el=e.target; if(e.key!=='Enter'||!el.matches||!el.matches('input[data-i]')) return; e.preventDefault();
+  var L=el.closest('.plist'),i=+el.getAttribute('data-i'); if(el.value===''||L._v.length>=LIM.max) return;
+  L._v.splice(i+1,0,''); L._tt.splice(i+1,0,false); var ne={}; Object.keys(L._e).forEach(function(k){k=+k; ne[k>i?k+1:k]=L._e[k];}); L._e=ne; paint(L,'.plrow:nth-child('+(i+2)+') input'); say(L,(i+2)+' 行目を追加しました(全 '+L._v.length+' 件'+(L._v.length>=LIM.max?'。上限に達しました':'')+')');
+});
+document.addEventListener('change',function(e){
+  var s=e.target; if(!s.matches||!s.matches('.sw')) return;
+  var b=s.closest('.swrow'),st=b.querySelector('.swst'),w=b.querySelector('.help--warn'); st.textContent=s.checked?'オン':'オフ(既定)'; w.hidden=!s.checked;
+  var d=s.getAttribute('aria-describedby').split(' ').filter(function(x){return x!==w.id;}); if(s.checked) d.push(w.id); s.setAttribute('aria-describedby',d.join(' '));
+  updateSum(s.closest('.cfgcard')); /* 折りたたみの要約を更新 */
+});
+/* S2: 長い一覧の「ほか n 件」と長いパターンの展開(表示用) */
+document.querySelectorAll('.pats li.mono').forEach(function(li){ var t=li.textContent; if(/^@long:/.test(t)) li.textContent=expand(t); });
+document.querySelectorAll('[data-gen]').forEach(function(u){ var n=+u.getAttribute('data-gen'),h=''; for(var i=0;i<n;i++) h+='<li class="mono">backup/area-'+(i<10?'0':'')+i+'/**</li>'; u.innerHTML=h; });
+})();
 </script>
 </body>
 </html>
