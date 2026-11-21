@@ -12,6 +12,7 @@
   - OpenSearch 汎用の情報だけを出す(機能設計書 UC-1・UC-8)。データソース・ジョブなど Loreley 固有の概念は画面に含めない。読み取り専用で、操作は「更新」だけ。
   - JavaScript は 3 つだけ: (1) 画面枠(サイドバー・上部バー)の複製(表示用)、(2) 狭い画面のナビ開閉(スクリム・Esc でも閉じる)、(3) シャード配置マトリクスの表示用の組み立てとページ送り(下の <script> 2 つ目。ダミーデータから表を組むだけで、検索・API の処理はしない)。
   - 未実装(実装時に付ける): 列が収まらず表の外側が横スクロールしたときの、スクロール領域の tabindex="0"・role="region"・aria-label(opensearch-v0.1.md 3.4 の保険)。端のボタンは aria-disabled だけを付けている。実装ではクリックのハンドラでもガードする。
+  - インデックス一覧のカードは廃止した(ユーザー指示 2026-11-22。承認済み)。ドキュメント件数はシャード配置の列見出しの、インデックス名の直下に出す(ユーザー指示。承認済み)。状態タグは最下段(案)。プライマリ数・レプリカ数の数値は出さない。列見出しの「シャード n」は外した(案)。件数は 9 桁まで 1 行、10〜11 桁は「件」だけ折り返し、12 桁以上は想定外(見出しからはみ出しうる。`white-space:nowrap` のまま)。O1 は 2 カード(クラスタの状態・シャードの配置)。
   - シャードの配置は、ユーザー指示(2026-11-22)で「行=ノード、列=インデックス+列のページング」に改訂した(DS 4.15、opensearch-v0.1.md 3.3・3.4)。向きとページングは承認済み。1 ページの列数・並び順・細部は案。
 -->
 <style>
@@ -181,6 +182,7 @@ button,input,select{font:inherit;color:inherit}
 /* シャード配置マトリクス(行=ノード、列=インデックス。列をページングする)。DS 4.15 */
 .mxbar{display:flex;align-items:center;justify-content:space-between;gap:8px 16px;flex-wrap:wrap;padding:8px 16px;border-bottom:1px solid rgba(var(--v-border-color),var(--v-border-opacity));min-height:52px}
 .mxcount{font-weight:600}
+.mxnote span{display:inline-block}
 .mxnav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .mxnav .per{display:flex;align-items:center;gap:8px}
 .mxnav .per select{height:32px;width:96px}
@@ -194,9 +196,14 @@ button,input,select{font:inherit;color:inherit}
 .mxt .nd{background:rgb(var(--v-theme-surface));padding:8px 12px;display:table-cell}
 .mxt .nd .mono{display:block;overflow-wrap:anywhere;font-weight:600}
 .mxt .nd .cap{display:block}
-.mxt .ixh .in{display:grid;gap:4px;justify-items:start}
+.mxt .ixh{height:1px}
+.mxt .ixh .in{display:grid;gap:4px;justify-items:start;height:100%;grid-template-rows:auto auto 1fr;align-content:stretch}
+.mxt .ixh .in .tag{align-self:end}
 .mxt .ixn{font-family:var(--font-mono);font-size:.75rem;line-height:1.4;font-weight:600;overflow-wrap:anywhere;color:rgb(var(--v-theme-on-surface))}
-.mxt .ixh .cap{font-weight:400;color:rgb(var(--v-theme-on-surface-variant))}
+.mxt .cnt{font-size:.75rem;line-height:1.4;font-variant-numeric:tabular-nums;color:rgb(var(--v-theme-on-surface));font-weight:400}
+.mxt .cnt .n{white-space:nowrap}
+.mxt .cnt .u{color:rgb(var(--v-theme-on-surface-variant))}
+.mxt .cnt.none{color:rgb(var(--v-theme-on-surface-variant))}
 .mxt td{min-height:48px;height:48px}
 .mxt tr.ua td{background:rgba(var(--v-theme-warning-container),.4);border-top:1px dashed rgb(var(--v-theme-warning))}
 .mxt tr.ua .nd{background:rgb(var(--v-theme-warning-container));color:rgb(var(--v-theme-on-warning-container))}
@@ -316,27 +323,15 @@ button,input,select{font:inherit;color:inherit}
 <!-- ===== 通常 ===== -->
 <div class="state" id="o1-normal">
 <h3>通常: クラスタが green(2 ノード)</h3>
-<p class="cap t2">上から、クラスタの状態 → インデックス → シャードの配置。操作は「更新」だけ(手動のみ。自動更新はしない)。</p>
+<p class="cap t2">上から、クラスタの状態 → シャードの配置(インデックス一覧は廃止し、配置の列見出しに状態とドキュメント件数を出す。ユーザー指示 2026-11-22)。操作は「更新」だけ(手動のみ。自動更新はしない)。</p>
 <div class="app" data-shell="opensearch">
   <div class="main">
-    <div class="pagehead"><div><h1>OpenSearch</h1><p class="desc t2">OpenSearch のクラスタの状態、インデックス、シャードの配置を確認します。この画面は読み取り専用で、インデックスの削除・シャードの再配置・設定の変更はできません。</p></div>
+    <div class="pagehead"><div><h1>OpenSearch</h1><p class="desc t2">OpenSearch のクラスタの状態と、インデックスごとのドキュメント件数・シャードの配置を確認します。この画面は読み取り専用で、インデックスの削除・シャードの再配置・設定の変更はできません。</p></div>
       <div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
     <div class="stack">
       <section class="card" aria-labelledby="c-cl" data-testid="o1-cluster"><h2 id="c-cl">クラスタの状態</h2>
         <dl class="kv"><dt>クラスタ名</dt><dd class="mono">demo-cluster</dd><dt>状態</dt><dd><span class="tag tag--success"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>green(正常)</span><span class="cap t2 sub">すべてのシャードが割り当てられています。</span></dd></dl>
         <dl class="stats"><div><dt>ノード</dt><dd>2</dd></div><div><dt>アクティブなシャード</dt><dd>6</dd></div><div><dt>未割り当てのシャード</dt><dd>0</dd></div><div><dt>初期化中・移動中</dt><dd>0</dd></div></dl>
-      </section>
-      <section class="card" aria-labelledby="c-ix" data-testid="o1-indices"><h2 id="c-ix">インデックス</h2>
-        <div class="toolbar"><span class="count">3 件</span></div>
-        <div class="tablewrap"><table class="dt">
-          <caption class="sr-only">インデックス一覧。名前の昇順</caption>
-          <thead><tr><th scope="col" aria-sort="ascending">インデックス名<svg class="ic" aria-hidden="true" style="width:14px;height:14px;vertical-align:-2px"><use href="#i-sort"/></svg></th><th scope="col">状態</th><th scope="col" class="num">ドキュメント件数</th><th scope="col" class="num">プライマリ</th><th scope="col" class="num">レプリカ</th></tr></thead>
-          <tbody>
-            <tr><td data-label="インデックス名"><span class="mono">demo-docs-000001</span></td><td data-label="状態"><span class="tag tag--success"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>green</span></td><td class="num" data-label="ドキュメント件数">12,846</td><td class="num" data-label="プライマリ">1</td><td class="num" data-label="レプリカ">1</td></tr>
-            <tr><td data-label="インデックス名"><span class="mono">demo-store-jobs</span></td><td data-label="状態"><span class="tag tag--success"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>green</span></td><td class="num" data-label="ドキュメント件数">1,204</td><td class="num" data-label="プライマリ">1</td><td class="num" data-label="レプリカ">1</td></tr>
-            <tr><td data-label="インデックス名"><span class="mono">demo-store-sources</span></td><td data-label="状態"><span class="tag tag--success"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>green</span></td><td class="num" data-label="ドキュメント件数">6</td><td class="num" data-label="プライマリ">1</td><td class="num" data-label="レプリカ">1</td></tr>
-          </tbody></table></div>
-        <div class="pager"><div class="per"><label for="pp-o1">1 ページの件数</label><select class="input select" id="pp-o1"><option>25</option><option>50</option><option>100</option></select></div><span>1–3 / 3 件</span><div class="rowacts"><button class="btn btn--outlined btn--icon btn--sm" type="button" aria-label="前のページ" disabled><svg class="ic" aria-hidden="true"><use href="#i-chev-l"/></svg></button><button class="btn btn--outlined btn--icon btn--sm" type="button" aria-label="次のページ" disabled><svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg></button></div></div>
       </section>
       <section class="card" aria-labelledby="c-sh" data-testid="o1-shards"><h2 id="c-sh">シャードの配置</h2>
         <div class="mxhost" data-ds="normal"></div>
@@ -358,17 +353,6 @@ button,input,select{font:inherit;color:inherit}
         <dl class="kv"><dt>クラスタ名</dt><dd class="mono">demo-cluster</dd><dt>状態</dt><dd><span class="tag tag--warning"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>yellow(注意)</span><span class="cap t2 sub">プライマリシャードはすべて割り当てられていますが、一部のレプリカシャードが割り当てられていません。単一ノードでレプリカが 1 以上のインデックスは、通常 yellow になります。</span></dd></dl>
         <dl class="stats"><div><dt>ノード</dt><dd>1</dd></div><div><dt>アクティブなシャード</dt><dd>3</dd></div><div><dt>未割り当てのシャード</dt><dd>3</dd></div><div><dt>初期化中・移動中</dt><dd>0</dd></div></dl>
       </section>
-      <section class="card" aria-labelledby="c-ix2"><h2 id="c-ix2">インデックス</h2>
-        <div class="toolbar"><span class="count">3 件</span></div>
-        <div class="tablewrap"><table class="dt">
-          <caption class="sr-only">インデックス一覧。名前の昇順</caption>
-          <thead><tr><th scope="col" aria-sort="ascending">インデックス名</th><th scope="col">状態</th><th scope="col" class="num">ドキュメント件数</th><th scope="col" class="num">プライマリ</th><th scope="col" class="num">レプリカ</th></tr></thead>
-          <tbody>
-            <tr><td data-label="インデックス名"><span class="mono">demo-docs-000001</span></td><td data-label="状態"><span class="tag tag--warning"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>yellow</span></td><td class="num" data-label="ドキュメント件数">12,846</td><td class="num" data-label="プライマリ">1</td><td class="num" data-label="レプリカ">1</td></tr>
-            <tr><td data-label="インデックス名"><span class="mono">demo-store-jobs</span></td><td data-label="状態"><span class="tag tag--warning"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>yellow</span></td><td class="num" data-label="ドキュメント件数">1,204</td><td class="num" data-label="プライマリ">1</td><td class="num" data-label="レプリカ">1</td></tr>
-            <tr><td data-label="インデックス名"><span class="mono">demo-store-sources</span></td><td data-label="状態"><span class="tag tag--warning"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>yellow</span></td><td class="num" data-label="ドキュメント件数">6</td><td class="num" data-label="プライマリ">1</td><td class="num" data-label="レプリカ">1</td></tr>
-          </tbody></table></div>
-      </section>
       <section class="card" aria-labelledby="c-sh2"><h2 id="c-sh2">シャードの配置</h2>
         <div class="mxhost" data-ds="yellow"></div>
       </section>
@@ -380,7 +364,7 @@ button,input,select{font:inherit;color:inherit}
 <!-- ===== red ===== -->
 <div class="state" id="o1-red">
 <h3>red: 未割り当てのプライマリシャードがある</h3>
-<p class="cap t2">ページ上部にエラーのアラートを出す(取得は成功しているので <span class="mono">role="status"</span>)。インデックス一覧は通常と同じ形のため、ここでは省略している。</p>
+<p class="cap t2">ページ上部にエラーのアラートを出す(取得は成功しているので <span class="mono">role="status"</span>)。red のインデックスは、ドキュメント件数を取得できないことがあるため、列見出しの件数を「—」にしている(取得不能の見本)。</p>
 <div class="app" data-shell="opensearch">
   <div class="main">
     <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
@@ -401,7 +385,7 @@ button,input,select{font:inherit;color:inherit}
 <!-- ===== 未割り当てあり(複数ノード) ===== -->
 <div class="state" id="o1-unassigned">
 <h3>未割り当てあり: 2 ノード。未割り当てのレプリカ 1 つ、移動中・初期化中のシャード各 1 つ</h3>
-<p class="cap t2">行はノード、列はインデックス。未割り当てのシャードは、最下部の「未割り当て」の行に点線のチップで並べる(未割り当てがあるときだけ出る行)。状態の悪い順に並ぶため、yellow のインデックスが先頭の列になる。移動中と初期化中は見た目が同じ(青のチップ+矢印)で、読み上げの文だけが違う。クラスタの状態・インデックスのカードは通常と同じ形のため省略している。</p>
+<p class="cap t2">行はノード、列はインデックス。未割り当てのシャードは、最下部の「未割り当て」の行に点線のチップで並べる(未割り当てがあるときだけ出る行)。状態の悪い順に並ぶため、yellow のインデックスが先頭の列になる。移動中と初期化中は見た目が同じ(青のチップ+矢印)で、読み上げの文だけが違う。クラスタの状態のカードは通常と同じ形のため省略している。</p>
 <div class="app" data-shell="opensearch">
   <div class="main">
     <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
@@ -433,7 +417,7 @@ button,input,select{font:inherit;color:inherit}
 <!-- ===== 多数(ページング) ===== -->
 <div class="state" id="o1-paging">
 <h3>多数のインデックス(25 件・3 ノード): 1 ページ目</h3>
-<p class="cap t2">列(インデックス)が 1 ページに収まらないので、「前へ」「次へ」で切り替える。1 ページの列数は、カードの幅から決める(幅 1280px で 7 列。ウィンドウ幅を変えると変わる)。状態の悪い順(yellow のインデックスが先頭)。1 ページ目は「前へ」が使えない状態(<span class="mono">aria-disabled</span>)。クラスタの状態・インデックスのカードは通常と同じ形のため省略している。</p>
+<p class="cap t2">列(インデックス)が 1 ページに収まらないので、「前へ」「次へ」で切り替える。1 ページの列数は、カードの幅から決める(幅 1280px で 7 列。ウィンドウ幅を変えると変わる)。状態の悪い順(yellow のインデックスが先頭)。列見出しの件数は、0 件・大きな値(1,234,567,890 件)・取得不能(—)を含む。1 ページ目は「前へ」が使えない状態(<span class="mono">aria-disabled</span>)。クラスタの状態のカードは通常と同じ形のため省略している。</p>
 <div class="app" data-shell="opensearch">
   <div class="main">
     <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
@@ -486,8 +470,8 @@ button,input,select{font:inherit;color:inherit}
         <dl class="kv"><dt>クラスタ名</dt><dd class="mono">demo-cluster</dd><dt>状態</dt><dd><span class="tag tag--success"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>green(正常)</span><span class="cap t2 sub">すべてのシャードが割り当てられています。</span></dd></dl>
         <dl class="stats"><div><dt>ノード</dt><dd>1</dd></div><div><dt>アクティブなシャード</dt><dd>0</dd></div><div><dt>未割り当てのシャード</dt><dd>0</dd></div><div><dt>初期化中・移動中</dt><dd>0</dd></div></dl>
       </section>
-      <section class="card" aria-labelledby="c-ix4"><h2 id="c-ix4">インデックス</h2>
-        <div class="stateblock" data-testid="o1-state-empty"><div class="ill"><svg class="ic" aria-hidden="true"><use href="#i-cluster"/></svg></div><h3>インデックスがありません</h3><p class="t2">このクラスタにはインデックスが作成されていません。インデックスが作成されると、ここに一覧が表示されます。</p></div>
+      <section class="card" aria-labelledby="c-ix4" data-testid="o1-shards"><h2 id="c-ix4">シャードの配置</h2>
+        <div class="stateblock" data-testid="o1-state-empty"><div class="ill"><svg class="ic" aria-hidden="true"><use href="#i-cluster"/></svg></div><h3>インデックスがありません</h3><p class="t2">このクラスタにはインデックスが作成されていません。インデックスが作成されると、ここに、インデックスごとのドキュメント件数とシャードの配置が表示されます。</p></div>
       </section>
     </div>
   </div>
@@ -497,16 +481,12 @@ button,input,select{font:inherit;color:inherit}
 <!-- ===== 読み込み中 ===== -->
 <div class="state" id="o1-loading">
 <h3>読み込み中(初回取得)</h3>
-<p class="cap t2">見出しと「更新」は先に出し、3 つのカードの中をスケルトンにする。</p>
+<p class="cap t2">見出しと「更新」は先に出し、2 つのカードの中をスケルトンにする。</p>
 <div class="app" data-shell="opensearch">
   <div class="main">
     <div class="pagehead"><div><h1>OpenSearch</h1></div></div>
     <div class="stack" aria-busy="true" data-testid="o1-state-loading"><p class="sr-only" role="status">OpenSearch の状態を読み込み中</p>
       <section class="card" aria-labelledby="c-cl5"><h2 id="c-cl5">クラスタの状態</h2><div class="prog" aria-hidden="true"></div><div class="pad" style="display:grid;gap:12px"><span class="skel" style="width:30%"></span><span class="skel" style="width:20%"></span><span class="skel" style="width:60%"></span></div></section>
-      <section class="card" aria-labelledby="c-ix5"><h2 id="c-ix5">インデックス</h2>
-        <div class="skelrow"><span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span></div>
-        <div class="skelrow"><span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span><span class="skel"></span></div>
-      </section>
       <section class="card" aria-labelledby="c-sh5"><h2 id="c-sh5">シャードの配置</h2><div class="pad" style="display:grid;gap:12px"><span class="skel" style="width:80%"></span><span class="skel" style="width:70%"></span></div></section>
     </div>
   </div>
@@ -578,7 +558,8 @@ document.addEventListener('keydown',function(e){
 var HL={red:{o:0,c:'tag--error',i:'i-fail'},yellow:{o:1,c:'tag--warning',i:'i-warn'},green:{o:2,c:'tag--success',i:'i-check'}};
 var MINCOL=112;
 /* シャードの記法: 'p0@1' = プライマリ 0 がノード 1。'r0@-1' = 未割り当て。末尾 '~' = 移動中、末尾 '^' = 初期化中(見た目は同じ。読み上げは分ける) */
-function ix(name,health,list){return {name:name,health:health,sh:list.map(function(s){var m=/^([pr])(\d+)@(-?\d+)([~^]?)$/.exec(s);return {role:m[1],n:+m[2],node:+m[3],mv:m[4]==='~',ini:m[4]==='^'};})};}
+/* ix(名前, 状態, シャード[], ドキュメント件数)。件数が null は「取得できない」(列見出しに「—」) */
+function ix(name,health,list,count){return {name:name,health:health,cnt:(count==null?null:count),sh:list.map(function(s){var m=/^([pr])(\d+)@(-?\d+)([~^]?)$/.exec(s);return {role:m[1],n:+m[2],node:+m[3],mv:m[4]==='~',ini:m[4]==='^'};})};}
 function gen(){
   var spec=[['.demo-sys-tasks',1],['demo-docs-000001',2],['demo-docs-000002',2],['demo-docs-000003',2],['demo-store-jobs',1],['demo-store-sources',1],['demo-store-locks',1],['demo-store-deletions',1],['demo-store-extracted',1]];
   for(var d=1;d<=16;d++) spec.push(['demo-logs-2026.11.'+(d<10?'0':'')+d,1]);
@@ -590,15 +571,17 @@ function gen(){
       list.push('p'+p+'@'+((i+p)%3)+(mv?'~':''));
       list.push('r'+p+'@'+(ua?-1:(i+p+1)%3)); if(ua) yellow=true;
     }
-    return ix(s[0],yellow?'yellow':'green',list);
+    var CNT={'demo-docs-000003':8402117,'demo-logs-2026.11.15':0,'demo-logs-2026.11.16':null,'demo-logs-2026.11.01':1234567890,'.demo-sys-tasks':87,'demo-docs-000001':12846,'demo-docs-000002':3310552};
+    var c=(s[0] in CNT)?CNT[s[0]]:((i+3)*104729)%98765;
+    return ix(s[0],yellow?'yellow':'green',list,c);
   });
 }
 var D={
-  normal:{nodes:['demo-node-1','demo-node-2'],ix:[ix('demo-docs-000001','green',['p0@0','r0@1']),ix('demo-store-jobs','green',['r0@0','p0@1']),ix('demo-store-sources','green',['p0@0','r0@1'])]},
-  yellow:{nodes:['demo-node-1'],ix:[ix('demo-docs-000001','yellow',['p0@0','r0@-1']),ix('demo-store-jobs','yellow',['p0@0','r0@-1']),ix('demo-store-sources','yellow',['p0@0','r0@-1'])]},
-  red:{nodes:['demo-node-1'],ix:[ix('demo-docs-000001','red',['p0@-1','r0@-1']),ix('demo-store-jobs','yellow',['p0@0','r0@-1']),ix('demo-store-sources','yellow',['p0@0','r0@-1'])]},
-  unassigned:{nodes:['demo-node-1','demo-node-2'],ix:[ix('demo-docs-000001','green',['p0@0','r0@1']),ix('demo-store-jobs','yellow',['p0@1','r0@-1']),ix('demo-store-sources','yellow',['p0@0~','r0@1^'])]},
-  single:{nodes:['demo-node-1'],ix:[ix('demo-docs-000001','green',['p0@0']),ix('demo-store-jobs','green',['p0@0']),ix('demo-store-sources','green',['p0@0'])]},
+  normal:{nodes:['demo-node-1','demo-node-2'],ix:[ix('demo-docs-000001','green',['p0@0','r0@1'],12846),ix('demo-store-jobs','green',['r0@0','p0@1'],1204),ix('demo-store-sources','green',['p0@0','r0@1'],6)]},
+  yellow:{nodes:['demo-node-1'],ix:[ix('demo-docs-000001','yellow',['p0@0','r0@-1'],12846),ix('demo-store-jobs','yellow',['p0@0','r0@-1'],1204),ix('demo-store-sources','yellow',['p0@0','r0@-1'],6)]},
+  red:{nodes:['demo-node-1'],ix:[ix('demo-docs-000001','red',['p0@-1','r0@-1'],null),ix('demo-store-jobs','yellow',['p0@0','r0@-1'],1204),ix('demo-store-sources','yellow',['p0@0','r0@-1'],6)]},
+  unassigned:{nodes:['demo-node-1','demo-node-2'],ix:[ix('demo-docs-000001','green',['p0@0','r0@1'],12846),ix('demo-store-jobs','yellow',['p0@1','r0@-1'],1204),ix('demo-store-sources','yellow',['p0@0~','r0@1^'],6)]},
+  single:{nodes:['demo-node-1'],ix:[ix('demo-docs-000001','green',['p0@0'],12846),ix('demo-store-jobs','green',['p0@0'],0),ix('demo-store-sources','green',['p0@0'],6)]},
   paging:{nodes:['demo-node-1','demo-node-2','demo-node-3'],ix:gen()}
 };
 Object.keys(D).forEach(function(k){
@@ -628,13 +611,20 @@ function legend(d){
   if(has.mv) h+='<li><span class="sh sh--i"><svg class="ic" aria-hidden="true"><use href="#i-swap"/></svg>P0</span><span>初期化中・移動中</span></li>';
   return '<ul class="legend" aria-label="凡例">'+h+'</ul>';
 }
+/* ドキュメント件数(列見出し)。3 桁区切り+「件」。null は「—」(読み上げは「取得できません」) */
+function fmt(n){return String(n).replace(/\B(?=(\d{3})+(?!\d))/g,',');}
+function cntHTML(x){
+  var t=' data-testid="o1-count-'+esc(x.name)+'"';
+  if(x.cnt==null) return '<span class="cnt none"'+t+'>—<span class="sr-only">ドキュメント件数を取得できません</span></span>';
+  return '<span class="cnt"'+t+'><span class="sr-only">ドキュメント </span><span class="n">'+fmt(x.cnt)+'</span><span class="u"> 件</span></span>';
+}
 function tableHTML(h){
   var d=h._d,s=h._s,cols=d.ix.slice(s.first,s.first+s.per),w=s.H+cols.length*s.cw,pages=Math.ceil(d.ix.length/s.per);
-  var cap='シャードの配置。行はノード'+(d.uaTotal?'と未割り当て':'')+'、列はインデックス。'+(s.paged?'全 '+d.ix.length+' 件のうち '+(cols.length===1?(s.first+1)+' 件目':(s.first+1)+'〜'+(s.first+cols.length)+' 件目')+'を表示中(ページ '+(s.first/s.per+1)+' / '+pages+')。':'')+'状態の悪い順、同じ状態は名前の昇順。';
+  var cap='シャードの配置。行はノード'+(d.uaTotal?'と未割り当て':'')+'、列はインデックス(列見出しにインデックス名・ドキュメント件数・状態)。'+(s.paged?'全 '+d.ix.length+' 件のうち '+(cols.length===1?(s.first+1)+' 件目':(s.first+1)+'〜'+(s.first+cols.length)+' 件目')+'を表示中(ページ '+(s.first/s.per+1)+' / '+pages+')。':'')+'状態の悪い順、同じ状態は名前の昇順。';
   var t='<table class="mxt" style="width:'+w+'px"><caption class="sr-only">'+cap+'</caption><colgroup><col style="width:'+s.H+'px">'+cols.map(function(){return '<col style="width:'+s.cw+'px">';}).join('')+'</colgroup>';
   t+='<thead><tr><th scope="col" class="corner">ノード</th>'+cols.map(function(x){
-    var hl=HL[x.health], pr=x.sh.filter(function(q){return q.role==='p';}).length;
-    return '<th scope="col" class="ixh"><div class="in"><span class="ixn">'+esc(x.name)+'</span><span class="tag '+hl.c+'"><svg class="ic" aria-hidden="true"><use href="#'+hl.i+'"/></svg>'+x.health+'</span><span class="cap">シャード '+x.sh.length+'<span class="sr-only">(プライマリ '+pr+'、レプリカ '+(x.sh.length-pr)+')</span></span></div></th>';
+    var hl=HL[x.health];
+    return '<th scope="col" class="ixh"><div class="in"><span class="ixn">'+esc(x.name)+'</span>'+cntHTML(x)+'<span class="tag '+hl.c+'"><svg class="ic" aria-hidden="true"><use href="#'+hl.i+'"/></svg>'+x.health+'</span></div></th>';
   }).join('')+'</tr></thead><tbody>';
   d.nodes.forEach(function(n,k){
     t+='<tr><th scope="row" class="nd"><span class="mono">'+esc(n)+'</span><span class="cap t2">シャード '+d.nodeTotal[k]+'<span class="sr-only">(全インデックスの合計)</span></span></th>'+cols.map(function(x){return cell(x,k);}).join('')+'</tr>';
@@ -645,7 +635,7 @@ function tableHTML(h){
 function barHTML(h){
   var s=h._s,d=h._d,pages=Math.ceil(d.ix.length/s.per),opts='';
   for(var i=1;i<=pages;i++) opts+='<option value="'+i+'">'+i+' / '+pages+'</option>';
-  return '<div class="mxinfo"><p class="mxcount" role="status" aria-live="polite" aria-atomic="true"></p><p class="cap t2">状態の悪い順(同じ状態は名前の昇順)</p></div>'+
+  return '<div class="mxinfo"><p class="mxcount" role="status" aria-live="polite" aria-atomic="true"></p><p class="cap t2 mxnote"><span>インデックス名の下の数はドキュメント件数。</span> <span>状態の悪い順(同じ状態は名前の昇順)。</span> <span class="mxdash"></span></p></div>'+
     (s.paged?'<div class="mxnav" role="group" aria-label="シャードの配置のページ送り"><button class="btn btn--outlined btn--sm" type="button" data-mx="prev" aria-label="前へ。シャードの配置の前のページ"><svg class="ic" aria-hidden="true"><use href="#i-chev-l"/></svg>前へ</button><div class="per"><label for="'+h._id+'-pg">ページ</label><select class="input select" id="'+h._id+'-pg" data-mx="page">'+opts+'</select></div><button class="btn btn--outlined btn--sm" type="button" data-mx="next" aria-label="次へ。シャードの配置の次のページ">次へ<svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg></button></div>':'');
 }
 function build(h){
@@ -663,6 +653,7 @@ function build(h){
 function update(h){
   var d=h._d,s=h._s,total=d.ix.length,pages=Math.ceil(total/s.per),page=s.first/s.per+1,to=Math.min(total,s.first+s.per);
   h.querySelector('.mxscroll').innerHTML=tableHTML(h);
+  h.querySelector('.mxdash').textContent=d.ix.slice(s.first,s.first+s.per).some(function(x){return x.cnt==null;})?'見出しの「—」は件数を取得できません。':'';
   h.querySelector('.mxcount').innerHTML=s.paged?(s.first+1===to?to:(s.first+1)+'–'+to)+' / 全 '+total+' 件のインデックス<span class="sr-only">(ページ '+page+' / '+pages+')</span>':total+' 件のインデックス';
   if(s.paged){
     h.querySelector('[data-mx="page"]').value=page;
