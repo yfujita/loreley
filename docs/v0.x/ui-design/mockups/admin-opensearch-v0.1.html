@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Admin View O1 OpenSearch v0.1(モック。シャード配置はユーザー指示 2026-11-22 で改訂)</title>
+<title>Admin View O1 OpenSearch v0.1(モック。1 カード「クラスタ状態」はユーザー指示 2026-11-22 で改訂)</title>
 <!--
   Admin View G4 OpenSearch(O1)の静的モック。実装コードではない。
   - 仕様の正: docs/v0.x/ui-design/admin/opensearch-v0.1.md と design-system-v0.1.md。値が食い違う場合は仕様書を正とする。
@@ -12,7 +12,8 @@
   - OpenSearch 汎用の情報だけを出す(機能設計書 UC-1・UC-8)。データソース・ジョブなど Loreley 固有の概念は画面に含めない。読み取り専用で、操作は「更新」だけ。
   - JavaScript は 3 つだけ: (1) 画面枠(サイドバー・上部バー)の複製(表示用)、(2) 狭い画面のナビ開閉(スクリム・Esc でも閉じる)、(3) シャード配置マトリクスの表示用の組み立てとページ送り(下の <script> 2 つ目。ダミーデータから表を組むだけで、検索・API の処理はしない)。
   - 未実装(実装時に付ける): 列が収まらず表の外側が横スクロールしたときの、スクロール領域の tabindex="0"・role="region"・aria-label(opensearch-v0.1.md 3.4 の保険)。端のボタンは aria-disabled だけを付けている。実装ではクリックのハンドラでもガードする。
-  - インデックス一覧のカードは廃止した(ユーザー指示 2026-11-22。承認済み)。ドキュメント件数はシャード配置の列見出しの、インデックス名の直下に出す(ユーザー指示。承認済み)。状態タグは最下段(案)。プライマリ数・レプリカ数の数値は出さない。列見出しの「シャード n」は外した(案)。件数は 9 桁まで 1 行、10〜11 桁は「件」だけ折り返し、12 桁以上は想定外(見出しからはみ出しうる。`white-space:nowrap` のまま)。O1 は 2 カード(クラスタの状態・シャードの配置)。
+  - インデックス一覧のカードは廃止した(ユーザー指示 2026-11-22。承認済み)。ドキュメント件数はシャード配置の列見出しの、インデックス名の直下に出す(ユーザー指示。承認済み)。状態タグは最下段(案)。プライマリ数・レプリカ数の数値は出さない。列見出しの「シャード n」は外した(案)。件数は 9 桁まで 1 行、10〜11 桁は「件」だけ折り返し、12 桁以上は想定外(見出しからはみ出しうる。`white-space:nowrap` のまま)。(この時点では O1 は 2 カードだったが、その後、下の行のとおり 1 カードへ統合した。)
+  - 「クラスタの状態」のカードも廃止し、シャード配置と 1 つのカード「クラスタ状態」に統合した(ユーザー指示 2026-11-22。承認済み)。カードの中は、概況(クラスタ名・状態・ノード数ほか)→ 凡例 → ページ送りバー → マトリクス。概況の構成・位置は案。更新ボタンと最終取得日時はページ見出しの右(DS 6.4)に残した。概況はダミーデータから計算して出している(表示用)。「シャードの配置」は、マトリクス部分を指す説明用の語(カードの名称ではない)。
   - シャードの配置は、ユーザー指示(2026-11-22)で「行=ノード、列=インデックス+列のページング」に改訂した(DS 4.15、opensearch-v0.1.md 3.3・3.4)。向きとページングは承認済み。1 ページの列数・並び順・細部は案。
 -->
 <style>
@@ -181,6 +182,20 @@ button,input,select{font:inherit;color:inherit}
 .none{color:rgb(var(--v-theme-on-surface-variant))}
 /* シャード配置マトリクス(行=ノード、列=インデックス。列をページングする)。DS 4.15 */
 .mxbar{display:flex;align-items:center;justify-content:space-between;gap:8px 16px;flex-wrap:wrap;padding:8px 16px;border-bottom:1px solid rgba(var(--v-border-color),var(--v-border-opacity));min-height:52px}
+/* 概況(カード内の上の領域) */
+.sum{border-bottom:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+.sumhead{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px 32px;margin:0;padding:12px 16px 0}
+.sumhead>div{display:grid;gap:2px;min-width:0}
+.sumhead dt{font-size:.75rem;color:rgb(var(--v-theme-on-surface-variant))}
+.sumhead dd{margin:0;overflow-wrap:anywhere}
+.sumdesc{padding:6px 16px 12px;margin:0;max-width:90ch}
+.sum .stats{border-top:1px solid rgba(var(--v-border-color),.08)}
+.sum .stats>div{padding:8px 16px}
+.sum .stats dd{font-size:1.125rem}
+.sum .stats dd .cap{display:inline;margin-left:6px;font-size:.75rem}
+.mxhost>.stateblock{padding:40px 24px}
+.card-h h2{font-size:inherit;line-height:inherit;font-weight:inherit}
+.card-h .cap{font-weight:400}
 .mxcount{font-weight:600}
 .mxnote span{display:inline-block}
 .mxnav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -295,7 +310,7 @@ button,input,select{font:inherit;color:inherit}
 
 <div class="doc">
 <header>
-  <h1 class="mock-title">Admin View O1 OpenSearch v0.1(静的モック。承認済み(ゲート C 2026-11-22)。シャードの配置はユーザー指示 2026-11-22 で改訂)</h1>
+  <h1 class="mock-title">Admin View O1 OpenSearch v0.1(静的モック。承認済み(ゲート C 2026-11-22)。クラスタ状態とシャード配置の統合・1 カード化はユーザー指示 2026-11-22 で改訂)</h1>
   <p class="t2" style="margin-top:4px;max-width:80ch">仕様は <span class="mono">admin/opensearch-v0.1.md</span>。ダミーデータのみ。OpenSearch 汎用の情報(クラスタの状態・インデックス・ドキュメント件数・シャードの配置)だけを読み取り専用で出す。URL ハッシュ(例: <span class="mono">#o1-yellow</span>)で直接開ける。シャードの配置は、行がノード・列がインデックスで、列がページに収まらないときは「前へ」「次へ」で切り替える(1 ページの列数は幅で決まる。ウィンドウ幅を変えて確認できる)。</p>
   <nav class="index" aria-label="状態一覧">
     <div><b>O1 OpenSearch</b>
@@ -323,17 +338,13 @@ button,input,select{font:inherit;color:inherit}
 <!-- ===== 通常 ===== -->
 <div class="state" id="o1-normal">
 <h3>通常: クラスタが green(2 ノード)</h3>
-<p class="cap t2">上から、クラスタの状態 → シャードの配置(インデックス一覧は廃止し、配置の列見出しに状態とドキュメント件数を出す。ユーザー指示 2026-11-22)。操作は「更新」だけ(手動のみ。自動更新はしない)。</p>
+<p class="cap t2">O1 は「クラスタ状態」の 1 カード(ユーザー指示 2026-11-22)。カードの中は上から、概況(クラスタ名・状態・説明・件数 4 項目=ノード / アクティブ(うち移動中)/ 未割り当て / 初期化中)→ 凡例 → ページ送りバー → マトリクス(行=ノード、列=インデックス。列見出しに名前・件数・状態)。インデックス一覧とクラスタの状態カードは廃止して統合した。更新ボタンと最終取得日時はページ見出しの右(DS 6.4)。操作は「更新」だけ(手動のみ。自動更新はしない)。</p>
 <div class="app" data-shell="opensearch">
   <div class="main">
-    <div class="pagehead"><div><h1>OpenSearch</h1><p class="desc t2">OpenSearch のクラスタの状態と、インデックスごとのドキュメント件数・シャードの配置を確認します。この画面は読み取り専用で、インデックスの削除・シャードの再配置・設定の変更はできません。</p></div>
+    <div class="pagehead"><div><h1>OpenSearch</h1><p class="desc t2">OpenSearch のクラスタ状態(クラスタの概況と、インデックスごとのドキュメント件数・シャードの配置)を確認します。この画面は読み取り専用で、インデックスの削除・シャードの再配置・設定の変更はできません。</p></div>
       <div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
     <div class="stack">
-      <section class="card" aria-labelledby="c-cl" data-testid="o1-cluster"><h2 id="c-cl">クラスタの状態</h2>
-        <dl class="kv"><dt>クラスタ名</dt><dd class="mono">demo-cluster</dd><dt>状態</dt><dd><span class="tag tag--success"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>green(正常)</span><span class="cap t2 sub">すべてのシャードが割り当てられています。</span></dd></dl>
-        <dl class="stats"><div><dt>ノード</dt><dd>2</dd></div><div><dt>アクティブなシャード</dt><dd>6</dd></div><div><dt>未割り当てのシャード</dt><dd>0</dd></div><div><dt>初期化中・移動中</dt><dd>0</dd></div></dl>
-      </section>
-      <section class="card" aria-labelledby="c-sh" data-testid="o1-shards"><h2 id="c-sh">シャードの配置</h2>
+      <section class="card" aria-labelledby="c-cl" data-testid="o1-cluster"><h2 id="c-cl">クラスタ状態</h2>
         <div class="mxhost" data-ds="normal"></div>
       </section>
     </div>
@@ -349,11 +360,7 @@ button,input,select{font:inherit;color:inherit}
   <div class="main">
     <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
     <div class="stack">
-      <section class="card" aria-labelledby="c-cl2"><h2 id="c-cl2">クラスタの状態</h2>
-        <dl class="kv"><dt>クラスタ名</dt><dd class="mono">demo-cluster</dd><dt>状態</dt><dd><span class="tag tag--warning"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>yellow(注意)</span><span class="cap t2 sub">プライマリシャードはすべて割り当てられていますが、一部のレプリカシャードが割り当てられていません。単一ノードでレプリカが 1 以上のインデックスは、通常 yellow になります。</span></dd></dl>
-        <dl class="stats"><div><dt>ノード</dt><dd>1</dd></div><div><dt>アクティブなシャード</dt><dd>3</dd></div><div><dt>未割り当てのシャード</dt><dd>3</dd></div><div><dt>初期化中・移動中</dt><dd>0</dd></div></dl>
-      </section>
-      <section class="card" aria-labelledby="c-sh2"><h2 id="c-sh2">シャードの配置</h2>
+      <section class="card" aria-labelledby="c-cl2" data-testid="o1-cluster"><h2 id="c-cl2">クラスタ状態</h2>
         <div class="mxhost" data-ds="yellow"></div>
       </section>
     </div>
@@ -370,11 +377,7 @@ button,input,select{font:inherit;color:inherit}
     <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
     <div class="stack">
       <div class="alert alert--error" role="status"><svg class="ic" aria-hidden="true"><use href="#i-fail"/></svg><div class="body"><p class="ttl">未割り当てのプライマリシャードがあります</p><p>demo-docs-000001 のプライマリシャード(P0)が割り当てられていません。このインデックスの検索や登録に影響する可能性があります。</p></div></div>
-      <section class="card" aria-labelledby="c-cl3"><h2 id="c-cl3">クラスタの状態</h2>
-        <dl class="kv"><dt>クラスタ名</dt><dd class="mono">demo-cluster</dd><dt>状態</dt><dd><span class="tag tag--error"><svg class="ic" aria-hidden="true"><use href="#i-fail"/></svg>red(異常)</span><span class="cap t2 sub">一部のプライマリシャードが割り当てられていません。該当するインデックスの検索や登録に影響する可能性があります。</span></dd></dl>
-        <dl class="stats"><div><dt>ノード</dt><dd>1</dd></div><div><dt>アクティブなシャード</dt><dd>2</dd></div><div><dt>未割り当てのシャード</dt><dd>4</dd></div><div><dt>初期化中・移動中</dt><dd>0</dd></div></dl>
-      </section>
-      <section class="card" aria-labelledby="c-sh3"><h2 id="c-sh3">シャードの配置</h2>
+      <section class="card" aria-labelledby="c-cl3" data-testid="o1-cluster"><h2 id="c-cl3">クラスタ状態</h2>
         <div class="mxhost" data-ds="red"></div>
       </section>
     </div>
@@ -385,12 +388,12 @@ button,input,select{font:inherit;color:inherit}
 <!-- ===== 未割り当てあり(複数ノード) ===== -->
 <div class="state" id="o1-unassigned">
 <h3>未割り当てあり: 2 ノード。未割り当てのレプリカ 1 つ、移動中・初期化中のシャード各 1 つ</h3>
-<p class="cap t2">行はノード、列はインデックス。未割り当てのシャードは、最下部の「未割り当て」の行に点線のチップで並べる(未割り当てがあるときだけ出る行)。状態の悪い順に並ぶため、yellow のインデックスが先頭の列になる。移動中と初期化中は見た目が同じ(青のチップ+矢印)で、読み上げの文だけが違う。クラスタの状態のカードは通常と同じ形のため省略している。</p>
+<p class="cap t2">行はノード、列はインデックス。未割り当てのシャードは、最下部の「未割り当て」の行に点線のチップで並べる(未割り当てがあるときだけ出る行)。状態の悪い順に並ぶため、yellow のインデックスが先頭の列になる。移動中と初期化中は見た目が同じ(青のチップ+矢印)で、読み上げの文だけが違う。概況は アクティブ 4(うち移動中 1)・未割り当て 1・初期化中 1(アクティブ+初期化中+未割り当て=6=全シャード数)。</p>
 <div class="app" data-shell="opensearch">
   <div class="main">
     <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
     <div class="stack">
-      <section class="card" aria-labelledby="c-sh7" data-testid="o1-shards"><h2 id="c-sh7">シャードの配置</h2>
+      <section class="card" aria-labelledby="c-sh7" data-testid="o1-cluster"><h2 id="c-sh7">クラスタ状態</h2>
         <div class="mxhost" data-ds="unassigned"></div>
       </section>
     </div>
@@ -406,7 +409,7 @@ button,input,select{font:inherit;color:inherit}
   <div class="main">
     <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
     <div class="stack">
-      <section class="card" aria-labelledby="c-sh8" data-testid="o1-shards"><h2 id="c-sh8">シャードの配置</h2>
+      <section class="card" aria-labelledby="c-sh8" data-testid="o1-cluster"><h2 id="c-sh8">クラスタ状態</h2>
         <div class="mxhost" data-ds="single"></div>
       </section>
     </div>
@@ -417,12 +420,12 @@ button,input,select{font:inherit;color:inherit}
 <!-- ===== 多数(ページング) ===== -->
 <div class="state" id="o1-paging">
 <h3>多数のインデックス(25 件・3 ノード): 1 ページ目</h3>
-<p class="cap t2">列(インデックス)が 1 ページに収まらないので、「前へ」「次へ」で切り替える。1 ページの列数は、カードの幅から決める(幅 1280px で 7 列。ウィンドウ幅を変えると変わる)。状態の悪い順(yellow のインデックスが先頭)。列見出しの件数は、0 件・大きな値(1,234,567,890 件)・取得不能(—)を含む。1 ページ目は「前へ」が使えない状態(<span class="mono">aria-disabled</span>)。クラスタの状態のカードは通常と同じ形のため省略している。</p>
+<p class="cap t2">列(インデックス)が 1 ページに収まらないので、「前へ」「次へ」で切り替える。1 ページの列数は、カードの幅から決める(幅 1280px で 7 列。ウィンドウ幅を変えると変わる)。状態の悪い順(yellow のインデックスが先頭)。列見出しの件数は、0 件・大きな値(1,234,567,890 件)・取得不能(—)を含む。1 ページ目は「前へ」が使えない状態(<span class="mono">aria-disabled</span>)。概況は通常と同じ形。</p>
 <div class="app" data-shell="opensearch">
   <div class="main">
     <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
     <div class="stack">
-      <section class="card" aria-labelledby="c-sh9" data-testid="o1-shards"><h2 id="c-sh9">シャードの配置</h2>
+      <section class="card" aria-labelledby="c-sh9" data-testid="o1-cluster"><h2 id="c-sh9">クラスタ状態</h2>
         <div class="mxhost" data-ds="paging" data-page="1"></div>
       </section>
     </div>
@@ -436,7 +439,7 @@ button,input,select{font:inherit;color:inherit}
   <div class="main">
     <div class="pagehead"><div><h1>OpenSearch</h1></div></div>
     <div class="stack">
-      <section class="card" aria-labelledby="c-sh10" data-testid="o1-shards"><h2 id="c-sh10">シャードの配置</h2>
+      <section class="card" aria-labelledby="c-sh10" data-testid="o1-cluster"><h2 id="c-sh10">クラスタ状態</h2>
         <div class="mxhost" data-ds="paging" data-page="2"></div>
       </section>
     </div>
@@ -451,7 +454,7 @@ button,input,select{font:inherit;color:inherit}
   <div class="main">
     <div class="pagehead"><div><h1>OpenSearch</h1></div></div>
     <div class="stack">
-      <section class="card" aria-labelledby="c-sh11" data-testid="o1-shards"><h2 id="c-sh11">シャードの配置</h2>
+      <section class="card" aria-labelledby="c-sh11" data-testid="o1-cluster"><h2 id="c-sh11">クラスタ状態</h2>
         <div class="mxhost" data-ds="paging" data-page="last"></div>
       </section>
     </div>
@@ -466,12 +469,8 @@ button,input,select{font:inherit;color:inherit}
   <div class="main">
     <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
     <div class="stack">
-      <section class="card" aria-labelledby="c-cl4"><h2 id="c-cl4">クラスタの状態</h2>
-        <dl class="kv"><dt>クラスタ名</dt><dd class="mono">demo-cluster</dd><dt>状態</dt><dd><span class="tag tag--success"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>green(正常)</span><span class="cap t2 sub">すべてのシャードが割り当てられています。</span></dd></dl>
-        <dl class="stats"><div><dt>ノード</dt><dd>1</dd></div><div><dt>アクティブなシャード</dt><dd>0</dd></div><div><dt>未割り当てのシャード</dt><dd>0</dd></div><div><dt>初期化中・移動中</dt><dd>0</dd></div></dl>
-      </section>
-      <section class="card" aria-labelledby="c-ix4" data-testid="o1-shards"><h2 id="c-ix4">シャードの配置</h2>
-        <div class="stateblock" data-testid="o1-state-empty"><div class="ill"><svg class="ic" aria-hidden="true"><use href="#i-cluster"/></svg></div><h3>インデックスがありません</h3><p class="t2">このクラスタにはインデックスが作成されていません。インデックスが作成されると、ここに、インデックスごとのドキュメント件数とシャードの配置が表示されます。</p></div>
+      <section class="card" aria-labelledby="c-cl4" data-testid="o1-cluster"><h2 id="c-cl4">クラスタ状態</h2>
+        <div class="mxhost" data-ds="empty"></div>
       </section>
     </div>
   </div>
@@ -481,13 +480,15 @@ button,input,select{font:inherit;color:inherit}
 <!-- ===== 読み込み中 ===== -->
 <div class="state" id="o1-loading">
 <h3>読み込み中(初回取得)</h3>
-<p class="cap t2">見出しと「更新」は先に出し、2 つのカードの中をスケルトンにする。</p>
+<p class="cap t2">見出しと「更新」は先に出し、「クラスタ状態」のカードの中(概況とマトリクスの 2 領域)をスケルトンにする。</p>
 <div class="app" data-shell="opensearch">
   <div class="main">
-    <div class="pagehead"><div><h1>OpenSearch</h1></div></div>
-    <div class="stack" aria-busy="true" data-testid="o1-state-loading"><p class="sr-only" role="status">OpenSearch の状態を読み込み中</p>
-      <section class="card" aria-labelledby="c-cl5"><h2 id="c-cl5">クラスタの状態</h2><div class="prog" aria-hidden="true"></div><div class="pad" style="display:grid;gap:12px"><span class="skel" style="width:30%"></span><span class="skel" style="width:20%"></span><span class="skel" style="width:60%"></span></div></section>
-      <section class="card" aria-labelledby="c-sh5"><h2 id="c-sh5">シャードの配置</h2><div class="pad" style="display:grid;gap:12px"><span class="skel" style="width:80%"></span><span class="skel" style="width:70%"></span></div></section>
+    <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
+    <div class="stack">
+      <section class="card" aria-labelledby="c-cl5" aria-busy="true" data-testid="o1-cluster"><h2 id="c-cl5">クラスタ状態</h2><div class="prog" aria-hidden="true"></div>
+        <p class="sr-only" role="status" data-testid="o1-state-loading">OpenSearch の状態を読み込み中</p>
+        <div class="pad" style="display:grid;gap:12px"><span class="skel" style="width:30%"></span><span class="skel" style="width:20%"></span><span class="skel" style="width:60%"></span></div>
+        <div class="pad" style="display:grid;gap:12px;border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity))"><span class="skel" style="width:80%"></span><span class="skel" style="width:70%"></span><span class="skel" style="width:75%"></span></div></section>
     </div>
   </div>
 </div>
@@ -500,7 +501,7 @@ button,input,select{font:inherit;color:inherit}
 <div class="app" data-shell="opensearch">
   <div class="main">
     <div class="pagehead"><div><h1>OpenSearch</h1></div></div>
-    <section class="card" aria-label="OpenSearch の状態"><div class="stateblock stateblock--error" role="alert" data-testid="o1-state-error"><div class="ill"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg></div><h3>OpenSearch の状態を取得できません</h3><p class="t2">OpenSearch に接続できなかったか、応答が返りませんでした。しばらくしてから再試行してください。解消しない場合は、ダッシュボードで opensearch と api の状態を確認してください。</p><p class="cap t2">試行時刻 2026-11-21 10:49:10 · 接続エラー(ダミー)</p><div class="rowacts"><button class="btn btn--outlined" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>再試行</button><a class="btn btn--text" href="admin-dashboard-v0.1.html">ダッシュボードを開く</a></div></div></section>
+    <section class="card" aria-labelledby="c-cl7" data-testid="o1-cluster"><h2 id="c-cl7">クラスタ状態</h2><div class="stateblock stateblock--error" role="alert" data-testid="o1-state-error"><div class="ill"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg></div><h3>OpenSearch の状態を取得できません</h3><p class="t2">OpenSearch に接続できなかったか、応答が返りませんでした。しばらくしてから再試行してください。解消しない場合は、ダッシュボードで opensearch と api の状態を確認してください。</p><p class="cap t2">試行時刻 2026-11-21 10:49:10 · 接続エラー(ダミー)</p><div class="rowacts"><button class="btn btn--outlined" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>再試行</button><a class="btn btn--text" href="admin-dashboard-v0.1.html">ダッシュボードを開く</a></div></div></section>
   </div>
 </div>
 </div>
@@ -508,15 +509,14 @@ button,input,select{font:inherit;color:inherit}
 <!-- ===== stale ===== -->
 <div class="state" id="o1-stale">
 <h3>エラー: 取得失敗(前回のデータを表示)</h3>
-<p class="cap t2">前回の値を表示し続け、現在の状態と異なる可能性を警告する。クラスタの状態のタグは前回の値のまま(「前回取得時」の注記つき)。</p>
+<p class="cap t2">前回の値を表示し続け、現在の状態と異なる可能性を警告する。「クラスタ状態」のカード全体(概況+マトリクス)を前回の値のまま出し、見出し行の右(見出しの外の別要素。カードの名前は「クラスタ状態」だけにする)に「前回取得時の値 · 最終更新(成功)時刻」、状態の説明に「前回取得時の値です。」を添える。</p>
 <div class="app" data-shell="opensearch">
   <div class="main">
     <div class="pagehead"><div><h1>OpenSearch</h1></div></div>
-    <div class="stack" data-testid="o1-state-stale">
+    <div class="stack">
       <div class="alert alert--warning" role="alert"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg><div class="body"><p class="ttl">最新の状態を取得できませんでした</p><p>前回取得したデータ(2026-11-21 10:48:03 時点)を表示しています。クラスタの現在の状態と異なる可能性があります。</p><div class="acts"><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>再読み込み</button></div></div></div>
-      <section class="card" aria-labelledby="c-cl6"><h2 id="c-cl6">クラスタの状態<span class="cap t2">前回取得時の値 · 最終更新(成功) 2026-11-21 10:48:03</span></h2>
-        <dl class="kv"><dt>クラスタ名</dt><dd class="mono">demo-cluster</dd><dt>状態</dt><dd><span class="tag tag--success"><svg class="ic" aria-hidden="true"><use href="#i-check"/></svg>green(正常)</span><span class="cap t2 sub">前回取得時の値です。</span></dd></dl>
-        <dl class="stats"><div><dt>ノード</dt><dd>2</dd></div><div><dt>アクティブなシャード</dt><dd>6</dd></div><div><dt>未割り当てのシャード</dt><dd>0</dd></div><div><dt>初期化中・移動中</dt><dd>0</dd></div></dl>
+      <section class="card" aria-labelledby="c-cl6" data-testid="o1-cluster"><div class="card-h"><h2 id="c-cl6">クラスタ状態</h2><span class="cap t2" data-testid="o1-state-stale">前回取得時の値 · 最終更新(成功) 2026-11-21 10:48:03</span></div>
+        <div class="mxhost" data-ds="normal" data-stale="1"></div>
       </section>
     </div>
   </div>
@@ -552,7 +552,7 @@ document.addEventListener('keydown',function(e){
 <script>
 /* シャード配置マトリクス(表示用)。ダミーデータから表を組み、列(インデックス)をページ送りする。
    仕様: DS 4.15、admin/opensearch-v0.1.md 3.3・3.4。1 ページの列数 = max(1, floor((W − H) ÷ 112))(上限なし)。
-   W = シャードの配置カードの内容領域の幅(枠 1px×2 を除く。表はカードの左右の端まで広げる)。H = 行見出しの幅(152px。viewport 幅 600px 未満は 112px)。
+   W = カード「クラスタ状態」の内容領域の幅(枠 1px×2 を除く。表はカードの左右の端まで広げる。概況を統合してもカード幅は変わらない)。H = 行見出しの幅(152px。viewport 幅 600px 未満は 112px)。
    実装(Vue)では ResizeObserver を使う小さな composable などで同じ式を使う。検索・API の処理ではない。 */
 (function(){
 var HL={red:{o:0,c:'tag--error',i:'i-fail'},yellow:{o:1,c:'tag--warning',i:'i-warn'},green:{o:2,c:'tag--success',i:'i-check'}};
@@ -581,6 +581,7 @@ var D={
   yellow:{nodes:['demo-node-1'],ix:[ix('demo-docs-000001','yellow',['p0@0','r0@-1'],12846),ix('demo-store-jobs','yellow',['p0@0','r0@-1'],1204),ix('demo-store-sources','yellow',['p0@0','r0@-1'],6)]},
   red:{nodes:['demo-node-1'],ix:[ix('demo-docs-000001','red',['p0@-1','r0@-1'],null),ix('demo-store-jobs','yellow',['p0@0','r0@-1'],1204),ix('demo-store-sources','yellow',['p0@0','r0@-1'],6)]},
   unassigned:{nodes:['demo-node-1','demo-node-2'],ix:[ix('demo-docs-000001','green',['p0@0','r0@1'],12846),ix('demo-store-jobs','yellow',['p0@1','r0@-1'],1204),ix('demo-store-sources','yellow',['p0@0~','r0@1^'],6)]},
+  empty:{nodes:['demo-node-1'],ix:[]},
   single:{nodes:['demo-node-1'],ix:[ix('demo-docs-000001','green',['p0@0'],12846),ix('demo-store-jobs','green',['p0@0'],0),ix('demo-store-sources','green',['p0@0'],6)]},
   paging:{nodes:['demo-node-1','demo-node-2','demo-node-3'],ix:gen()}
 };
@@ -589,7 +590,25 @@ Object.keys(D).forEach(function(k){
   d.ix.sort(function(a,b){return HL[a.health].o-HL[b.health].o||(a.name<b.name?-1:a.name>b.name?1:0);});
   d.nodeTotal=d.nodes.map(function(_,n){var c=0;d.ix.forEach(function(x){x.sh.forEach(function(s){if(s.node===n)c++;});});return c;});
   d.uaTotal=0;d.ix.forEach(function(x){x.sh.forEach(function(s){if(s.node<0)d.uaTotal++;});});
+  /* 概況(クラスタ全体)をダミーデータから計算する(表示用)。アクティブ=割り当て済みで初期化中でないもの(移動中は含む) */
+  d.active=0;d.moving=0;d.init=0;d.status='green'; /* アクティブ=割り当て済みで初期化中でないもの(移動中を含む=内数)。初期化中・未割り当ては外数。アクティブ+初期化中+未割り当て=全シャード */
+  d.ix.forEach(function(x){
+    if(x.health==='red') d.status='red'; else if(x.health==='yellow'&&d.status!=='red') d.status='yellow';
+    x.sh.forEach(function(s){ if(s.node>=0){ if(s.ini) d.init++; else { d.active++; if(s.mv) d.moving++; } } });
+  });
 });
+var ST={
+  green:{c:'tag--success',i:'i-check',l:'green(正常)',t:'すべてのシャードが割り当てられています。'},
+  yellow:{c:'tag--warning',i:'i-warn',l:'yellow(注意)',t:'プライマリシャードはすべて割り当てられていますが、一部のレプリカシャードが割り当てられていません。単一ノードでレプリカが 1 以上のインデックスは、通常 yellow になります。'},
+  red:{c:'tag--error',i:'i-fail',l:'red(異常)',t:'一部のプライマリシャードが割り当てられていません。該当するインデックスの検索や登録に影響する可能性があります。'}
+};
+/* 概況(カード内の上の領域): クラスタ名・状態タグ・説明・件数 4 項目 */
+function summaryHTML(h){
+  var d=h._d,st=ST[d.status],stale=h.hasAttribute('data-stale');
+  return '<div class="sum" data-testid="o1-summary"><dl class="sumhead"><div><dt>クラスタ名</dt><dd class="mono">demo-cluster</dd></div><div><dt>状態</dt><dd><span class="tag '+st.c+'"><svg class="ic" aria-hidden="true"><use href="#'+st.i+'"/></svg>'+st.l+'</span></dd></div></dl>'+
+    '<p class="sumdesc t2">'+st.t+(stale?' 前回取得時の値です。':'')+'</p>'+
+    '<dl class="stats"><div><dt>ノード</dt><dd>'+d.nodes.length+'</dd></div><div><dt>アクティブ</dt><dd>'+d.active+'<span class="cap">うち移動中 '+d.moving+'</span></dd></div><div><dt>未割り当て</dt><dd>'+d.uaTotal+'</dd></div><div><dt>初期化中</dt><dd>'+d.init+'</dd></div></dl></div>';
+}
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');}
 function chip(s){
   var P=s.role==='p', lab=P?'プライマリ':'レプリカ', L=(P?'P':'R')+s.n;
@@ -640,6 +659,10 @@ function barHTML(h){
 }
 function build(h){
   var d=h._d,s=h._s,W=h.clientWidth,narrow=matchMedia('(max-width:599px)').matches;
+  if(!d.ix.length){
+    h.innerHTML=summaryHTML(h)+'<div class="stateblock" data-testid="o1-state-empty"><div class="ill"><svg class="ic" aria-hidden="true"><use href="#i-cluster"/></svg></div><h3>インデックスがありません</h3><p class="t2">このクラスタにはインデックスが作成されていません。インデックスが作成されると、ここに、インデックスごとのドキュメント件数とシャードの配置が表示されます。</p></div>';
+    return;
+  }
   var prevPer=s.per; s.H=narrow?112:152;
   s.per=Math.max(1,Math.floor((W-s.H)/MINCOL));
   s.paged=d.ix.length>s.per;
@@ -647,7 +670,7 @@ function build(h){
   if(s.first==null){ var pg=h.getAttribute('data-page'), pages=Math.ceil(d.ix.length/s.per); s.first=((pg==='last'?pages:+(pg||1))-1)*s.per; }
   else s.first=Math.floor(s.first/s.per)*s.per;
   s.first=Math.min(s.first,Math.floor((d.ix.length-1)/s.per)*s.per);
-  h.innerHTML=legend(d)+'<div class="mxbar">'+barHTML(h)+'</div><div class="mxscroll"></div>';
+  h.innerHTML=summaryHTML(h)+'<div class="mxm" role="group" aria-label="シャードの配置(行はノード、列はインデックス)" data-testid="o1-shards">'+legend(d)+'<div class="mxbar">'+barHTML(h)+'</div><div class="mxscroll"></div></div>';
   update(h);
 }
 function update(h){
