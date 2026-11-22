@@ -1,0 +1,883 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Admin View O1 OpenSearch v0.1(モック。1 カード「クラスタ状態」はユーザー指示 2026-11-22 で改訂)</title>
+<!--
+  Admin View G4 OpenSearch(O1)の静的モック。実装コードではない。
+  - 仕様の正: docs/v0.x/ui-design/admin/opensearch-v0.1.md と design-system-v0.1.md。値が食い違う場合は仕様書を正とする。
+  - 1ファイル完結・外部通信なし・外部フォントなし。ダミーデータのみ(クラスタ名・ノード名・インデックス名は demo-*。実在しない)。
+  - トークンは design-system-v0.1.html と同じ値。
+  - OpenSearch 汎用の情報だけを出す(機能設計書 UC-1・UC-8)。データソース・ジョブなど Loreley 固有の概念は画面に含めない。読み取り専用で、操作は「更新」だけ。
+  - JavaScript は 3 つだけ: (1) 画面枠(サイドバー・上部バー)の複製(表示用)、(2) 狭い画面のナビ開閉(スクリム・Esc でも閉じる)、(3) シャード配置マトリクスの表示用の組み立てと、絞り込み・ページ送り(下の <script> 2 つ目。ダミーデータから表を組むだけで、検索・API の処理はしない)。
+  - 未実装(実装時に付ける): 列が収まらず表の外側が横スクロールしたときの、スクロール領域の tabindex="0"・role="region"・aria-label(opensearch-v0.1.md 3.4 の保険)。端のボタンは aria-disabled だけを付けている。実装ではクリックのハンドラでもガードする。
+  - インデックス一覧のカードは廃止した(ユーザー指示 2026-11-22。承認済み)。ドキュメント件数はシャード配置の列見出しの、インデックス名の直下に出す(ユーザー指示。承認済み)。状態タグは最下段(案)。プライマリ数・レプリカ数の数値は出さない。列見出しの「シャード n」は外した(案)。件数は 9 桁まで 1 行、10〜11 桁は「件」だけ折り返し、12 桁以上は想定外(見出しからはみ出しうる。`white-space:nowrap` のまま)。(この時点では O1 は 2 カードだったが、その後、下の行のとおり 1 カードへ統合した。)
+  - 「クラスタの状態」のカードも廃止し、シャード配置と 1 つのカード「クラスタ状態」に統合した(ユーザー指示 2026-11-22。承認済み)。カードの中は、概況(クラスタ名・状態・ノード数ほか)→ 絞り込みフォーム(下の行)→ 凡例 → ページ送りバー → マトリクス。概況の構成・位置は案。更新ボタンと最終取得日時はページ見出しの右(DS 6.4)に残した。概況はダミーデータから計算して出している(表示用)。「シャードの配置」は、マトリクス部分を指す説明用の語(カードの名称ではない)。
+  - 絞り込みフォームを追加した(ユーザー指示 2026-11-22(O1 への指示の 4 回目)。承認済みなのは、表示するインデックスの絞り込みフォームを追加すること(要約)だけ。ユーザーは条件の種類を指定していない。以下の条件の種類=名前(部分一致)・状態(複数選択)、置き場所=概況の下・マトリクス領域の上、即時に絞り込む(名前は 250ms の debounce、Enter ですぐ)、解除、結果件数の通知(role="status")、行見出し・凡例は絞り込み後、概況は絞り込みの対象外、はすべて案)。JS はダミーデータの絞り込み・ページ送りとの連動だけ(検索・API の処理ではない)。URL への反映(?q=&state=)は実アプリの仕様で、静的なモックでは行わない。
+  - シャードの配置は、ユーザー指示(2026-11-22)で「行=ノード、列=インデックス+列のページング」に改訂した(DS 4.15、opensearch-v0.1.md 3.3・3.4)。向きとページングは承認済み。1 ページの列数・並び順・細部は案。
+-->
+<style>
+:root{
+  --v-theme-background:244,246,248; --v-theme-on-background:26,37,48;
+  --v-theme-surface:255,255,255; --v-theme-on-surface:26,37,48;
+  --v-theme-surface-variant:233,237,241; --v-theme-on-surface-variant:70,83,95;
+  --v-theme-primary:29,91,135; --v-theme-on-primary:255,255,255;
+  --v-theme-primary-container:227,238,246; --v-theme-on-primary-container:18,63,95;
+  --v-theme-secondary-container:230,234,238; --v-theme-on-secondary-container:59,72,84;
+  --v-theme-error:179,38,30; --v-theme-on-error:255,255,255;
+  --v-theme-error-container:252,232,230; --v-theme-on-error-container:122,23,18;
+  --v-theme-warning:143,90,0; --v-theme-on-warning:255,255,255;
+  --v-theme-warning-container:255,241,214; --v-theme-on-warning-container:107,66,0;
+  --v-theme-success:29,111,66; --v-theme-success-container:226,243,232; --v-theme-on-success-container:17,77,46;
+  --v-theme-info:47,107,154; --v-theme-info-container:225,237,247; --v-theme-on-info-container:23,63,97;
+  --v-theme-focus:11,87,208; --v-theme-ink:38,50,62;
+  --v-border-color:26,37,48; --v-border-opacity:.16;
+  --line-strong:111,124,136;
+  --radius-sm:2px; --radius-md:4px; --radius-lg:8px;
+  --shadow-menu:0 4px 12px rgba(26,37,48,.16); --shadow-dialog:0 8px 24px rgba(26,37,48,.20);
+  --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo UI","Noto Sans JP",sans-serif;
+  --font-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{font-size:16px;-webkit-text-size-adjust:100%}
+body{margin:0;background:rgb(var(--v-theme-background));color:rgb(var(--v-theme-on-background));font-family:var(--font-sans);font-size:.875rem;line-height:1.5714}
+h1,h2,h3,h4,p,dl,dd,ul,ol{margin:0}
+ul,ol{padding:0;list-style:none}
+a{color:rgb(var(--v-theme-primary))}
+button,input,select{font:inherit;color:inherit}
+:focus-visible{outline:2px solid rgb(var(--v-theme-focus));outline-offset:2px}
+.sr-only{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.skip{position:absolute;left:8px;top:-48px;background:#fff;padding:8px 12px;border-radius:var(--radius-md);z-index:50}
+.skip:focus{top:8px}
+.ic{width:20px;height:20px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.mono{font-family:var(--font-mono);font-size:.8125rem}
+.t2{color:rgb(var(--v-theme-on-surface-variant))}
+.cap{font-size:.75rem;line-height:1.5}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+
+/* 見本ページの枠 */
+.doc{max-width:1240px;margin:0 auto;padding:24px 24px 64px}
+.doc h1.mock-title{font-size:1.25rem;line-height:1.4;font-weight:600}
+.index{margin:16px 0 8px;padding:12px 16px;background:rgb(var(--v-theme-surface));border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));border-radius:var(--radius-lg);display:grid;gap:8px}
+.index ul{display:flex;flex-wrap:wrap;gap:4px 16px}
+.index b{font-weight:600}
+.index a{display:inline-block;padding:4px 0}
+.sec{margin-top:40px;scroll-margin-top:16px}
+.sec>h2{font-size:1rem;line-height:1.5;font-weight:600;padding-bottom:8px;border-bottom:1px solid rgba(var(--v-border-color),var(--v-border-opacity));margin-bottom:12px}
+.state{margin-top:24px;scroll-margin-top:16px}
+.state>h3{font-size:.875rem;font-weight:600;margin-bottom:4px}
+.state>.cap{margin-bottom:8px;max-width:90ch}
+
+/* 部品 */
+.tag{--tg-bg:var(--v-theme-secondary-container);--tg-fg:var(--v-theme-on-secondary-container);display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px 0 6px;border-radius:var(--radius-md);font-size:.75rem;line-height:1;font-weight:600;white-space:nowrap;background:rgb(var(--tg-bg));color:rgb(var(--tg-fg))}
+.tag .ic{width:16px;height:16px}
+.tag--success{--tg-bg:var(--v-theme-success-container);--tg-fg:var(--v-theme-on-success-container)}
+.tag--warning{--tg-bg:var(--v-theme-warning-container);--tg-fg:var(--v-theme-on-warning-container)}
+.tag--error{--tg-bg:var(--v-theme-error-container);--tg-fg:var(--v-theme-on-error-container)}
+.tag--info{--tg-bg:var(--v-theme-info-container);--tg-fg:var(--v-theme-on-info-container)}
+.tag--outline{background:transparent;box-shadow:inset 0 0 0 1px currentColor;padding:0 8px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:36px;padding:0 16px;border-radius:var(--radius-md);border:1px solid transparent;background:none;font-weight:600;cursor:pointer;text-decoration:none;white-space:nowrap}
+.btn .ic{width:18px;height:18px}
+.btn--tonal{background:rgb(var(--v-theme-primary-container));color:rgb(var(--v-theme-on-primary-container))}
+.btn--outlined{border-color:rgb(var(--line-strong));background:rgb(var(--v-theme-surface))}
+.btn--text{color:rgb(var(--v-theme-primary));padding:0 12px}
+.btn--icon{width:36px;padding:0}
+.btn--sm{min-height:32px;padding:0 12px}
+.btn--sm.btn--icon{width:32px;padding:0}
+.btn:disabled,.btn[aria-disabled="true"]{background:rgba(var(--v-border-color),.12);color:rgba(var(--v-theme-on-surface),.46);cursor:not-allowed;border-color:transparent}
+.btn:hover:not(:disabled){filter:brightness(.94)}
+.btn--text:hover:not(:disabled){background:rgba(var(--v-theme-primary),.08);filter:none}
+.alert .acts .btn{white-space:normal;text-align:center;height:auto;padding-top:6px;padding-bottom:6px}
+.input{height:40px;width:100%;border:1px solid rgb(var(--line-strong));border-radius:var(--radius-md);padding:0 12px;background:rgb(var(--v-theme-surface));min-width:0}
+.input:focus-visible{border-color:rgb(var(--v-theme-primary));outline-offset:1px}
+.select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,#46535F 50%),linear-gradient(135deg,#46535F 50%,transparent 50%);background-position:calc(100% - 18px) 17px,calc(100% - 13px) 17px;background-size:5px 5px;background-repeat:no-repeat;padding-right:32px}
+.alert{--tn:var(--v-theme-info);--ct:var(--v-theme-info-container);--on:var(--v-theme-on-info-container);display:flex;gap:12px;align-items:flex-start;min-width:0;padding:12px 16px;border-radius:var(--radius-md);background:rgb(var(--ct));color:rgb(var(--on));border:1px solid rgba(var(--tn),.35);border-left:4px solid rgb(var(--tn))}
+.alert>.ic{margin-top:1px;color:rgb(var(--tn))}
+.alert .body{flex:1;min-width:0;display:grid;gap:2px;overflow-wrap:anywhere}
+.alert .ttl{font-weight:600}
+.alert .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.alert--warning{--tn:var(--v-theme-warning);--ct:var(--v-theme-warning-container);--on:var(--v-theme-on-warning-container)}
+.alert--error{--tn:var(--v-theme-error);--ct:var(--v-theme-error-container);--on:var(--v-theme-on-error-container)}
+.card{background:rgb(var(--v-theme-surface));border:1px solid rgba(var(--v-border-color),var(--v-border-opacity));border-radius:var(--radius-lg);overflow:hidden}
+.card>h2,.card>.card-h{font-size:1rem;line-height:1.5;font-weight:600;padding:12px 16px;border-bottom:1px solid rgba(var(--v-border-color),var(--v-border-opacity));display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.card>h2 .cap{font-weight:400}
+.card .pad{padding:16px}
+.kv{display:grid;grid-template-columns:200px minmax(0,1fr);margin:0}
+.kv dt,.kv dd{padding:10px 16px;border-bottom:1px solid rgba(var(--v-border-color),.08)}
+.kv dt{color:rgb(var(--v-theme-on-surface-variant))}
+.kv dd{overflow-wrap:anywhere}
+.kv dt:last-of-type,.kv dd:last-of-type{border-bottom:0}
+.kv .sub{display:block;margin-top:4px}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));margin:0;border-top:1px solid rgba(var(--v-border-color),.08)}
+.stats>div{padding:12px 16px;border-right:1px solid rgba(var(--v-border-color),.08)}
+.stats>div:last-child{border-right:0}
+.stats dt{color:rgb(var(--v-theme-on-surface-variant));font-size:.75rem}
+.stats dd{font-size:1.25rem;line-height:1.4;font-weight:600;font-variant-numeric:tabular-nums}
+.stats dd .cap{font-weight:400;display:block;color:rgb(var(--v-theme-on-surface-variant))}
+.stateblock{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:48px 24px}
+.stateblock .ill{width:48px;height:48px;border-radius:var(--radius-lg);display:flex;align-items:center;justify-content:center;background:rgb(var(--v-theme-surface-variant));color:rgb(var(--v-theme-on-surface-variant))}
+.stateblock .ill .ic{width:28px;height:28px}
+.stateblock--error .ill{background:rgb(var(--v-theme-error-container));color:rgb(var(--v-theme-error))}
+.stateblock h3{font-size:1rem;font-weight:600}
+.stateblock p{max-width:56ch}
+.skel{display:block;height:14px;border-radius:var(--radius-sm);background:linear-gradient(90deg,#E9EDF1 25%,#F4F6F8 40%,#E9EDF1 60%);background-size:300% 100%;animation:shimmer 1.4s ease-in-out infinite}
+@keyframes shimmer{from{background-position:100% 0}to{background-position:0 0}}
+.prog{height:2px;background:rgba(var(--v-theme-primary),.18);overflow:hidden;position:relative}
+.prog::after{content:"";position:absolute;inset:0 auto 0 0;width:35%;background:rgb(var(--v-theme-primary));animation:slide 1.2s ease-in-out infinite}
+@keyframes slide{from{left:-35%}to{left:100%}}
+@media (prefers-reduced-motion:reduce){.skel,.prog::after{animation:none}.prog::after{width:100%;opacity:.5}}
+
+/* シェル */
+.app{position:relative;display:block;background:rgb(var(--v-theme-background));border:1px solid rgba(var(--v-border-color),.28);border-radius:var(--radius-lg);overflow:hidden}
+.app.shell-ready{display:grid;grid-template-columns:232px minmax(0,1fr)}
+.topbar{position:relative;z-index:6;display:none;align-items:center;gap:8px;height:48px;padding:0 8px;background:rgb(var(--v-theme-surface));border-bottom:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+.topbar .brand{font-weight:600}
+.sidebar{background:rgb(var(--v-theme-surface-variant));padding:16px 12px;display:flex;flex-direction:column;gap:4px;border-right:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+.sidebar .brand{display:flex;align-items:center;gap:10px;padding:4px 12px 16px;font-size:1rem;font-weight:600;line-height:1.2}
+.sidebar .brand svg{width:24px;height:24px;flex:none}
+.sidebar .brand small{display:block;font-size:.75rem;font-weight:400;color:rgb(var(--v-theme-on-surface-variant))}
+.sidebar hr{border:0;border-top:1px solid rgba(var(--v-border-color),.2);margin:8px 12px}
+.navi{display:flex;align-items:center;gap:12px;min-height:40px;padding:0 12px;border-radius:var(--radius-md);color:rgb(var(--v-theme-on-surface));text-decoration:none}
+.navi:hover{background:rgba(var(--v-theme-primary),.08)}
+.navi .ic{color:rgb(var(--v-theme-on-surface-variant))}
+.navi[aria-current="page"]{background:rgb(var(--v-theme-surface));font-weight:600;box-shadow:inset 3px 0 0 rgb(var(--v-theme-primary))}
+.navi[aria-current="page"] .ic{color:rgb(var(--v-theme-primary))}
+.sidebar .grow{flex:1}
+.main{padding:24px 32px 40px;min-width:0}
+.pagehead{display:flex;gap:16px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;margin-bottom:16px}
+.pagehead h1{font-size:1.25rem;line-height:1.4;font-weight:600;overflow-wrap:anywhere}
+.pagehead .desc{margin-top:2px;max-width:70ch}
+.pagehead .acts{display:flex;gap:8px 12px;flex-wrap:wrap;align-items:center}
+.stack{display:grid;gap:16px;min-width:0}
+
+/* O1 */
+.toolbar{display:flex;align-items:center;gap:12px;padding:8px 16px;min-height:52px;flex-wrap:wrap}
+.toolbar .count{font-weight:600}
+.toolbar .grow{flex:1}
+.tablewrap{overflow-x:auto}
+.dt{width:100%;border-collapse:collapse}
+.dt th{background:rgb(var(--v-theme-surface-variant));font-size:.75rem;font-weight:600;color:rgb(var(--v-theme-on-surface-variant));text-align:left;padding:0 16px;height:40px;white-space:nowrap}
+.dt td,.dt tbody th{padding:10px 16px;border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity));vertical-align:middle;text-align:left}
+.dt tbody th{background:none;height:auto;font-size:inherit;color:inherit;font-weight:400;white-space:normal;overflow-wrap:anywhere}
+.dt tbody tr:hover{background:rgba(var(--v-theme-primary),.05)}
+.dt .sub{display:block;margin-top:2px}
+.dt td.num,.dt th.num{text-align:right}
+.pager{display:flex;justify-content:flex-end;align-items:center;gap:16px;flex-wrap:wrap;padding:8px 16px;border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+.pager .per{display:flex;align-items:center;gap:8px}
+.pager .per select{height:32px;width:72px}
+.rowacts{display:flex;gap:8px;justify-content:flex-end;align-items:center;flex-wrap:wrap}
+.stateblock .rowacts{justify-content:center}
+.skelrow{display:grid;grid-template-columns:2fr 1fr 1fr 1fr 1fr;gap:24px;padding:22px 16px;border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+/* シャード */
+.legend{display:flex;flex-wrap:wrap;gap:8px 20px;padding:12px 16px;border-bottom:1px solid rgba(var(--v-border-color),var(--v-border-opacity));align-items:center}
+.legend li{display:inline-flex;align-items:center;gap:8px}
+.sh{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:var(--radius-md);font-family:var(--font-mono);font-size:.75rem;font-weight:600;line-height:1;border:1px solid transparent;white-space:nowrap}
+.sh .ic{width:14px;height:14px}
+.sh--p{background:rgb(var(--v-theme-primary-container));color:rgb(var(--v-theme-on-primary-container));border-color:rgba(var(--v-theme-primary),.45)}
+.sh--r{background:rgb(var(--v-theme-surface));color:rgb(var(--v-theme-on-surface));border-color:rgb(var(--line-strong))}
+.sh--uw{background:rgb(var(--v-theme-warning-container));color:rgb(var(--v-theme-on-warning-container));border:1px dashed rgb(var(--v-theme-warning))}
+.sh--ue{background:rgb(var(--v-theme-error-container));color:rgb(var(--v-theme-on-error-container));border:1px dashed rgb(var(--v-theme-error))}
+.sh--i{background:rgb(var(--v-theme-info-container));color:rgb(var(--v-theme-on-info-container));border-color:rgba(var(--v-theme-info),.5)}
+.shs{display:flex;gap:6px;flex-wrap:wrap}
+.none{color:rgb(var(--v-theme-on-surface-variant))}
+/* シャード配置マトリクス(行=ノード、列=インデックス。列をページングする)。DS 4.15 */
+.mxbar{display:flex;align-items:center;justify-content:space-between;gap:8px 16px;flex-wrap:wrap;padding:8px 16px;border-bottom:1px solid rgba(var(--v-border-color),var(--v-border-opacity));min-height:52px}
+/* 概況(カード内の上の領域) */
+.sum{border-bottom:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+.sumhead{display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px 32px;margin:0;padding:12px 16px 0}
+.sumhead>div{display:grid;gap:2px;min-width:0}
+.sumhead dt{font-size:.75rem;color:rgb(var(--v-theme-on-surface-variant))}
+.sumhead dd{margin:0;overflow-wrap:anywhere}
+.sumdesc{padding:6px 16px 12px;margin:0;max-width:90ch}
+.sum .stats{border-top:1px solid rgba(var(--v-border-color),.08)}
+.sum .stats>div{padding:8px 16px}
+.sum .stats dd{font-size:1.125rem}
+.sum .stats dd .cap{display:inline;margin-left:6px;font-size:.75rem}
+.mxhost>.stateblock{padding:40px 24px}
+/* 絞り込みフォーム(マトリクス領域の上。概況の下) */
+.mxfilter{display:flex;flex-wrap:wrap;align-items:flex-end;gap:8px 24px;padding:12px 16px;border-bottom:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+.mxfilter .ff{display:grid;gap:4px;min-width:0;border:0;margin:0;padding:0}
+.mxfilter .lb{font-size:.75rem;line-height:1.4;color:rgb(var(--v-theme-on-surface-variant));padding:0}
+.mxfilter .qf{width:280px;max-width:100%}
+.mxfilter .input::placeholder{color:rgb(var(--v-theme-on-surface-variant));opacity:1}
+.mxfilter .chks{display:flex;flex-wrap:wrap;gap:0 16px}
+.chk{display:inline-flex;align-items:center;gap:6px;min-height:40px;cursor:pointer}
+.chk input{width:18px;height:18px;margin:0;accent-color:rgb(var(--v-theme-primary));flex:none}
+.mxfilter .btn{align-self:flex-end;margin-bottom:0}
+.mxfilter :disabled,.mxfilter [disabled]{cursor:not-allowed}
+.mxfilter .input:disabled{background:rgb(var(--v-theme-surface-variant));color:rgba(var(--v-theme-on-surface),.46);border-color:rgba(var(--v-border-color),.28)}
+.mxcount .nb{display:inline-block}
+.mxfilter .chk:has(:disabled){opacity:.6;cursor:not-allowed}
+.mxbody>.stateblock{padding:40px 24px}
+.card-h h2{font-size:inherit;line-height:inherit;font-weight:inherit}
+.card-h .cap{font-weight:400}
+.mxcount{font-weight:600}
+.mxnote span{display:inline-block}
+.mxnav{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mxnav .per{display:flex;align-items:center;gap:8px}
+.mxnav .per select{height:32px;width:96px}
+.btn[aria-disabled="true"]:hover{filter:none}
+.mxscroll{overflow-x:auto}
+.mxt{table-layout:fixed;border-collapse:separate;border-spacing:0}
+.mxt th,.mxt td{padding:8px;vertical-align:top;text-align:left;border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity));border-left:1px solid rgba(var(--v-border-color),.08);font-weight:400}
+.mxt thead th{border-top:0;background:rgb(var(--v-theme-surface-variant))}
+.mxt .corner,.mxt .nd{position:sticky;left:0;z-index:1;border-left:0;box-shadow:1px 0 0 rgba(var(--v-border-color),var(--v-border-opacity))}
+.mxt .corner{font-size:.75rem;font-weight:600;color:rgb(var(--v-theme-on-surface-variant));vertical-align:bottom;padding:8px 12px}
+.mxt .nd{background:rgb(var(--v-theme-surface));padding:8px 12px;display:table-cell}
+.mxt .nd .mono{display:block;overflow-wrap:anywhere;font-weight:600}
+.mxt .nd .cap{display:block}
+.mxt .ixh{height:1px}
+.mxt .ixh .in{display:grid;gap:4px;justify-items:start;height:100%;grid-template-rows:auto auto 1fr;align-content:stretch}
+.mxt .ixh .in .tag{align-self:end}
+.mxt .ixn{font-family:var(--font-mono);font-size:.75rem;line-height:1.4;font-weight:600;overflow-wrap:anywhere;color:rgb(var(--v-theme-on-surface))}
+.mxt .cnt{font-size:.75rem;line-height:1.4;font-variant-numeric:tabular-nums;color:rgb(var(--v-theme-on-surface));font-weight:400}
+.mxt .cnt .n{white-space:nowrap}
+.mxt .cnt .u{color:rgb(var(--v-theme-on-surface-variant))}
+.mxt .cnt.none{color:rgb(var(--v-theme-on-surface-variant))}
+.mxt td{min-height:48px;height:48px}
+.mxt tr.ua td{background:rgba(var(--v-theme-warning-container),.4);border-top:1px dashed rgb(var(--v-theme-warning))}
+.mxt tr.ua .nd{background:rgb(var(--v-theme-warning-container));color:rgb(var(--v-theme-on-warning-container))}
+.mxt tr.ua .nd .cap{color:rgb(var(--v-theme-on-warning-container))}
+.mxt tr.ua .nd .lab{display:flex;gap:6px;align-items:flex-start;font-weight:600}
+.mxt tr.ua .nd .lab .ic{width:16px;height:16px;margin-top:2px;color:rgb(var(--v-theme-warning))}
+
+/* 見本の枠(.doc の左右の余白)の分だけ画面の枠を広げ、実アプリと同じカード幅にする(1 ページの列数を実アプリと一致させるため) */
+@media (min-width:600px){ .app{margin-left:-24px;margin-right:-24px} }
+@media (max-width:599px){ .app{margin-left:-16px;margin-right:-16px;border-radius:0} }
+@media (max-width:1144px){
+  .main{padding:20px 24px 32px}
+  .dt th,.dt td,.dt tbody th{padding-left:12px;padding-right:12px}
+}
+@media (max-width:839px){
+  .app.shell-ready{grid-template-columns:minmax(0,1fr)}
+  .topbar{display:flex}
+  .sidebar{display:none}
+  .app.nav-open .sidebar{display:flex;position:absolute;z-index:5;left:0;top:48px;bottom:0;width:272px;box-shadow:var(--shadow-dialog)}
+  .app.nav-open::after{content:"";position:absolute;inset:48px 0 0 0;background:rgba(26,37,48,.4);z-index:4}
+  .main{padding:16px}
+  .tablewrap{overflow:visible}
+  .dt,.dt tbody,.dt tr,.dt td,.dt tbody th{display:block}
+  .dt thead{display:none}
+  .dt tr{padding:12px 16px;border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity))}
+  .dt td,.dt tbody th{border:0;padding:4px 0;display:flex;gap:12px;justify-content:flex-start;align-items:center}
+  .dt tbody th{display:block;padding-bottom:6px;font-weight:600}
+  .dt td::before{content:attr(data-label);flex:0 0 112px;color:rgb(var(--v-theme-on-surface-variant));font-size:.75rem;overflow-wrap:anywhere}
+  .dt td.num{text-align:left}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .stats>div{border-bottom:1px solid rgba(var(--v-border-color),.08)}
+  .skelrow{grid-template-columns:1fr;gap:10px}
+  .pager{justify-content:flex-start}
+}
+@media (max-width:599px){
+  .doc{padding:16px 16px 48px}
+  .btn,.btn--sm{min-height:44px}
+  .btn--sm.btn--icon,.btn--icon{width:44px}
+  .input,.pager .per select,.mxnav .per select{height:44px}
+  .mxt .nd{padding:8px}
+  .mxnav .per label{position:absolute;width:1px;height:1px;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+  .mxfilter{flex-direction:column;align-items:stretch;gap:12px;padding:12px}
+  .mxfilter .qf{width:100%}
+  .mxbody>.stateblock{padding:32px 12px}
+  .chk{min-height:44px}
+  .mxfilter .chks{gap:0 12px}
+  .mxfilter .btn{align-self:stretch}
+  .mxnav .per select{width:84px;padding-left:8px;padding-right:26px;background-position:calc(100% - 14px) 19px,calc(100% - 9px) 19px}
+  .mxnav{flex-wrap:nowrap;gap:6px}
+  .mxnav .btn{padding:0 10px;gap:6px}
+  .mxbar{padding:8px 12px}
+  .kv{grid-template-columns:minmax(0,1fr)}
+  .kv dt{padding-bottom:0;border-bottom:0;font-size:.75rem}
+  .dt td::before{flex-basis:96px}
+}
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="i-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M7.8 12.4l2.9 2.9 5.6-6"/></symbol>
+  <symbol id="i-warn" viewBox="0 0 24 24"><path d="M12 3.8L21.2 20H2.8z"/><path d="M12 10v4.2M12 17.3v.1"/></symbol>
+  <symbol id="i-fail" viewBox="0 0 24 24"><path d="M8.6 3h6.8L21 8.6v6.8L15.4 21H8.6L3 15.4V8.6z"/><path d="M9 9l6 6M15 9l-6 6"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.6v.1"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.6v.1"/></symbol>
+  <symbol id="i-swap" viewBox="0 0 24 24"><path d="M4 8h14M14 4l4 4-4 4M20 16H6M10 12l-4 4 4 4"/></symbol>
+  <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></symbol>
+  <symbol id="i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5"/></symbol>
+  <symbol id="i-db" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></symbol>
+  <symbol id="i-jobs" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h4"/></symbol>
+  <symbol id="i-docs" viewBox="0 0 24 24"><path d="M6 3h8l4 4v5M6 3v18h6"/><circle cx="16.5" cy="17" r="3"/><path d="M18.7 19.3L21 21.6"/></symbol>
+  <symbol id="i-cluster" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="6" rx="1.5"/><rect x="4" y="14" width="16" height="6" rx="1.5"/><path d="M8 7v.1M8 17v.1"/></symbol>
+  <symbol id="i-dash" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="8" rx="1"/><rect x="13" y="4" width="7" height="5" rx="1"/><rect x="4" y="14" width="7" height="6" rx="1"/><rect x="13" y="11" width="7" height="9" rx="1"/></symbol>
+  <symbol id="i-chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></symbol>
+  <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 24 24"><path d="M12 5v14M6 13l6 6 6-6"/></symbol>
+  <symbol id="i-wave" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" rx="5" fill="#1D5B87" stroke="none"/><path d="M4.5 14c2-3.2 4-3.2 5.5 0s3.5 3.2 5.5 0 2.5-2.5 3.5-2.5" stroke="#fff" fill="none"/><path d="M7 8.5h3" stroke="#fff"/></symbol>
+</svg>
+
+<template id="tpl-shell">
+  <div class="topbar"><button class="btn btn--text btn--icon" type="button" data-nav-toggle aria-label="メニューを開く" aria-expanded="false"><svg class="ic" aria-hidden="true"><use href="#i-menu"/></svg></button><span class="brand">Loreley 管理</span></div>
+  <nav class="sidebar" aria-label="メインメニュー">
+    <div class="brand"><svg aria-hidden="true"><use href="#i-wave"/></svg><span>Loreley<small>管理</small></span></div>
+    <a class="navi" href="admin-dashboard-v0.1.html" data-key="dashboard"><svg class="ic" aria-hidden="true"><use href="#i-dash"/></svg>ダッシュボード</a><hr>
+    <a class="navi" href="admin-sources-v0.1.html" data-key="sources"><svg class="ic" aria-hidden="true"><use href="#i-db"/></svg>データソース</a>
+    <a class="navi" href="admin-jobs-v0.1.html" data-key="jobs"><svg class="ic" aria-hidden="true"><use href="#i-jobs"/></svg>ジョブ</a><hr>
+    <a class="navi" href="admin-documents-v0.1.html" data-key="documents"><svg class="ic" aria-hidden="true"><use href="#i-docs"/></svg>文書の確認</a>
+    <a class="navi" href="admin-opensearch-v0.1.html" data-key="opensearch"><svg class="ic" aria-hidden="true"><use href="#i-cluster"/></svg>OpenSearch</a>
+    <div class="grow"></div>
+    <a class="navi" href="#" target="_blank" rel="noopener"><svg class="ic" aria-hidden="true"><use href="#i-ext"/></svg>OpenSearch Dashboards<span class="sr-only">(別タブで開く。設定されている場合のみ表示)</span></a>
+  </nav>
+</template>
+<noscript><p style="padding:8px 16px;background:#FFF1D6;color:#6B4200">このモックは、画面枠(サイドバー・上部バー)の表示に JavaScript を使います。JavaScript を有効にしてください。</p></noscript>
+<a class="skip" href="#main">メインコンテンツへ移動</a>
+
+<div class="doc">
+<header>
+  <h1 class="mock-title">Admin View O1 OpenSearch v0.1(静的モック。承認済み(ゲート C 2026-11-22)。クラスタ状態とシャード配置の統合・1 カード化はユーザー指示 2026-11-22 で改訂)</h1>
+  <p class="t2" style="margin-top:4px;max-width:80ch">仕様は <span class="mono">admin/opensearch-v0.1.md</span>。ダミーデータのみ。OpenSearch 汎用の情報(クラスタの状態・インデックス・ドキュメント件数・シャードの配置)だけを読み取り専用で出す。URL ハッシュ(例: <span class="mono">#o1-yellow</span>)で直接開ける。シャードの配置は、行がノード・列がインデックスで、列がページに収まらないときは「前へ」「次へ」で切り替える(1 ページの列数は幅で決まる。ウィンドウ幅を変えて確認できる)。</p>
+  <nav class="index" aria-label="状態一覧">
+    <div><b>O1 OpenSearch</b>
+      <ul>
+        <li><a href="#o1-normal">通常(green・2 ノード)</a></li>
+        <li><a href="#o1-yellow">yellow(単一ノード・未割り当てのレプリカ)</a></li>
+        <li><a href="#o1-unassigned">未割り当てあり(2 ノード・移動中あり)</a></li>
+        <li><a href="#o1-single">ノード 1 台(green・レプリカなし)</a></li>
+        <li><a href="#o1-paging">多数のインデックス(25 件・1 ページ目)</a></li>
+        <li><a href="#o1-paging-2">同 2 ページ目</a></li>
+        <li><a href="#o1-paging-last">同 最終ページ</a></li>
+        <li><a href="#o1-filter">絞り込み(名前: docs)</a></li>
+        <li><a href="#o1-filter-state">絞り込み(状態: yellow・red)</a></li>
+        <li><a href="#o1-filter-paging">絞り込み後も複数ページ(名前: logs・2 ページ目)</a></li>
+        <li><a href="#o1-filter-empty">絞り込み: 一致 0 件</a></li>
+        <li><a href="#o1-red">red(未割り当てのプライマリ)</a></li>
+        <li><a href="#o1-empty">空(インデックスなし)</a></li>
+        <li><a href="#o1-loading">読み込み中</a></li>
+        <li><a href="#o1-error">エラー(データなし)</a></li>
+        <li><a href="#o1-stale">エラー(前回データ表示)</a></li>
+      </ul></div>
+  </nav>
+</header>
+
+<main id="main">
+<section class="sec" aria-labelledby="h-o1">
+<h2 id="h-o1">O1 OpenSearch(AF-17。読み取り専用)</h2>
+
+<!-- ===== 通常 ===== -->
+<div class="state" id="o1-normal">
+<h3>通常: クラスタが green(2 ノード)</h3>
+<p class="cap t2">O1 は「クラスタ状態」の 1 カード(ユーザー指示 2026-11-22)。カードの中は上から、概況(クラスタ名・状態・説明・件数 4 項目=ノード / アクティブ(うち移動中)/ 未割り当て / 初期化中)→ 凡例 → ページ送りバー → マトリクス(行=ノード、列=インデックス。列見出しに名前・件数・状態)。インデックス一覧とクラスタの状態カードは廃止して統合した。更新ボタンと最終取得日時はページ見出しの右(DS 6.4)。操作は「更新」だけ(手動のみ。自動更新はしない)。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1><p class="desc t2">OpenSearch のクラスタ状態(クラスタの概況と、インデックスごとのドキュメント件数・シャードの配置)を確認します。この画面は読み取り専用で、インデックスの削除・シャードの再配置・設定の変更はできません。</p></div>
+      <div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
+    <div class="stack">
+      <section class="card" aria-labelledby="c-cl" data-testid="o1-cluster"><h2 id="c-cl">クラスタ状態</h2>
+        <div class="mxhost" data-ds="normal"></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ===== yellow ===== -->
+<div class="state" id="o1-yellow">
+<h3>yellow: 単一ノードで、レプリカが未割り当て</h3>
+<p class="cap t2">単一ノードの構成では、レプリカが 1 以上のインデックスが yellow になる(OpenSearch の一般的な挙動)。未割り当てのシャードは「未割り当て」の列に点線のチップで並べる。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
+    <div class="stack">
+      <section class="card" aria-labelledby="c-cl2" data-testid="o1-cluster"><h2 id="c-cl2">クラスタ状態</h2>
+        <div class="mxhost" data-ds="yellow"></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ===== red ===== -->
+<div class="state" id="o1-red">
+<h3>red: 未割り当てのプライマリシャードがある</h3>
+<p class="cap t2">ページ上部にエラーのアラートを出す(取得は成功しているので <span class="mono">role="status"</span>)。red のインデックスは、ドキュメント件数を取得できないことがあるため、列見出しの件数を「—」にしている(取得不能の見本)。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
+    <div class="stack">
+      <div class="alert alert--error" role="status"><svg class="ic" aria-hidden="true"><use href="#i-fail"/></svg><div class="body"><p class="ttl">未割り当てのプライマリシャードがあります</p><p>demo-docs-000001 のプライマリシャード(P0)が割り当てられていません。このインデックスの検索や登録に影響する可能性があります。</p></div></div>
+      <section class="card" aria-labelledby="c-cl3" data-testid="o1-cluster"><h2 id="c-cl3">クラスタ状態</h2>
+        <div class="mxhost" data-ds="red"></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ===== 未割り当てあり(複数ノード) ===== -->
+<div class="state" id="o1-unassigned">
+<h3>未割り当てあり: 2 ノード。未割り当てのレプリカ 1 つ、移動中・初期化中のシャード各 1 つ</h3>
+<p class="cap t2">行はノード、列はインデックス。未割り当てのシャードは、最下部の「未割り当て」の行に点線のチップで並べる(未割り当てがあるときだけ出る行)。状態の悪い順に並ぶため、yellow のインデックスが先頭の列になる。移動中と初期化中は見た目が同じ(青のチップ+矢印)で、読み上げの文だけが違う。概況は アクティブ 4(うち移動中 1)・未割り当て 1・初期化中 1(アクティブ+初期化中+未割り当て=6=全シャード数)。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
+    <div class="stack">
+      <section class="card" aria-labelledby="c-sh7" data-testid="o1-cluster"><h2 id="c-sh7">クラスタ状態</h2>
+        <div class="mxhost" data-ds="unassigned"></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ===== ノード 1 台 ===== -->
+<div class="state" id="o1-single">
+<h3>ノード 1 台: レプリカなしで green(行はノード 1 つだけ)</h3>
+<p class="cap t2">ノードが 1 台でも同じ構成(行が 1 つ)。レプリカがないため未割り当ての行は出ない。インデックスが 1 ページに収まる場合(幅 768px 以上)は、ページ送りは出さない。幅 375px・320px では 1 ページの列数が 2・1 のため、3 件でもページ送りが出る(他の状態も同じ)。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
+    <div class="stack">
+      <section class="card" aria-labelledby="c-sh8" data-testid="o1-cluster"><h2 id="c-sh8">クラスタ状態</h2>
+        <div class="mxhost" data-ds="single"></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ===== 多数(ページング) ===== -->
+<div class="state" id="o1-paging">
+<h3>多数のインデックス(25 件・3 ノード): 1 ページ目</h3>
+<p class="cap t2">列(インデックス)が 1 ページに収まらないので、「前へ」「次へ」で切り替える。1 ページの列数は、カードの幅から決める(幅 1280px で 7 列。ウィンドウ幅を変えると変わる)。状態の悪い順(yellow のインデックスが先頭)。列見出しの件数は、0 件・大きな値(1,234,567,890 件)・取得不能(—)を含む。1 ページ目は「前へ」が使えない状態(<span class="mono">aria-disabled</span>)。概況は通常と同じ形。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
+    <div class="stack">
+      <section class="card" aria-labelledby="c-sh9" data-testid="o1-cluster"><h2 id="c-sh9">クラスタ状態</h2>
+        <div class="mxhost" data-ds="paging" data-page="1"></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="state" id="o1-paging-2">
+<h3>多数のインデックス: 2 ページ目(前へ・次へがどちらも使える)</h3>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div></div>
+    <div class="stack">
+      <section class="card" aria-labelledby="c-sh10" data-testid="o1-cluster"><h2 id="c-sh10">クラスタ状態</h2>
+        <div class="mxhost" data-ds="paging" data-page="2"></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="state" id="o1-paging-last">
+<h3>多数のインデックス: 最終ページ(「次へ」が使えない。列が 1 ページの列数に満たない)</h3>
+<p class="cap t2">最終ページは、列の幅をほかのページと同じにして右に余白を残す(ページごとに列幅が変わらないようにする)。未割り当ての行は、このページに該当のシャードがなくても残り、「—」を出す(ページを送っても行の構成が変わらない)。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div></div>
+    <div class="stack">
+      <section class="card" aria-labelledby="c-sh11" data-testid="o1-cluster"><h2 id="c-sh11">クラスタ状態</h2>
+        <div class="mxhost" data-ds="paging" data-page="last"></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ===== 絞り込み ===== -->
+<div class="state" id="o1-filter">
+<h3>絞り込み中(名前): 「docs」を含むインデックス(全 25 件中 3 件)</h3>
+<p class="cap t2">名前の入力で、すぐに(250ms 待って)絞り込む。概況はクラスタ全体の値のまま(絞り込みの対象外)。件数の表示は「絞り込み後 3 件のインデックス(全 25 件中)」で、変わるとすぐ読み上げる(<span class="mono">role="status"</span>)。行見出し・未割り当ての行の「シャード n」と凡例は、絞り込み後のインデックスの分だけ(この例は yellow の docs-000003 が含まれるため、未割り当ての行と点線の凡例が出る)。モックの入力欄は実際に動く(この例も、入力・チェック・解除を試せる)。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
+    <div class="stack">
+      <section class="card" aria-labelledby="c-f1" data-testid="o1-cluster"><h2 id="c-f1">クラスタ状態</h2>
+        <div class="mxhost" data-ds="paging" data-q="docs"></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="state" id="o1-filter-state">
+<h3>絞り込み中(状態): yellow または red(全 25 件中 3 件)</h3>
+<p class="cap t2">状態は複数選択(チェックボックス+状態タグ。色・形・文言で区別)。選ばなければすべて。この例は red のインデックスがないため、yellow の 3 件。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
+    <div class="stack">
+      <section class="card" aria-labelledby="c-f2" data-testid="o1-cluster"><h2 id="c-f2">クラスタ状態</h2>
+        <div class="mxhost" data-ds="paging" data-state="red,yellow"></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="state" id="o1-filter-paging">
+<h3>絞り込み後も複数ページ: 「logs」を含む 16 件(全 25 件中)。2 ページ目</h3>
+<p class="cap t2">絞り込みの結果が 1 ページに収まらないときは、列のページングが続く(「a–b / 絞り込み後 N 件のインデックス(全 25 件中)」)。条件を変えると 1 ページ目に戻る。ページの列数の式と列幅は絞り込みでも変わらない。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
+    <div class="stack">
+      <section class="card" aria-labelledby="c-f3" data-testid="o1-cluster"><h2 id="c-f3">クラスタ状態</h2>
+        <div class="mxhost" data-ds="paging" data-q="logs" data-page="2"></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<div class="state" id="o1-filter-empty">
+<h3>絞り込み: 一致 0 件</h3>
+<p class="cap t2">件数の通知(常に DOM にある <span class="mono">role="status"</span>)は「絞り込み後 0 件のインデックス(全 25 件中)」だけ。補足は「適用中の条件」の文だけ。ブロックの見出しは「条件に合うインデックスがありません」で、解除のボタンはブロックに置かず、上のフォームの「条件を解除」を使う(同じ画面にボタンを 2 つ置かない)。フォームはそのまま使える。表・凡例・ページ送りは出さない。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
+    <div class="stack">
+      <section class="card" aria-labelledby="c-f4" data-testid="o1-cluster"><h2 id="c-f4">クラスタ状態</h2>
+        <div class="mxhost" data-ds="paging" data-q="zzz" data-state="green"></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ===== 空 ===== -->
+<div class="state" id="o1-empty">
+<h3>空: インデックスが 1 つもない</h3>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><span class="cap t2">最終更新 2026-11-21 10:48:03</span><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
+    <div class="stack">
+      <section class="card" aria-labelledby="c-cl4" data-testid="o1-cluster"><h2 id="c-cl4">クラスタ状態</h2>
+        <div class="mxhost" data-ds="empty"></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ===== 読み込み中 ===== -->
+<div class="state" id="o1-loading">
+<h3>読み込み中(初回取得)</h3>
+<p class="cap t2">見出しと「更新」は先に出し、「クラスタ状態」のカードの中(概況とマトリクスの 2 領域)をスケルトンにする。絞り込みフォームは、無効にして(入力できない。無効の入力欄の見た目)出す(読み込み後の位置が動かないように)。URL から復元した条件(この例は 名前 logs・状態 yellow)は、無効のフォームにも表示する。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div><div class="acts"><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>更新</button></div></div>
+    <div class="stack">
+      <section class="card" aria-labelledby="c-cl5" aria-busy="true" data-testid="o1-cluster"><h2 id="c-cl5">クラスタ状態</h2><div class="prog" aria-hidden="true"></div>
+        <p class="sr-only" role="status" data-testid="o1-state-loading">OpenSearch の状態を読み込み中</p>
+        <div class="pad" style="display:grid;gap:12px"><span class="skel" style="width:30%"></span><span class="skel" style="width:20%"></span><span class="skel" style="width:60%"></span></div>
+        <div data-filter-disabled data-q="logs" data-state="yellow"></div>
+        <div class="pad" style="display:grid;gap:12px;border-top:1px solid rgba(var(--v-border-color),var(--v-border-opacity))"><span class="skel" style="width:80%"></span><span class="skel" style="width:70%"></span><span class="skel" style="width:75%"></span></div></section>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ===== エラー ===== -->
+<div class="state" id="o1-error">
+<h3>エラー: 取得失敗(データなし)</h3>
+<p class="cap t2">OpenSearch に接続できない場合を含む。原因が OpenSearch 側にあるときの確認先として、ダッシュボードへの導線を置く。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div></div>
+    <section class="card" aria-labelledby="c-cl7" data-testid="o1-cluster"><h2 id="c-cl7">クラスタ状態</h2><div class="stateblock stateblock--error" role="alert" data-testid="o1-state-error"><div class="ill"><svg class="ic" aria-hidden="true"><use href="#i-alert"/></svg></div><h3>OpenSearch の状態を取得できません</h3><p class="t2">OpenSearch に接続できなかったか、応答が返りませんでした。しばらくしてから再試行してください。解消しない場合は、ダッシュボードで opensearch と api の状態を確認してください。</p><p class="cap t2">試行時刻 2026-11-21 10:49:10 · 接続エラー(ダミー)</p><div class="rowacts"><button class="btn btn--outlined" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>再試行</button><a class="btn btn--text" href="admin-dashboard-v0.1.html">ダッシュボードを開く</a></div></div></section>
+  </div>
+</div>
+</div>
+
+<!-- ===== stale ===== -->
+<div class="state" id="o1-stale">
+<h3>エラー: 取得失敗(前回のデータを表示)</h3>
+<p class="cap t2">前回の値を表示し続け、現在の状態と異なる可能性を警告する。「クラスタ状態」のカード全体(概況+マトリクス)を前回の値のまま出し、見出し行の右(見出しの外の別要素。カードの名前は「クラスタ状態」だけにする)に「前回取得時の値 · 最終更新(成功)時刻」、状態の説明に「前回取得時の値です。」を添える。</p>
+<div class="app" data-shell="opensearch">
+  <div class="main">
+    <div class="pagehead"><div><h1>OpenSearch</h1></div></div>
+    <div class="stack">
+      <div class="alert alert--warning" role="alert"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg><div class="body"><p class="ttl">最新の状態を取得できませんでした</p><p>前回取得したデータ(2026-11-21 10:48:03 時点)を表示しています。クラスタの現在の状態と異なる可能性があります。</p><div class="acts"><button class="btn btn--outlined btn--sm" type="button"><svg class="ic" aria-hidden="true"><use href="#i-refresh"/></svg>再読み込み</button></div></div></div>
+      <section class="card" aria-labelledby="c-cl6" data-testid="o1-cluster"><div class="card-h"><h2 id="c-cl6">クラスタ状態</h2><span class="cap t2" data-testid="o1-state-stale">前回取得時の値 · 最終更新(成功) 2026-11-21 10:48:03</span></div>
+        <div class="mxhost" data-ds="normal" data-stale="1"></div>
+      </section>
+    </div>
+  </div>
+</div>
+</div>
+
+</section>
+</main>
+</div>
+<script>
+/* 画面枠の複製(表示用) */
+document.querySelectorAll('[data-shell]').forEach(function(app){
+  var t=document.getElementById('tpl-shell').content.cloneNode(true);
+  var a=t.querySelector('[data-key="'+app.getAttribute('data-shell')+'"]'); if(a) a.setAttribute('aria-current','page');
+  app.insertBefore(t,app.firstChild); app.classList.add('shell-ready');
+});
+/* 狭い画面のナビ開閉(☰・スクリム・Esc) */
+function setNav(app,open){
+  app.classList.toggle('nav-open',open);
+  var b=app.querySelector('[data-nav-toggle]');
+  b.setAttribute('aria-expanded',open); b.setAttribute('aria-label',open?'メニューを閉じる':'メニューを開く');
+}
+document.addEventListener('click',function(e){
+  var b=e.target.closest('[data-nav-toggle]');
+  if(b){ var app=b.closest('.app'); setNav(app,!app.classList.contains('nav-open')); return; }
+  if(e.target.classList&&e.target.classList.contains('nav-open')) setNav(e.target,false);
+});
+document.addEventListener('keydown',function(e){
+  if(e.key!=='Escape') return;
+  var open=document.querySelector('.app.nav-open'); if(open){ setNav(open,false); open.querySelector('[data-nav-toggle]').focus(); }
+});
+</script>
+<script>
+/* シャード配置マトリクス(表示用)。ダミーデータから表を組み、列(インデックス)をページ送りする。
+   仕様: DS 4.15、admin/opensearch-v0.1.md 3.3・3.4。1 ページの列数 = max(1, floor((W − H) ÷ 112))(上限なし)。
+   W = カード「クラスタ状態」の内容領域の幅(枠 1px×2 を除く。表はカードの左右の端まで広げる。概況を統合してもカード幅は変わらない)。H = 行見出しの幅(152px。viewport 幅 600px 未満は 112px)。
+   実装(Vue)では ResizeObserver を使う小さな composable などで同じ式を使う。検索・API の処理ではない。 */
+(function(){
+var HL={red:{o:0,c:'tag--error',i:'i-fail'},yellow:{o:1,c:'tag--warning',i:'i-warn'},green:{o:2,c:'tag--success',i:'i-check'}};
+var MINCOL=112;
+/* シャードの記法: 'p0@1' = プライマリ 0 がノード 1。'r0@-1' = 未割り当て。末尾 '~' = 移動中、末尾 '^' = 初期化中(見た目は同じ。読み上げは分ける) */
+/* ix(名前, 状態, シャード[], ドキュメント件数)。件数が null は「取得できない」(列見出しに「—」) */
+function ix(name,health,list,count){return {name:name,health:health,cnt:(count==null?null:count),sh:list.map(function(s){var m=/^([pr])(\d+)@(-?\d+)([~^]?)$/.exec(s);return {role:m[1],n:+m[2],node:+m[3],mv:m[4]==='~',ini:m[4]==='^'};})};}
+function gen(){
+  var spec=[['.demo-sys-tasks',1],['demo-docs-000001',2],['demo-docs-000002',2],['demo-docs-000003',2],['demo-store-jobs',1],['demo-store-sources',1],['demo-store-locks',1],['demo-store-deletions',1],['demo-store-extracted',1]];
+  for(var d=1;d<=16;d++) spec.push(['demo-logs-2026.11.'+(d<10?'0':'')+d,1]);
+  var UA={'demo-docs-000003':[1],'demo-logs-2026.11.15':[0],'demo-logs-2026.11.16':[0]}, MV={'demo-logs-2026.11.14':[0]};
+  return spec.map(function(s,i){
+    var list=[],yellow=false;
+    for(var p=0;p<s[1];p++){
+      var mv=(MV[s[0]]||[]).indexOf(p)>=0, ua=(UA[s[0]]||[]).indexOf(p)>=0;
+      list.push('p'+p+'@'+((i+p)%3)+(mv?'~':''));
+      list.push('r'+p+'@'+(ua?-1:(i+p+1)%3)); if(ua) yellow=true;
+    }
+    var CNT={'demo-docs-000003':8402117,'demo-logs-2026.11.15':0,'demo-logs-2026.11.16':null,'demo-logs-2026.11.01':1234567890,'.demo-sys-tasks':87,'demo-docs-000001':12846,'demo-docs-000002':3310552};
+    var c=(s[0] in CNT)?CNT[s[0]]:((i+3)*104729)%98765;
+    return ix(s[0],yellow?'yellow':'green',list,c);
+  });
+}
+var D={
+  normal:{nodes:['demo-node-1','demo-node-2'],ix:[ix('demo-docs-000001','green',['p0@0','r0@1'],12846),ix('demo-store-jobs','green',['r0@0','p0@1'],1204),ix('demo-store-sources','green',['p0@0','r0@1'],6)]},
+  yellow:{nodes:['demo-node-1'],ix:[ix('demo-docs-000001','yellow',['p0@0','r0@-1'],12846),ix('demo-store-jobs','yellow',['p0@0','r0@-1'],1204),ix('demo-store-sources','yellow',['p0@0','r0@-1'],6)]},
+  red:{nodes:['demo-node-1'],ix:[ix('demo-docs-000001','red',['p0@-1','r0@-1'],null),ix('demo-store-jobs','yellow',['p0@0','r0@-1'],1204),ix('demo-store-sources','yellow',['p0@0','r0@-1'],6)]},
+  unassigned:{nodes:['demo-node-1','demo-node-2'],ix:[ix('demo-docs-000001','green',['p0@0','r0@1'],12846),ix('demo-store-jobs','yellow',['p0@1','r0@-1'],1204),ix('demo-store-sources','yellow',['p0@0~','r0@1^'],6)]},
+  empty:{nodes:['demo-node-1'],ix:[]},
+  single:{nodes:['demo-node-1'],ix:[ix('demo-docs-000001','green',['p0@0'],12846),ix('demo-store-jobs','green',['p0@0'],0),ix('demo-store-sources','green',['p0@0'],6)]},
+  paging:{nodes:['demo-node-1','demo-node-2','demo-node-3'],ix:gen()}
+};
+Object.keys(D).forEach(function(k){
+  var d=D[k];
+  d.ix.sort(function(a,b){return HL[a.health].o-HL[b.health].o||(a.name<b.name?-1:a.name>b.name?1:0);});
+  d.nodeTotal=d.nodes.map(function(_,n){var c=0;d.ix.forEach(function(x){x.sh.forEach(function(s){if(s.node===n)c++;});});return c;});
+  d.uaTotal=0;d.ix.forEach(function(x){x.sh.forEach(function(s){if(s.node<0)d.uaTotal++;});});
+  /* 概況(クラスタ全体)をダミーデータから計算する(表示用)。アクティブ=割り当て済みで初期化中でないもの(移動中は含む) */
+  d.active=0;d.moving=0;d.init=0;d.status='green'; /* アクティブ=割り当て済みで初期化中でないもの(移動中を含む=内数)。初期化中・未割り当ては外数。アクティブ+初期化中+未割り当て=全シャード */
+  d.ix.forEach(function(x){
+    if(x.health==='red') d.status='red'; else if(x.health==='yellow'&&d.status!=='red') d.status='yellow';
+    x.sh.forEach(function(s){ if(s.node>=0){ if(s.ini) d.init++; else { d.active++; if(s.mv) d.moving++; } } });
+  });
+});
+var ST={
+  green:{c:'tag--success',i:'i-check',l:'green(正常)',t:'すべてのシャードが割り当てられています。'},
+  yellow:{c:'tag--warning',i:'i-warn',l:'yellow(注意)',t:'プライマリシャードはすべて割り当てられていますが、一部のレプリカシャードが割り当てられていません。単一ノードでレプリカが 1 以上のインデックスは、通常 yellow になります。'},
+  red:{c:'tag--error',i:'i-fail',l:'red(異常)',t:'一部のプライマリシャードが割り当てられていません。該当するインデックスの検索や登録に影響する可能性があります。'}
+};
+/* 概況(カード内の上の領域): クラスタ名・状態タグ・説明・件数 4 項目 */
+function summaryHTML(h){
+  var d=h._d,st=ST[d.status],stale=h.hasAttribute('data-stale');
+  return '<div class="sum" data-testid="o1-summary"><dl class="sumhead"><div><dt>クラスタ名</dt><dd class="mono">demo-cluster</dd></div><div><dt>状態</dt><dd><span class="tag '+st.c+'"><svg class="ic" aria-hidden="true"><use href="#'+st.i+'"/></svg>'+st.l+'</span></dd></div></dl>'+
+    '<p class="sumdesc t2">'+st.t+(stale?' 前回取得時の値です。':'')+'</p>'+
+    '<dl class="stats"><div><dt>ノード</dt><dd>'+d.nodes.length+'</dd></div><div><dt>アクティブ</dt><dd>'+d.active+'<span class="cap">うち移動中 '+d.moving+'</span></dd></div><div><dt>未割り当て</dt><dd>'+d.uaTotal+'</dd></div><div><dt>初期化中</dt><dd>'+d.init+'</dd></div></dl></div>';
+}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');}
+function chip(s){
+  var P=s.role==='p', lab=P?'プライマリ':'レプリカ', L=(P?'P':'R')+s.n;
+  if(s.node<0) return '<span class="sh '+(P?'sh--ue':'sh--uw')+'"><svg class="ic" aria-hidden="true"><use href="#'+(P?'i-fail':'i-warn')+'"/></svg>'+L+'<span class="sr-only">('+lab+'。未割り当て)</span></span>';
+  if(s.mv||s.ini) return '<span class="sh sh--i"><svg class="ic" aria-hidden="true"><use href="#i-swap"/></svg>'+L+'<span class="sr-only">('+lab+'。'+(s.ini?'初期化中':'移動中')+')</span></span>';
+  return '<span class="sh '+(P?'sh--p':'sh--r')+'">'+L+'<span class="sr-only">('+lab+'。割り当て済み)</span></span>';
+}
+function cell(x,node){
+  var l=x.sh.filter(function(s){return s.node===node;}).sort(function(a,b){return (a.role===b.role?0:a.role==='p'?-1:1)||a.n-b.n;});
+  if(!l.length) return '<td><span class="none">—<span class="sr-only">シャードなし</span></span></td>';
+  return '<td><span class="shs">'+l.map(chip).join('')+'</span></td>';
+}
+function legend(rows){ /* 凡例は、表示対象(絞り込み後。全ページ)のデータにある状態だけを出す */
+  var has={uw:0,ue:0,mv:0};
+  rows.forEach(function(x){x.sh.forEach(function(s){ if(s.node<0) has[s.role==='p'?'ue':'uw']=1; else if(s.mv||s.ini) has.mv=1; });});
+  var h='<li><span class="sh sh--p">P0</span><span>プライマリ</span></li><li><span class="sh sh--r">R0</span><span>レプリカ</span></li>';
+  if(has.uw) h+='<li><span class="sh sh--uw"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>R0</span><span>未割り当てのレプリカ(点線)</span></li>';
+  if(has.ue) h+='<li><span class="sh sh--ue"><svg class="ic" aria-hidden="true"><use href="#i-fail"/></svg>P0</span><span>未割り当てのプライマリ(点線・赤)</span></li>';
+  if(has.mv) h+='<li><span class="sh sh--i"><svg class="ic" aria-hidden="true"><use href="#i-swap"/></svg>P0</span><span>初期化中・移動中</span></li>';
+  return '<ul class="legend" aria-label="凡例">'+h+'</ul>';
+}
+/* ドキュメント件数(列見出し)。3 桁区切り+「件」。null は「—」(読み上げは「取得できません」) */
+function fmt(n){return String(n).replace(/\B(?=(\d{3})+(?!\d))/g,',');}
+function cntHTML(x){
+  var t=' data-testid="o1-count-'+esc(x.name)+'"';
+  if(x.cnt==null) return '<span class="cnt none"'+t+'>—<span class="sr-only">ドキュメント件数を取得できません</span></span>';
+  return '<span class="cnt"'+t+'><span class="sr-only">ドキュメント </span><span class="n">'+fmt(x.cnt)+'</span><span class="u"> 件</span></span>';
+}
+function tableHTML(h){
+  var d=h._d,s=h._s,rows=h._rows,filtered=isFiltered(h._f),cols=rows.slice(s.first,s.first+s.per),w=s.H+cols.length*s.cw,pages=Math.ceil(rows.length/s.per);
+  /* ノード行・未割り当て行の「シャード n」は、表示対象(絞り込み後。全ページ)のインデックスの合計 */
+  var nodeTotal=d.nodes.map(function(_,n){var c=0;rows.forEach(function(x){x.sh.forEach(function(q){if(q.node===n)c++;});});return c;});
+  var uaTotal=0;rows.forEach(function(x){x.sh.forEach(function(q){if(q.node<0)uaTotal++;});});
+  var sumSr='<span class="sr-only">('+(filtered?'絞り込み後のインデックスの合計':'全インデックスの合計')+')</span>';
+  var cap='シャードの配置。行はノード'+(uaTotal?'と未割り当て':'')+'、列はインデックス(列見出しにインデックス名・ドキュメント件数・状態)。'+(filtered?'絞り込み後 '+rows.length+' 件(全 '+d.ix.length+' 件中)。':'')+(s.paged?(filtered?'':'全 '+rows.length+' 件のうち ')+(cols.length===1?(s.first+1)+' 件目':(s.first+1)+'〜'+(s.first+cols.length)+' 件目')+'を表示中(ページ '+(s.first/s.per+1)+' / '+pages+')。':'')+'状態の悪い順、同じ状態は名前の昇順。';
+  var t='<table class="mxt" style="width:'+w+'px"><caption class="sr-only">'+cap+'</caption><colgroup><col style="width:'+s.H+'px">'+cols.map(function(){return '<col style="width:'+s.cw+'px">';}).join('')+'</colgroup>';
+  t+='<thead><tr><th scope="col" class="corner">ノード</th>'+cols.map(function(x){
+    var hl=HL[x.health];
+    return '<th scope="col" class="ixh"><div class="in"><span class="ixn">'+esc(x.name)+'</span>'+cntHTML(x)+'<span class="tag '+hl.c+'"><svg class="ic" aria-hidden="true"><use href="#'+hl.i+'"/></svg>'+x.health+'</span></div></th>';
+  }).join('')+'</tr></thead><tbody>';
+  d.nodes.forEach(function(n,k){
+    t+='<tr><th scope="row" class="nd"><span class="mono">'+esc(n)+'</span><span class="cap t2">シャード '+nodeTotal[k]+sumSr+'</span></th>'+cols.map(function(x){return cell(x,k);}).join('')+'</tr>';
+  });
+  if(uaTotal) t+='<tr class="ua"><th scope="row" class="nd"><span class="lab"><svg class="ic" aria-hidden="true"><use href="#i-warn"/></svg>未割り当て</span><span class="cap">シャード '+uaTotal+sumSr+'</span></th>'+cols.map(function(x){return cell(x,-1);}).join('')+'</tr>';
+  return t+'</tbody></table>';
+}
+/* 絞り込みフォーム(名前=部分一致・大文字小文字を区別しない / 状態=green・yellow・red の複数選択。何も選ばなければすべて)。
+   画面側で絞り込む(Admin API は全件を返す前提)。実アプリでは URL のクエリ ?q=…&state=yellow,green に反映する(モックは静的なため反映しない)。 */
+var STATES=['red','yellow','green'];
+/* 条件の正規化: 名前は前後の空白を除く(空白だけ=条件なし)。状態は 3 つとも選択=「すべて」と同じ=条件なし。f.raw はチェックの表示用(3 つとも選んだ表示を保つ) */
+function mkFilter(q,raw){ q=(q||'').trim(); raw=STATES.filter(function(k){return raw.indexOf(k)>=0;}); return {q:q,raw:raw,st:raw.length===STATES.length?[]:raw}; }
+function sameFilter(a,b){return a.q===b.q&&a.st.join()===b.st.join();}
+function isFiltered(f){return !!(f.q||f.st.length);}
+function match(f){var q=f.q.toLowerCase();return function(x){return (!q||x.name.toLowerCase().indexOf(q)>=0)&&(!f.st.length||f.st.indexOf(x.health)>=0);};}
+function filterHTML(h,disabled){
+  var id=(h?h._id:'ld'),dis=disabled?' disabled':'';
+  /* 読み込み中の無効のフォームも、URL から復元した条件(値)を表示する */
+  var chks=STATES.map(function(k){var hl=HL[k];return '<label class="chk"><input type="checkbox" value="'+k+'" data-mx="st"'+dis+'><span class="tag '+hl.c+'"><svg class="ic" aria-hidden="true"><use href="#'+hl.i+'"/></svg>'+k+'</span></label>';}).join('');
+  return '<form class="mxfilter" role="search" aria-label="インデックスの絞り込み" data-testid="o1-filter" novalidate>'+
+    '<div class="ff qf"><label class="lb" for="'+id+'-q">インデックス名</label><input class="input" id="'+id+'-q" type="text" data-mx="q" placeholder="名前の一部(例: logs)" autocomplete="off" autocapitalize="off" spellcheck="false" aria-describedby="'+id+'-qh"'+dis+'><span class="sr-only" id="'+id+'-qh">大文字小文字は区別しません。入力するとすぐに絞り込みます。</span></div>'+
+    '<fieldset class="ff"><legend class="lb">状態(複数選択できます。選ばなければすべて)</legend><div class="chks">'+chks+'</div></fieldset>'+
+    '<button class="btn btn--text btn--sm" type="button" data-mx="clear" aria-disabled="true"'+dis+'>条件を解除</button></form>';
+}
+function syncForm(h){ /* フォームの表示を状態に合わせる(解除・初期値) */
+  var f=h._f,form=h.querySelector('.mxfilter'); if(!form) return;
+  form.querySelector('[data-mx="q"]').value=f.q;
+  form.querySelectorAll('[data-mx="st"]').forEach(function(c){c.checked=f.raw.indexOf(c.value)>=0;});
+  form.querySelector('[data-mx="clear"]').setAttribute('aria-disabled',!isFiltered(f));
+}
+function barHTML(h){
+  return '<div class="mxinfo"><p class="mxcount" role="status" aria-live="polite" aria-atomic="true" data-testid="o1-count"></p><p class="cap t2 mxnote"><span class="mxs1">インデックス名の下の数はドキュメント件数。</span> <span class="mxs2">状態の悪い順(同じ状態は名前の昇順)。</span> <span class="mxapplied"></span> <span class="mxdash"></span></p></div><div class="mxnavslot"></div>';
+}
+function navHTML(h){
+  var s=h._s,rows=h._rows,pages=Math.ceil(rows.length/s.per),opts='';
+  for(var i=1;i<=pages;i++) opts+='<option value="'+i+'">'+i+' / '+pages+'</option>';
+  return (s.paged?'<div class="mxnav" role="group" aria-label="シャードの配置のページ送り"><button class="btn btn--outlined btn--sm" type="button" data-mx="prev" aria-label="前へ。シャードの配置の前のページ"><svg class="ic" aria-hidden="true"><use href="#i-chev-l"/></svg>前へ</button><div class="per"><label for="'+h._id+'-pg">ページ</label><select class="input select" id="'+h._id+'-pg" data-mx="page">'+opts+'</select></div><button class="btn btn--outlined btn--sm" type="button" data-mx="next" aria-label="次へ。シャードの配置の次のページ">次へ<svg class="ic" aria-hidden="true"><use href="#i-chev"/></svg></button></div>':'');
+}
+/* 1 回だけ組む部分(概況・絞り込みフォーム・マトリクスの枠)。フォームは組み直さない(入力・フォーカスを保つため。件数の通知 role="status" も同じ要素を使い続ける) */
+function init(h){
+  var d=h._d;
+  h._f=mkFilter(h.getAttribute('data-q'),(h.getAttribute('data-state')||'').split(',').filter(Boolean));
+  if(!d.ix.length){ /* インデックス 0 件: フォームは出さない */
+    h.innerHTML=summaryHTML(h)+'<div class="stateblock" data-testid="o1-state-empty"><div class="ill"><svg class="ic" aria-hidden="true"><use href="#i-cluster"/></svg></div><h3>インデックスがありません</h3><p class="t2">このクラスタにはインデックスが作成されていません。インデックスが作成されると、ここに、インデックスごとのドキュメント件数とシャードの配置が表示されます。</p></div>';
+    return false;
+  }
+  h.innerHTML=summaryHTML(h)+filterHTML(h,false)+'<div class="mxm" role="group" aria-label="シャードの配置(行はノード、列はインデックス)" data-testid="o1-shards"><div class="mxlegend"></div><div class="mxbar">'+barHTML(h)+'</div><div class="mxbody"></div></div>';
+  syncForm(h);
+  return true;
+}
+/* 幅・絞り込み・ページが変わるたびに、マトリクスの中身だけを組み直す */
+function render(h){
+  var d=h._d,s=h._s,f=h._f,W=h.clientWidth,narrow=matchMedia('(max-width:599px)').matches;
+  var rows=d.ix.filter(match(f)); h._rows=rows;
+  s.H=narrow?112:152;
+  s.per=Math.max(1,Math.floor((W-s.H)/MINCOL));
+  s.paged=rows.length>s.per;
+  s.cw=!rows.length?0:s.paged?Math.floor((W-s.H)/s.per):Math.min(200,Math.floor((W-s.H)/rows.length));
+  if(s.first==null){ var pg=h.getAttribute('data-page'), pages=Math.ceil(rows.length/s.per); s.first=((pg==='last'?pages:+(pg||1))-1)*s.per; }
+  else s.first=Math.floor(s.first/s.per)*s.per;
+  s.first=rows.length?Math.max(0,Math.min(s.first,Math.floor((rows.length-1)/s.per)*s.per)):0;
+  h.querySelector('.mxlegend').innerHTML=rows.length?legend(rows):'';
+  h.querySelector('.mxnavslot').innerHTML=navHTML(h);
+  h.querySelector('.mxbody').innerHTML=rows.length?'<div class="mxscroll"></div>':'<div class="stateblock" data-testid="o1-state-nomatch"><div class="ill"><svg class="ic" aria-hidden="true"><use href="#i-cluster"/></svg></div><h3>条件に合うインデックスがありません</h3><p class="t2">インデックス名や状態の条件を変えるか、上のフォームの「条件を解除」で条件を外してください。</p></div>';
+  update(h);
+}
+function condText(f){
+  var p=[]; if(f.q) p.push('名前に「'+esc(f.q)+'」を含む'); if(f.st.length) p.push('状態が '+f.st.join(' または '));
+  return p.join('、');
+}
+function update(h){
+  var d=h._d,s=h._s,f=h._f,rows=h._rows,m=rows.length,total=d.ix.length,filtered=isFiltered(f),pages=Math.ceil(m/s.per),page=s.first/s.per+1,to=Math.min(m,s.first+s.per);
+  var cnt=h.querySelector('.mxcount'),txt;
+  /* 件数表示: N=絞り込み後、M=全件。「(全 M 件中)」は 1 つの塊(途中で折り返さない)。0 件でも要素は消さず、文だけを書き換える */
+  if(!m) txt='<span class="nb">絞り込み後 0 件のインデックス</span> <span class="nb">(全 '+total+' 件中)</span>';
+  else{
+    var range=s.paged?(s.first+1===to?to:(s.first+1)+'–'+to)+' / ':'';
+    txt=range+(filtered?'<span class="nb">絞り込み後 '+m+' 件のインデックス</span> <span class="nb">(全 '+total+' 件中)</span>':(s.paged?'全 '+m+' 件のインデックス':m+' 件のインデックス'))+(s.paged?'<span class="sr-only">(ページ '+page+' / '+pages+')</span>':'');
+  }
+  if(cnt.innerHTML!==txt) cnt.innerHTML=txt; /* 変わったときだけ書き換える(読み上げの重複を避ける) */
+  h.querySelector('.mxs1').hidden=!m; h.querySelector('.mxs2').hidden=!m; /* 0 件: 補足は「適用中の条件」の文だけ */
+  if(m) h.querySelector('.mxscroll').innerHTML=tableHTML(h);
+  h.querySelector('.mxapplied').textContent=filtered?'適用中の条件: '+condText(f)+'。概況はクラスタ全体の値で、絞り込みの対象外。':'';
+  h.querySelector('.mxdash').textContent=m&&rows.slice(s.first,s.first+s.per).some(function(x){return x.cnt==null;})?'見出しの「—」は件数を取得できません。':'';
+  if(s.paged){
+    h.querySelector('[data-mx="page"]').value=page;
+    h.querySelector('[data-mx="prev"]').setAttribute('aria-disabled',page===1);
+    h.querySelector('[data-mx="next"]').setAttribute('aria-disabled',page===pages);
+  }
+  var clr=h.querySelector('.mxfilter [data-mx="clear"]'); if(clr) clr.setAttribute('aria-disabled',!filtered);
+}
+var n=0;
+document.querySelectorAll('.mxhost').forEach(function(h){
+  h._d=D[h.getAttribute('data-ds')]; h._s={}; h._id='mx'+(n++);
+  if(!init(h)) return;
+  var last=-1;
+  new ResizeObserver(function(){ var w=h.clientWidth; if(w&&w!==last){ last=w; render(h); } }).observe(h);
+});
+document.querySelectorAll('[data-filter-disabled]').forEach(function(e){ /* 読み込み中: 無効のフォーム。URL から復元した条件(値)は表示する */
+  var w=document.createElement('div'); w.innerHTML=filterHTML(null,true); var form=w.firstChild;
+  form.querySelector('[data-mx="q"]').value=e.getAttribute('data-q')||'';
+  var st=(e.getAttribute('data-state')||'').split(','); form.querySelectorAll('[data-mx="st"]').forEach(function(c){c.checked=st.indexOf(c.value)>=0;});
+  e.replaceWith(form);
+});
+function move(h,page){ var s=h._s,pages=Math.ceil(h._rows.length/s.per); page=Math.max(1,Math.min(pages,page)); s.first=(page-1)*s.per; update(h); }
+function refilter(h){ /* 絞り込みを変えたら 1 ページ目に戻る。直前に適用した条件と同じなら何もしない(ページを保つ) */
+  var form=h.querySelector('.mxfilter');
+  var nf=mkFilter(form.querySelector('[data-mx="q"]').value,STATES.filter(function(k){return form.querySelector('[data-mx="st"][value="'+k+'"]').checked;}));
+  if(sameFilter(nf,h._f)){ h._f=nf; update(h); return; }
+  h._f=nf; h._s.first=0; render(h);
+}
+var timers=new WeakMap();
+function schedule(h){ clearTimeout(timers.get(h)); timers.set(h,setTimeout(function(){refilter(h);},250)); }
+document.addEventListener('input',function(e){ /* 名前: 入力に応じて少し待ってから(debounce 250ms)絞り込む。IME の変換中は待たず、確定(compositionend)後に適用する */
+  var el=e.target; if(!el.matches||!el.matches('[data-mx="q"]')) return;
+  var h=el.closest('.mxhost'); if(!h||!h._f||e.isComposing) return; schedule(h);
+});
+document.addEventListener('compositionend',function(e){
+  var el=e.target; if(!el.matches||!el.matches('[data-mx="q"]')) return;
+  var h=el.closest('.mxhost'); if(h&&h._f) schedule(h);
+});
+document.addEventListener('submit',function(e){ /* Enter: 待たずにすぐ絞り込む(ページは移動しない) */
+  var form=e.target; if(!form.matches||!form.matches('.mxfilter')) return; e.preventDefault();
+  var h=form.closest('.mxhost'); clearTimeout(timers.get(h)); refilter(h);
+});
+document.addEventListener('click',function(e){
+  var c=e.target.closest('[data-mx="clear"]');
+  if(c){ /* 条件を解除: 何も条件がなければ何もしない(aria-disabled)。解除後は名前の入力欄にフォーカス */
+    if(c.getAttribute('aria-disabled')==='true'||c.disabled) return;
+    var h=c.closest('.mxhost'); clearTimeout(timers.get(h)); h._f=mkFilter('',[]); h._s.first=0; syncForm(h); render(h); h.querySelector('.mxfilter [data-mx="q"]').focus(); return;
+  }
+  var b=e.target.closest('[data-mx="prev"],[data-mx="next"]'); if(!b) return;
+  if(b.getAttribute('aria-disabled')==='true') return;
+  var h2=b.closest('.mxhost'); move(h2,h2._s.first/h2._s.per+1+(b.getAttribute('data-mx')==='next'?1:-1));
+});
+document.addEventListener('change',function(e){
+  var el=e.target; if(!el.matches) return;
+  if(el.matches('[data-mx="st"]')){ var h=el.closest('.mxhost'); if(h&&h._f) refilter(h); return; } /* 状態: すぐ絞り込む */
+  if(!el.matches('[data-mx="page"]')) return;
+  move(el.closest('.mxhost'),+el.value);
+});
+})();
+</script>
+</body>
+</html>
