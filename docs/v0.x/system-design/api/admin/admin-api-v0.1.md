@@ -5,7 +5,7 @@
 - 前版: なし(初版)
 - 位置づけ: Admin View(管理者向けの画面)が使う **Admin API の仕様**。エンドポイント(パス・メソッド・主な応答項目・エラー code)、Admin 固有のエラー code、Crawler の 6 API との対応を定める。共通の規約(エラー応答の形式・共通 code・時刻・OpenAPI の方針・環境変数の命名)は `../api-base-design-v0.1.md`(以下 A)が正本。導出ロジック(リース切れ・ロック状態・死活判定)とデータアクセスの詳細は C(`admin-api-architecture-v0.1.md`。作成済み)が正本で、本書は**結果と参照**だけを書く。
 - **この版は本文**: 骨子(フェーズ1)に、各エンドポイントのリクエスト・応答の全項目、全エラーパターン、読み取り元との対応、JSON の例(3〜8章)、Crawler の 6 API の写像表(9章)、失敗時の振る舞い(10章)を足した。ゲート2で確認した具体値・名前と回答は 11.7、本文で新たに決めた承認済みの案(ゲート3。2026-11-23)は 11.9、C に渡す事項は 11.10 にまとめた。
-- 改訂履歴: v0.1 は初版。ゲート1(2026-11-22。ユーザー承認)で承認された方針と、ゲート2(2026-11-22。ユーザー承認)で承認された具体値・名前を「承認済みの案」として反映した(確定にしていない)。ゲート2の回答で、再実行の専用エンドポイント(`POST /jobs/{job_id}/rerun`)と書き込み系の `Origin` 検査は採用が選ばれなかったため、**不採用として扱った(当初は解釈。ゲート3(2026-11-23)で「不採用のままでよい」と明示回答を得た)**。前者は本書から外し(再実行は画面が EP-06 を呼ぶ。4.1)、後者は A 2.3 の未対応のリスクにした。これに伴い、EP 番号を振り直した(EP-01〜14。欠番なし。11.7 の注)。フェーズ2-1 で骨子を本文にした(新規の案は AAPI-P-24〜34・AAPI-U-9〜11)。R1(document-reviewer)の指摘を反映した(`job_id` のエンコード、`config_invalid` の分解の例外、更新の処理順の訂正、`-K-` の出典と区分の見直し、本文の規約、新規の案 AAPI-P-35〜38・AAPI-U-12 ほか)。フェーズ5の統合(2026-11-23)で、申し送りへの参照を A 9章の実番号(HO-1〜HO-50)に置き換え、更新日を統一した。R4 指摘の反映(2026-11-23): 11.9 に A 9.3 への参照を足した(B の内容は変更なし)。ゲート3の承認(2026-11-23)の反映: 案の区分を承認済みの案(ゲート3。2026-11-23)に、不採用の解釈とリスクの扱いをゲート3の明示回答に更新した(設計の内容は変更なし)。
+- 改訂履歴: v0.1 は初版。ゲート1(2026-11-22。ユーザー承認)で承認された方針と、ゲート2(2026-11-22。ユーザー承認)で承認された具体値・名前を「承認済みの案」として反映した(確定にしていない)。ゲート2の回答で、再実行の専用エンドポイント(`POST /jobs/{job_id}/rerun`)と書き込み系の `Origin` 検査は採用が選ばれなかったため、**不採用として扱った(当初は解釈。ゲート3(2026-11-23)で「不採用のままでよい」と明示回答を得た)**。前者は本書から外し(再実行は画面が EP-06 を呼ぶ。4.1)、後者は A 2.3 の未対応のリスクにした。これに伴い、EP 番号を振り直した(EP-01〜14。欠番なし。11.7 の注)。フェーズ2-1 で骨子を本文にした(新規の案は AAPI-P-24〜34・AAPI-U-9〜11)。R1(document-reviewer)の指摘を反映した(`job_id` のエンコード、`config_invalid` の分解の例外、更新の処理順の訂正、`-K-` の出典と区分の見直し、本文の規約、新規の案 AAPI-P-35〜38・AAPI-U-12 ほか)。フェーズ5の統合(2026-11-23)で、申し送りへの参照を A 9章の実番号(HO-1〜HO-50)に置き換え、更新日を統一した。R4 指摘の反映(2026-11-23): 11.9 に A 9.3 への参照を足した(B の内容は変更なし)。ゲート3の承認(2026-11-23)の反映: 案の区分を承認済みの案(ゲート3。2026-11-23)に、不採用の解釈とリスクの扱いをゲート3の明示回答に更新した(設計の内容は変更なし)。 PR #10 のレビュー指摘(2026-11-23)に対応して、**一覧の EP(EP-01・09・11)の `unavailable` を行単位にした**(2.2・2.11・3.1・5.1・6.1。AAPI-P-42。AAPI-P-16・25・27・30 の修正。承認済みの案(ゲート3)の修正で、確定にしていない)。
 - 本書の対象は Admin API だけで、Search API・MCP の設計は含まない(A 1章)。SD・PD・crawler / indexer 設計・機能設計・画面仕様は変更しない。変更が要る点は A 9章(申し送り一覧。HO-1〜HO-50)に集約し、本書は該当する HO 番号で参照する。本タスクの 6 文書(A〜F)は、いずれも v0.1 で作成済み(A 0章の関連文書の表)。
 
 ## 0. この文書について
@@ -14,7 +14,7 @@
 - 範囲外(参照のみ): Crawler の 6 API の契約(crawler-api)、Connector の `connector_config` の項目と検証(connector-file-system など)、エラー応答の形式・共通 code(A 5.2)、導出ロジック・環境変数の個別一覧(C)、フロントエンド(E・F)。
 - 読み方: 1章で API の全体と対応表、2章で共通事項、3〜8章で領域別のエンドポイント(リクエスト・応答・エラー・出所・例)、9章で Crawler の 6 API の写像、10章で失敗時の振る舞い、11章に確認状況(ID・ゲート2確認事項・ゲート3で承認した案・C への引き継ぎ・検算結果)を置く。
 
-区分の凡例は A 0章と同じ(確定 / 案 / 承認済みの案 / 未決 / 推測 / 導出)。承認済みの案は、**方針**がゲート1、**パス・項目名・code 名・数値**がゲート2(いずれも 2026-11-22)で承認されたもの。本タスクで新たに決めた案・導出・解釈の扱いは、ゲート3(2026-11-23)で承認されたもの。区分欄に承認したゲートを書く。ゲート3の承認により、本文中で「案」と書いた判断は、ID の区分欄が正で、承認済みの案(ゲート3)に読み替える。確定(`-K-`)にはしていない。ゲート2の回答で採用が選ばれなかった案は「不採用として扱った(解釈)」とし、ID は欠番として残す(ゲート3(2026-11-23)で「不採用のままでよい」と明示回答があった)。
+区分の凡例は A 0章と同じ(確定 / 案 / 承認済みの案 / 未決 / 推測 / 導出)。承認済みの案は、**方針**がゲート1、**パス・項目名・code 名・数値**がゲート2(いずれも 2026-11-22)で承認されたもの。本タスクで新たに決めた案・導出・解釈の扱いは、ゲート3(2026-11-23)で承認されたもの。区分欄に承認したゲートを書く。ゲート3の承認により、本文中で「案」と書いた判断は、ID の区分欄が正で、承認済みの案(ゲート3)に読み替える。確定(`-K-`)にはしていない。ゲート2の回答で採用が選ばれなかった案は「不採用として扱った(解釈)」とし、ID は欠番として残す(ゲート3(2026-11-23)で「不採用のままでよい」と明示回答があった)。承認済みの案(ゲート3)を後から修正したものは、区分欄に「承認済みの案(ゲート3)の修正(PR #10 のレビュー指摘への対応。2026-11-23)」と書く。
 
 ID 体系: `AAPI-K-n` / `AAPI-P-n` / `AAPI-U-n`。既存設計との不整合は `I-n`(本書の予約範囲は I-70〜79)。A の ID は `BAPI-*`。エンドポイントは本書の通し番号 `EP-nn`。
 
@@ -109,6 +109,7 @@ AF-1〜20 のすべてが、少なくとも 1 つのエンドポイントに対�
 | S1 | リース切れの判定・ロックの有無 | `items[].last_crawl.stalled`、`failure_reason`(`lock_released`)(EP-01) |
 | S1 | 削除中の補足(削除ジョブの状態) | `items[].delete_job`(EP-01) |
 | S1 | 登録文書数 | `items[].document_count`(EP-01) |
+| S1・J1・X1 | 行ごとの「取得できません」(「—」+「取得できません」) | `items[].unavailable`(行の取得失敗。キーは行の相対パス。EP-01・09・11。`null` +キーあり=取得できなかった、`null` +キーなし=値がない。2.2) |
 | S1 | cron のタイムゾーン | `cron_timezone`(EP-14) |
 | S1 | 最終クロール完了日時(AF-U-9) | `items[].last_completed_at`(EP-01) |
 | S2 | 識別子・種別・取得設定 5 項目(`root`・`include_patterns`・`exclude_patterns`・`follow_symlinks`・`include_hidden`) | `source_id`・`connector_type`・`connector_config`(EP-02。不透明に返す。AAPI-P-20) |
@@ -153,10 +154,28 @@ AF-1〜20 のすべてが、少なくとも 1 つのエンドポイントに対�
 
 ### 2.2 部分失敗・`null`・`unavailable`(承認済みの案(ゲート3)。AAPI-P-16)
 
-- 応答に複数の読み取り(例: ジョブ一覧+登録文書数)が含まれ、**一部だけ失敗した**ときは、**本体を 200 で返し、取得できなかった項目を `null` にして、`unavailable` に「項目名 → 理由コード」を載せる**(例 `{"document_count": "search_index_unavailable"}`)。画面は「—」+「取得できません」を出す(S1・S2・X1)。**`unavailable` は応答の最上位のオブジェクト**で、キーは**応答の項目の正式なパス**(例 `index.document_count`、`tab_counts.skipped`、`deletion.current`、`lock`。一覧の EP は `items[]` を付ける: `items[].document_count`、`items[].last_crawl`、`items[].last_crawl.stalled`、`items[].delete_job.stalled`、`items[].stalled`)、値は理由コード。**一覧の EP では、キーはその項目の全件の取得に失敗したこと、または 1 行でも失敗したことを表し、どの行が `null` かは行の中の値で決まる**(行ごとの失敗は行内の `null`)。理由コードは `store_unavailable`(`loreley-jobs`・`loreley-sources`・`loreley-deletions` の読み取りの失敗)・`search_index_unavailable`(検索インデックスの読み取りの失敗)・`timeout`・`malformed`(保存済みの値が読めない。EP-02 の設定項目)。**理由コードは `timeout` を優先する**(失敗した読み取りが接続・読み取りのタイムアウトだったとき `timeout`、それ以外は対象別に `store_unavailable` / `search_index_unavailable`。遅いのか止まっているのかを区別する。C 5.8 の承認済みの案(ゲート3)。AAA-P-25)。`unavailable` は常に存在し、失敗がなければ空のオブジェクト(AAPI-P-25)。**OpenSearch が HTTP 200 のまま返す部分的な失敗(`mget` の文書単位の `error`・`found` が真偽値でないもの、検索の `_shards.failed>0`・形の異常)は成功と読まず、その読み取りの失敗として扱う**(「記録なし」・部分的な結果として使わない。検索の `timed_out=true` は `timeout`、それ以外は対象別。C 3.2・5.8 の承認済みの案(ゲート3)。AAA-P-39。実機での形は AAA-U-2)。
+- 応答に複数の読み取り(例: ジョブ一覧+登録文書数)が含まれ、**一部だけ失敗した**ときは、**本体を 200 で返し、取得できなかった項目を `null` にして、`unavailable` に「項目のパス → 理由コード」を載せる**。画面は「—」+「取得できません」を出す(S1・S2・X1)。
+- **`unavailable` の位置とキー(AAPI-P-42。PR #10 のレビュー指摘への対応で、AAPI-P-16・P-25 を修正)**: 失敗した読み取りの対象が**どの行か**を区別できるよう、一覧の EP は行ごとに持つ。
+  - **単一のオブジェクトの応答(EP-02・EP-10・EP-12・EP-13・EP-14)**: 最上位の `unavailable`。キーは**応答の項目の正式なパス**(例 `index.document_count`、`deletion.current`、`lock`、`stalled`、`latest_for_source`)。
+  - **一覧の EP(EP-01・EP-09・EP-11)**: **各 `items[i]` に `unavailable` オブジェクトを持つ(常に存在し、失敗がなければ `{}`)**。キーは**その行の中の項目の相対パス**(EP-01: `last_crawl`・`last_crawl.stalled`・`last_completed_at`・`delete_job`・`delete_job.stalled`・`document_count`。EP-09: `stalled`。EP-11: `existence`)。`JobBrief` が行の中に入れ子で入る EP-01 では、`stalled` は `last_crawl.stalled`・`delete_job.stalled` になる。一覧の EP の**最上位 `unavailable` は、行に属さない最上位の項目だけ**を載せる(EP-11 の `tab_counts.<タブ>`・`document_count`。常に存在し、EP-01・EP-09 では常に `{}`)。**`items[].…` 形式のキーは使わない**。
+  - **規則**: 「`null` で、その行(または最上位)の `unavailable` にキーがある」=**取得できなかった**。「`null` でキーがない」=**値がない**(未実行・該当なしなど)、または保存値が読めない(下の保存値の規則)。
+  - **行ごとに成否が分かれる読み取り**(`msearch` のサブ要求、ロック文書の `mget` の文書単位など)は、失敗した行だけにキーを付ける。**一括検索の全体(`msearch` 全体の例外、`existence` の一括検索、検索インデックスの件数の集計全体)や、主たる読み取りの一部が失敗したとき**は、**全行の `unavailable` に同じキーを付ける**(最上位ではなく行に)。
+  - 例(EP-01。`source-a` は未実行で値がない、`source-b` は読み取りに失敗した。2 行の `last_crawl` はどちらも `null` だが、行の `unavailable` で区別できる):
+
+```json
+{ "items": [
+    { "source_id": "source-a", "connector_type": "file_system", "schedule_cron": null, "status": "active",
+      "last_crawl": null, "last_completed_at": null, "delete_job": null, "document_count": 0, "unavailable": {} },
+    { "source_id": "source-b", "connector_type": "file_system", "schedule_cron": null, "status": "active",
+      "last_crawl": null, "last_completed_at": null, "delete_job": null, "document_count": 12,
+      "unavailable": { "last_crawl": "store_unavailable", "last_completed_at": "store_unavailable" } } ],
+  "unavailable": {} }
+```
+
+- **理由コード**: `store_unavailable`(`loreley-jobs`・`loreley-sources`・`loreley-deletions` の読み取りの失敗)・`search_index_unavailable`(検索インデックスの読み取りの失敗)・`timeout`・`malformed`(保存済みの値が読めない。EP-02 の設定項目)。**理由コードは `timeout` を優先する**(失敗した読み取りが接続・読み取りのタイムアウトだったとき `timeout`、それ以外は対象別に `store_unavailable` / `search_index_unavailable`。遅いのか止まっているのかを区別する。C 5.8 の承認済みの案(ゲート3)。AAA-P-25)。`unavailable` は常に存在し、失敗がなければ空のオブジェクト(AAPI-P-25)。**OpenSearch が HTTP 200 のまま返す部分的な失敗(`mget` の文書単位の `error`・`found` が真偽値でないもの、検索の `_shards.failed>0`・形の異常)は成功と読まず、その読み取りの失敗として扱う**(「記録なし」・部分的な結果として使わない。検索の `timed_out=true` は `timeout`、それ以外は対象別。C 3.2・5.8 の承認済みの案(ゲート3)。AAA-P-39。実機での形は AAA-U-2)。
 - **ジョブ記録・削除記録・ロック文書など、Crawler・Indexer が書いた値が読めない(欠落・型違い)ときは、その項目を `null` にする**(`unavailable` には載せない。`malformed` は EP-02 の設定項目だけ)。このため、`JobBrief` の `status`・`job_type`・`trigger`・`queued_at`、`registration` の件数・`partial`・`phase` などの型は `null` を許す(`phase` は `partial` が `null` のとき `null`)(2.11・EP-10。C 5.0 の承認済みの案(ゲート3)。AAA-P-25)。画面は `null` を「—」として扱う。
 - **その EP の主たる読み取り**(EP-01 の `loreley-sources`、EP-02 の設定、EP-09 のジョブ一覧、EP-10 のジョブ記録、EP-11 の設定の存在確認と一覧、EP-12 全体)が失敗したときは、部分的な応答にせず、503 `unavailable`(A 5.2)。EP-12 は 1 カード分を 1 つの取得結果として扱い、概況だけ・マトリクスだけが取れた応答は返さない(画面仕様。AAPI-P-6)。
-- 値がない(未実行・未到達・該当なし)ときも `null`。`unavailable` に載る `null` は「取得できなかった」、載らない `null` は「値がない」。
+- 値がない(未実行・未到達・該当なし)ときも `null`。**その行(または最上位)の `unavailable` にキーがある `null` は「取得できなかった」、キーがない `null` は「値がない」**(上の規則)。
 
 ### 2.3 Admin 固有のエラー code(正本。承認済みの案(ゲート2。2026-11-22)。AAPI-P-2・P-19)
 
@@ -279,7 +298,7 @@ SD §14.4 の「重複起動を冪等な成功として扱う」案は採らな�
 
 - 判定の順序(結果の定義。導出は C): ロック文書がなければ `none`。ロック文書があれば、`job_id` でジョブ記録を引く(**読む順序は、ロック文書 → ジョブ記録**。逆にすると、ロックの解放・ジョブの終了の途中の状態を誤って `stalled` と判定する偽陽性が出うる。C へ)。ジョブ記録がなければ、`acquired_at` で `just_acquired` / `orphan`。ジョブ記録が終端なら `orphan`。実行待ち・実行中でリース期限内なら `held_*`、リース切れなら `lease_expired`。
 - **「ロック文書 → ジョブ記録の順」の満たし方**(C 5.2 の承認済みの案(ゲート3)。AAA-P-18): EP-02・EP-08 の 409 の `lock_state` は、上の順で読む。一覧(EP-01・09)・EP-10 は、どのジョブが実行中かをジョブ記録を読むまで知らないためロックを先に読めない。代わりに、ロックの不一致を見たときに**ロック文書 → ジョブ記録の順で読み直す**(確認読み)ことで偽陽性を避ける。
-- `stalled`(ジョブの項目): **実行中(保存上)かつリース期限超過**(リース切れ。ゲート1の方針。AAPI-P-4)。期限が `null`・形式不正のものも超過とみなす(crawler-api 4.3)。**実行中なのにロック文書がない、またはロック文書が別のジョブのものであるジョブも、確認読みの後に `true` とする**(推測。ロックを持たないジョブは Indexer が書き込みを拒否するため止まる。AAPI-P-27・AAPI-U-9)。ロック文書を読めず判定できないときは `null`(`unavailable` の `stalled`(一覧では `items[].stalled`)のキー。2.2)。実行中以外は `false`。画面は「失敗(リース切れ。ロック未解放)」と表示する。解放後は保存上も `failed`(`failure_reason=lock_released`)になる。
+- `stalled`(ジョブの項目): **実行中(保存上)かつリース期限超過**(リース切れ。ゲート1の方針。AAPI-P-4)。期限が `null`・形式不正のものも超過とみなす(crawler-api 4.3)。**実行中なのにロック文書がない、またはロック文書が別のジョブのものであるジョブも、確認読みの後に `true` とする**(推測。ロックを持たないジョブは Indexer が書き込みを拒否するため止まる。AAPI-P-27・AAPI-U-9)。ロック文書を読めず判定できないときは `null`(その行(または最上位)の `unavailable` の `stalled` のキー(EP-01 の入れ子では `last_crawl.stalled`・`delete_job.stalled`)。2.2)。実行中以外は `false`。画面は「失敗(リース切れ。ロック未解放)」と表示する。解放後は保存上も `failed`(`failure_reason=lock_released`)になる。
 - `cancellable`: `crawl` ジョブで、実行待ち、または実行中でリース期限内(リース切れ・`source_delete`・終端は不可)。`stalled=null` のときは `false`(安全側。AAPI-P-27)。
 - `latest_for_source`: そのデータソースで最新の `crawl` ジョブ(受付日時の降順の先頭)か。
 - `rerunnable`・`rerun_blocked_reason`(**画面が再実行の操作を出し分けるための導出フラグ**。サーバー側では強制しない。ゲート2で専用の再実行 EP は採用されなかった): `crawl` ジョブで、保存上 `failed`、`latest_for_source`、データソースが削除中でないとき `rerunnable=true`。そうでないときの `rerun_blocked_reason` は `not_crawl`・`not_failed`・`stalled`(ロック未解放)・`superseded`(より新しいジョブがある)・`source_deleting`(設定が `status=deleting`)・`source_missing`(データソースの設定がない=削除済み。**案(AAPI-P-41)。画面仕様 `jobs-v0.1.md` 2.3 に理由の文言はなく、「削除中」と表示すると削除済みのソースを誤って示すため、専用の値にした**)(`rerunnable=true` のときは `null`)。`rerunnable=null` になるのは、`stalled` または `latest_for_source` が決まらないとき、または**データソースの設定の読み取りに失敗したとき**(C 5.3 の評価順。AAA-P-19)。
@@ -311,7 +330,18 @@ SD §14.4 の「重複起動を冪等な成功として扱う」案は採らな�
 | `status` | string | `active` / `deleting` |
 | `updated_at` | datetime | 設定の更新日時 |
 
-**`JobBrief`**(EP-01・02・09。J1 の行・S1 の最終クロール・S2 の直近のジョブ)
+**`SourceListItem`**(EP-01 の `items[]` の 1 行)
+
+| 項目 | 型 | 内容 |
+| --- | --- | --- |
+| `source_id`・`connector_type`・`schedule_cron`・`status` | string / string / string(null) / string | 3.1 |
+| `last_crawl`・`delete_job` | `JobBrief` / null | 3.1。**`JobBrief` はこの行の中に入れ子で入るため、`stalled` の失敗は行の `unavailable` の `last_crawl.stalled`・`delete_job.stalled`(相対パス)になる** |
+| `last_completed_at`・`document_count` | datetime / null、integer / null | 3.1 |
+| `unavailable` | object | **この行の失敗**(常に存在。なければ `{}`)。キーは行の中の項目の相対パス(2.2) |
+
+**`JobListItem`**(EP-09 の `items[]` の 1 行)= `JobBrief` の全項目 + `unavailable`(object。この行の失敗。常に存在。キーは `stalled`。2.2)。
+
+**`JobBrief`**(EP-01・02・09。J1 の行・S1 の最終クロール・S2 の直近のジョブ。**`JobBrief` 自体は `unavailable` を持たない**。EP-01・02 では入れ子の外側の行(または最上位)の `unavailable` が、EP-09 では `JobListItem` の `unavailable` が失敗を示す)
 
 | 項目 | 型 | 内容 |
 | --- | --- | --- |
@@ -323,7 +353,7 @@ SD §14.4 の「重複起動を冪等な成功として扱う」案は採らな�
 | `queued_at` | datetime / null | 受付。読めないときは `null` |
 | `started_at`・`finished_at` | datetime / null | 開始・終了。未到達は `null` |
 | `failure_reason` | string / null | `failed` のときの理由コード(`config_invalid`・`lock_released` など。Crawler のコードをそのまま返す。AAPI-U-3)。それ以外は `null` |
-| `stalled` | boolean / null | リース切れか(2.9)。`status=running` 以外は `false`。ロック文書を読めず判定できないときだけ `null`(`unavailable` の `stalled` のパスのキーを伴う。2.2) |
+| `stalled` | boolean / null | リース切れか(2.9)。`status=running` 以外は `false`。ロック文書を読めず判定できないときだけ `null`(その行または最上位の `unavailable` の `stalled` のキー(EP-01 の入れ子では `last_crawl.stalled`・`delete_job.stalled`)を伴う。2.2) |
 | `cancellable` | boolean | 取消できるか(2.9)。`stalled` が `null` のときは `false`(安全側) |
 
 **`JobAccepted`**(EP-05・06 の 202)
@@ -366,7 +396,7 @@ SD §14.4 の「重複起動を冪等な成功として扱う」案は採らな�
 
 **リクエスト**: パス・クエリ・本文なし。
 
-**応答(200)**: `items[]`、`unavailable`。`items[]` は `source_id` の昇順。
+**応答(200)**: `items[]`(`SourceListItem`。2.11)、`unavailable`(最上位。**常に `{}`**。2.2)。`items[]` は `source_id` の昇順。**取得できなかった項目は、その行の `unavailable`(相対パスのキー)に載る**(2.2)。
 
 | 項目 | 型 | `null` / 備考 | 出所 |
 | --- | --- | --- | --- |
@@ -374,13 +404,14 @@ SD §14.4 の「重複起動を冪等な成功として扱う」案は採らな�
 | `items[].connector_type` | string | | 同 `connector_type` |
 | `items[].schedule_cron` | string / null | `null` は手動のみ | 同 `schedule_cron` |
 | `items[].status` | string | `active` / `deleting` | 同 `status` |
-| `items[].last_crawl` | `JobBrief` / null | 未実行は `null`。取得失敗も `null`(`unavailable` の `items[].last_crawl`) | `loreley-jobs`: `record_type=job`・`job_type=crawl`・その `source_id` の `queued_at` が最新の 1 件(AAPI-P-4) |
-| `items[].last_completed_at` | datetime / null | 成功・一部成功のジョブがなければ `null`。取得失敗も `null`(`unavailable` の `items[].last_completed_at`) | 同: `status` が `succeeded`・`partially_succeeded` の `finished_at` の最大値(**最終クロール完了日時**。AAPI-P-4) |
-| `items[].delete_job` | `JobBrief` / null | `status=deleting` のときだけ値(その `source_id` の最新の `source_delete` ジョブ)。それ以外は `null`。取得失敗は `unavailable` の `items[].delete_job` | 同: `job_type=source_delete` |
-| `items[].document_count` | integer / null | 取得失敗は `null`(`unavailable` の `items[].document_count`)。0 件は `0` | 検索インデックス(エイリアス)の `source_id` ごとの文書数。**数え方(AAPI-P-23)**: `index_status` を問わない全文書(抽出失敗・要約未生成を含む)。削除ジョブで消える文書数(DLG-2)と一致させるため(導出) |
-| `unavailable` | object | キーは `items[].last_crawl`・`items[].last_completed_at`・`items[].delete_job`・`items[].last_crawl.stalled`・`items[].delete_job.stalled`・`items[].document_count`(2.2。全件の取得失敗、または 1 行でもの失敗。どの行が `null` かは行の値で決まる)。理由は `store_unavailable`・`search_index_unavailable`・`timeout` | |
+| `items[].last_crawl` | `JobBrief` / null | 未実行は `null`(行の `unavailable` にキーなし)。取得失敗も `null`(**行の `unavailable` の `last_crawl`** にキーがある) | `loreley-jobs`: `record_type=job`・`job_type=crawl`・その `source_id` の `queued_at` が最新の 1 件(AAPI-P-4) |
+| `items[].last_completed_at` | datetime / null | 成功・一部成功のジョブがなければ `null`。取得失敗も `null`(**行の `unavailable` の `last_completed_at`** にキーがある) | 同: `status` が `succeeded`・`partially_succeeded` の `finished_at` の最大値(**最終クロール完了日時**。AAPI-P-4) |
+| `items[].delete_job` | `JobBrief` / null | `status=deleting` のときだけ値(その `source_id` の最新の `source_delete` ジョブ)。それ以外は `null`。取得失敗は**行の `unavailable` の `delete_job`**(`status=deleting` の行だけ) | 同: `job_type=source_delete` |
+| `items[].document_count` | integer / null | 取得失敗は `null`(**行の `unavailable` の `document_count`**)。0 件は `0`(キーなし) | 検索インデックス(エイリアス)の `source_id` ごとの文書数。**数え方(AAPI-P-23)**: `index_status` を問わない全文書(抽出失敗・要約未生成を含む)。削除ジョブで消える文書数(DLG-2)と一致させるため(導出) |
+| `items[].unavailable` | object | **この行の失敗**(常に存在。なければ `{}`)。キーは `last_crawl`・`last_crawl.stalled`・`last_completed_at`・`delete_job`・`delete_job.stalled`・`document_count`(行の中の項目の相対パス)。理由は `store_unavailable`・`search_index_unavailable`・`timeout`。**行ごとに成否が分かれうる読み取り(ソースごとのサブ要求)は、失敗した行だけに付け、集計全体が失敗したときは全行に同じキーを付ける**(2.2) | |
+| `unavailable`(最上位) | object | EP-01 では行に属さない項目がないため**常に `{}`** | |
 
-- `stalled`(`last_crawl`・`delete_job` の中)は、実行中のジョブだけ、ロック文書 `lock-{source_id}` を**先に**読んで導出する(導出は C。2.9)。
+- `stalled`(`last_crawl`・`delete_job` の中)は、実行中のジョブだけ、ロック文書 `lock-{source_id}` を**先に**読んで導出する(導出は C。2.9)。ロック文書を読めなかった行は `last_crawl.stalled`(または `delete_job.stalled`)が `null` で、**その行の `unavailable` の `last_crawl.stalled`(または `delete_job.stalled`)** にキーがある(他の行は影響を受けない)。
 
 **エラー**
 
@@ -389,7 +420,7 @@ SD §14.4 の「重複起動を冪等な成功として扱う」案は採らな�
 | 400 | `invalid_request` | 未知のクエリ(`unknown_field`) |
 | 503 | `unavailable` | `loreley-sources` の読み取りが再試行しても失敗した(A 5.2。**主たる読み取り**。部分的な応答にしない)。件数が OpenSearch の取得上限(10,000 件)を超えて切り詰められる場合も同じ(想定外。Crawler の `source_list_truncated` に倣う。導出) |
 
-`loreley-jobs`・検索インデックスの失敗は 503 にせず、200 で `null`+`unavailable`(2.2)。
+`loreley-jobs`・検索インデックスの失敗は 503 にせず、200 で `null`+**その行の `unavailable`**(2.2)。
 
 ```json
 {
@@ -404,7 +435,8 @@ SD §14.4 の「重複起動を冪等な成功として扱う」案は採らな�
       },
       "last_completed_at": "2026-11-21T18:07:12.300Z",
       "delete_job": null,
-      "document_count": 1284
+      "document_count": 1284,
+      "unavailable": {}
     }
   ],
   "unavailable": {}
@@ -662,9 +694,9 @@ SD §14.4 の「重複起動を冪等な成功として扱う」案は採らな�
 | `items_per_page` | integer | 任意 | 25 | `25`・`50`・`100`(それ以外は `unsupported`) |
 | `sort` | string | 任意 | `-queued_at` | `queued_at`・`-queued_at`。**画面の「開始」列の並べ替えは `queued_at` に対応づける**(実行待ちは「受付 日時」を表示する列で、直列実行のため受付の順と開始の順は一致する。導出。2.1)。それ以外は `unsupported` |
 
-**応答(200)**: `items[]`(`JobBrief`。2.11)、`total`、`page`、`items_per_page`、`window_limit`(10,000)、`unavailable`。
+**応答(200)**: `items[]`(`JobListItem` = `JobBrief` + 行の `unavailable`。2.11)、`total`、`page`、`items_per_page`、`window_limit`(10,000)、`unavailable`(最上位。**常に `{}`**。2.2)。
 
-- 出所: `loreley-jobs` の `record_type=job`(`source_id`・`status` の `term` で絞り込み、`queued_at` で並べ、同順位は `job_id` の昇順)。`stalled`・`cancellable` は、そのページの `status=running` の行だけ、ロック文書 `lock-{source_id}` を読んで導出する(C)。ロック文書の読み取りが失敗した行は `stalled=null`・`cancellable=false`(`unavailable` の `items[].stalled` が `store_unavailable`)。
+- 出所: `loreley-jobs` の `record_type=job`(`source_id`・`status` の `term` で絞り込み、`queued_at` で並べ、同順位は `job_id` の昇順)。`stalled`・`cancellable` は、そのページの `status=running` の行だけ、ロック文書 `lock-{source_id}` を読んで導出する(C)。ロック文書の読み取りが失敗した行は `stalled=null`・`cancellable=false` で、**その行の `unavailable` の `stalled` が `store_unavailable`(または `timeout`)**。ロック文書を `mget` で読む単位は文書ごとなので、失敗した文書に対応する行だけにキーが付く。`mget` 全体が失敗したときは、`status=running` の全行に同じキーを付ける(2.2)。
 - `status` の絞り込みは**保存上の状態**による。リース切れの実行中ジョブは `running`・`active` に含まれ、`failed` には含まれない(画面は `stalled`・`failure_reason` でタグを切り替える)。
 
 **エラー**
@@ -677,7 +709,8 @@ SD §14.4 の「重複起動を冪等な成功として扱う」案は採らな�
 ```json
 { "items": [ { "job_id": "job-20261122T030000Z-77aa01bc", "source_id": "docs-share", "job_type": "crawl", "trigger": "manual",
     "status": "running", "force_delete": false, "rewrite_mode": true, "queued_at": "2026-11-22T03:00:00.050Z",
-    "started_at": "2026-11-22T03:00:01.000Z", "finished_at": null, "failure_reason": null, "stalled": false, "cancellable": true } ],
+    "started_at": "2026-11-22T03:00:01.000Z", "finished_at": null, "failure_reason": null, "stalled": false, "cancellable": true,
+    "unavailable": {} } ],
   "total": 9, "page": 1, "items_per_page": 25, "window_limit": 10000, "unavailable": {} }
 ```
 
@@ -766,11 +799,11 @@ SD §14.4 の「重複起動を冪等な成功として扱う」案は採らな�
 | `oversize` | `loreley-jobs`: `record_type=oversize`・`source_id`(CA 3.3.4) | `-last_detected_at` | 同 |
 | `summary_pending` | 検索インデックス: `source_id`・`summary_status=pending` | `-indexed_at` | 同 |
 
-**応答(200)**: `tab`、`items[]`、`total`、`page`、`items_per_page`、`window_limit`(10,000)、`tab_counts`、`document_count`、`unavailable`。
+**応答(200)**: `tab`、`items[]`(各行に `unavailable`。下記)、`total`、`page`、`items_per_page`、`window_limit`(10,000)、`tab_counts`、`document_count`、`unavailable`(最上位。行に属さない項目 `tab_counts.<タブ>`・`document_count` の失敗だけ。2.2)。
 
-- `tab_counts`: `skipped`・`extract_failed`・`oversize`・`summary_pending`(integer / null。各タブの総件数。取得失敗は `null`+`unavailable.tab_counts.<タブ>`)。**抽出失敗の件数はスキップ件数と別**(PD §4.2)。
-- `document_count`: 登録文書数(integer / null。数え方は 3.1。`unavailable.document_count`)。
-- `items[]` の項目(タブごと。`null` は「値がない」):
+- `tab_counts`: `skipped`・`extract_failed`・`oversize`・`summary_pending`(integer / null。各タブの総件数。取得失敗は `null`+最上位の `unavailable` の `tab_counts.<タブ>`)。**抽出失敗の件数はスキップ件数と別**(PD §4.2)。
+- `document_count`: 登録文書数(integer / null。数え方は 3.1。取得失敗は `null`+最上位の `unavailable` の `document_count`)。
+- `items[]` の項目(タブごと。**どのタブの行も `unavailable`(object。この行の失敗。常に存在。なければ `{}`)を持つ**。キーは `skipped` タブの `existence` だけで、他のタブの行は常に `{}`。`null` で行の `unavailable` にキーがないものは「値がない」):
 
 | `tab` | 項目 |
 | --- | --- |
@@ -779,7 +812,7 @@ SD §14.4 の「重複起動を冪等な成功として扱う」案は採らな�
 | `oversize` | `document_id`、`external_id`、`detected_by`(`crawler`・`indexer`)、`size`(分かる場合だけ。なければ `null`)、`first_detected_at`、`last_detected_at`、`last_job_id` |
 | `summary_pending` | `document_id`、`title`、`external_id`、`mime_type`、`source_updated_at`、`indexed_at` |
 
-- **`existence`(承認済みの案。AAPI-P-5・P-24)**: ページ内の `document_id`(スキップ記録の値は検索インデックスの `_id` と同じ算出値。AAPI-U-7)を **1 回の一括検索**(ID の一括取得。**上限 100 件**。`items_per_page` の上限と同じ)で検索インデックスに問い合わせ、見つかれば `existing`、なければ `new`。一括検索が失敗したら、そのページの全件を `unknown` にしてページ全体は返す(`unavailable` の `items[].existence`)。スキップ以外のタブの項目に `existence` はない。
+- **`existence`(承認済みの案。AAPI-P-5・P-24)**: ページ内の `document_id`(スキップ記録の値は検索インデックスの `_id` と同じ算出値。AAPI-U-7)を **1 回の一括検索**(ID の一括取得。**上限 100 件**。`items_per_page` の上限と同じ)で検索インデックスに問い合わせ、見つかれば `existing`、なければ `new`。一括検索の全体が失敗したら、そのページの全件を `unknown` にしてページ全体は返し、**全行の `unavailable` に `existence`(`search_index_unavailable`・`timeout`)を付ける**(2.2)。`mget` が文書単位で失敗を返したときは、その文書の行だけを `unknown` にし、その行の `unavailable` にキーを付ける。スキップ以外のタブの項目に `existence` はない。
 - 要約未生成タブの実データでの検証は、要約機能(LLM プロバイダ)の実装後(AF-14。AAPI-U-8)。画面は 0 件の空状態として先に実装できる。
 - 設定の存在確認(`loreley-sources` の ID 取得)、一覧、件数は同じリクエストの中で読み、**同順位は `document_id` の昇順**で決める(AAPI-P-30)。
 - 要約が無効のときも `summary_pending` は 0 件になるだけで、有効 / 無効は返さない(AAPI-P-9)。
@@ -792,14 +825,14 @@ SD §14.4 の「重複起動を冪等な成功として扱う」案は採らな�
 | 400 | `invalid_request` | `errors[]` | `tab` の `required`・`unsupported`、`page` の `range`、`items_per_page`・`sort` の `unsupported`、`source_id` の `format`、未知のクエリ |
 | 503 | `unavailable` | — | 設定の存在確認、またはそのタブの一覧の読み取りの失敗(主たる読み取り) |
 
-`tab_counts`・`document_count`・`existence` の失敗は 200 で `null` / `unknown`+`unavailable`(2.2)。
+`tab_counts`・`document_count` の失敗は 200 で `null`+最上位の `unavailable`、`existence` の失敗は `unknown`+**その行の `unavailable`**(2.2)。
 
 ```json
 { "tab": "skipped",
   "items": [ { "document_id": "9f2c…e1", "external_id": "manuals/2026/guide.pdf", "stage": "fetch",
       "reason": "fetch_permission_denied: 取得の権限がなかった", "attempts": 3, "consecutive_skips": 5,
       "first_skipped_at": "2026-11-18T03:00:10.000Z", "last_skipped_at": "2026-11-22T03:00:12.000Z",
-      "last_job_id": "job-20261122T030000Z-77aa01bc", "existence": "existing" } ],
+      "last_job_id": "job-20261122T030000Z-77aa01bc", "existence": "existing", "unavailable": {} } ],
   "total": 6, "page": 1, "items_per_page": 25, "window_limit": 10000,
   "tab_counts": { "skipped": 6, "extract_failed": 3, "oversize": 2, "summary_pending": null },
   "document_count": 1284, "unavailable": { "tab_counts.summary_pending": "search_index_unavailable" } }
@@ -1082,7 +1115,7 @@ Admin API が Crawler に中継する操作は、crawler-api v0.4 の 6 API だ�
 | **Crawler の想定外・契約外の応答** | 502 `crawler_error` | 想定外のエラー(管理者に連絡)。Admin API か Crawler の不具合 |
 | **Indexer 停止中** | Admin API の読み取り・操作に影響なし。EP-13: `indexer` が `abnormal`(`connection_refused` など) | D1 に異常。起動したクロールは Crawler が Indexer に届かず `failed`(`indexer_unavailable`)になり、J1・J2 に現れる(受付は Indexer を呼ばないため起動は受け付けられる) |
 | **OpenSearch 停止中** | EP-01・02・09・10・11・12: 503 `unavailable`。EP-03〜08: Crawler も OpenSearch に依存するため 503 `crawler_unavailable`(または Crawler が停止して `crawler_unreachable`)。EP-08 の 409 の `lock_state` は `unknown`。EP-13: `opensearch` が `abnormal`(接続拒否・名前解決失敗)または `undetermined`(タイムアウト)で、他は通常。EP-14: 通常 | 読み取り画面は「取得できません」(前回データがあれば古いデータの警告。画面仕様の stale)。D1 は表示を続け、`opensearch` に異常 |
-| **索引単位の障害**(`loreley-jobs` だけ・検索インデックスだけが読めない) | EP-01・02: 200 で該当項目を `null`+`unavailable`(`last_crawl`・`stalled`・`document_count` など)。EP-09・10: `loreley-jobs` の失敗は 503。EP-11: 一覧の読み取りの失敗は 503、件数・`existence` の失敗は `null`・`unknown`+`unavailable`。EP-10: ロック文書・`loreley-deletions` の失敗は `null`+`unavailable` | 該当項目だけ「—」+「取得できません」(S1・S2・X1)。J2 の削除結果の現在値は「結果不明」の説明 |
+| **索引単位の障害**(`loreley-jobs` だけ・検索インデックスだけが読めない) | EP-01: 200 で該当項目を `null`+**その行の `unavailable`**(`last_crawl`・`last_crawl.stalled`・`document_count` など。失敗した行だけ。一括の失敗は全行)。EP-02: 200 で該当項目を `null`+最上位の `unavailable`。EP-09・10: `loreley-jobs` の失敗は 503。EP-11: 一覧の読み取りの失敗は 503、件数の失敗は `null`+最上位の `unavailable`、`existence` の失敗は `unknown`+その行の `unavailable`。EP-10: ロック文書・`loreley-deletions` の失敗は `null`+`unavailable` | 該当項目だけ「—」+「取得できません」(S1・S2・X1)。J2 の削除結果の現在値は「結果不明」の説明 |
 | **`web` のファイルがない**(ビルド成果物の欠落) | EP-13: `web` が `abnormal`(`missing`)。API は動く | 画面が開けない場合は API だけが動く(D1 を見られない)。ブラウザ側の扱いは E |
 | **`api` 自身に届かない** | (応答なし) | Admin View の表示・操作がすべて失敗する。前回データの警告(E・F)。D1 の「判定不能」への降格はクライアント側(画面仕様 `dashboard-v0.1.md` 4.3) |
 | **cron のタイムゾーンが未設定** | EP-14: `cron_timezone=null` | 「適用されるタイムゾーンを取得できません」の警告(S3・S4)。保存は止めない |
@@ -1151,7 +1184,7 @@ Admin API が Crawler に中継する操作は、crawler-api v0.4 の 6 API だ�
 | AAPI-P-13 | `lock_held` の 409 の形(`options_applied`・`requested`・`existing_job`・`lock_state`) | 承認済みの案(ゲート2。2026-11-22) | 4 | 2.7 |
 | AAPI-P-14 | 単位の変換: Admin API が日 → 秒、% → 割合に変換。リクエストは `ttl_days` または `ttl_seconds`、`ratio_threshold_percent` | 承認済みの案(ゲート2。2026-11-22) | — | 2.8 |
 | AAPI-P-15 | (不採用)失敗ジョブの再実行の専用エンドポイント(`POST /jobs/{job_id}/rerun`。最新の失敗ジョブだけ・指定を引き継ぐ・409 `job_not_rerunnable`)。再実行は、画面が J2 の応答をもとに EP-06 を呼ぶ(4.1) | 不採用として扱った(ゲート2の回答で採用が選ばれなかったため。解釈。ゲート3(2026-11-23)で不採用のままでよいと明示回答)。ID は欠番として残す | — | 4.1 |
-| AAPI-P-16 | 部分失敗: 本体は 200 で `null`+`unavailable`。主たる読み取りの失敗は 503 | 承認済みの案(ゲート3。2026-11-23) | 1・6 | 2.2 |
+| AAPI-P-16 | 部分失敗: 本体は 200 で `null`+`unavailable`。**一覧の EP(EP-01・09・11)は各行に `unavailable` を持ち(キーは行の相対パス)、最上位 `unavailable` は行に属さない項目だけ**。主たる読み取りの失敗は 503(AAPI-P-42) | 承認済みの案(ゲート3)の修正(PR #10 のレビュー指摘への対応。2026-11-23) | 1・6 | 2.2 |
 | AAPI-P-17 | ロック状態 7 値(`lock_state`) | 承認済みの案(ゲート3。2026-11-23) | — | 2.9 |
 | AAPI-P-18 | ジョブの導出フラグ(`stalled`・`cancellable`・`latest_for_source`・`rerunnable`・`rerun_blocked_reason`・`cancel_after_finish_notice`。画面が操作を出し分けるためのもので、サーバー側では強制しない) | 承認済みの案(ゲート3。2026-11-23) | 5 | 2.9 |
 | AAPI-P-19 | Crawler 起因のエラー code 4 種(`crawler_error`・`crawler_unavailable`・`crawler_unreachable`・`crawler_response_lost`)と、書き込みの自動再送なし | 承認済みの案(ゲート2。2026-11-22) | 2 | 2.3 |
@@ -1160,12 +1193,12 @@ Admin API が Crawler に中継する操作は、crawler-api v0.4 の 6 API だ�
 | AAPI-P-22 | メタ情報の EP-14(`cron_timezone`・`dashboards_url`)。要件外の追加案のうち、ゲート2で採用されたのはこれだけ | 承認済みの案(ゲート2。2026-11-22) | 11・13 | 8.2 |
 | AAPI-P-23 | 登録文書数の数え方: 検索インデックスの `source_id` の全文書(抽出失敗・要約未生成を含む) | 承認済みの案(方針はゲート1、具体値・名前はゲート2。2026-11-22) | 5 | 3.1 |
 | AAPI-P-24 | 入力の規約: パス ID の形式と符号化(`quote(safe="")` の後に `.` を `%2E` に置換)、未知のクエリ・本文の項目は 400、本文が空なら `Content-Type` を問わず許し(`{}` 扱い)、あれば `application/json` の JSON オブジェクト、型は厳密(`30.0` は整数でない)、違反は全部返す、本文を読まない EP、検証の順序 | 承認済みの案(ゲート3。2026-11-23) | 2 | 2.12 |
-| AAPI-P-25 | (OpenSearch の HTTP 200 の部分的な失敗は失敗として扱い、`timed_out=true` は `timeout`。C の案 AAA-P-39)応答の共通 DTO(`SourceSettings`・`JobBrief`・`JobAccepted`・`ExistingJob`)の項目名・型・`null` 条件。`unavailable` は最上位のオブジェクトで、キーは項目のパス、理由コードは `store_unavailable`・`search_index_unavailable`・`timeout`(優先)・`malformed`。**ジョブ記録・削除記録由来の項目は、保存値が読めないとき `null`(`unavailable` に載せない)で、`JobBrief` の `status`・`job_type`・`trigger`・`queued_at`、`registration` の件数・`partial` などの型は `null` を許し、`phase` は `partial` が `null` のとき `null`**(C 5.0・5.8 の承認済みの案(ゲート3)。AAA-P-25) | 承認済みの案(ゲート3。2026-11-23) | — | 2.2・2.11 |
+| AAPI-P-25 | (OpenSearch の HTTP 200 の部分的な失敗は失敗として扱い、`timed_out=true` は `timeout`。C の案 AAA-P-39)応答の共通 DTO(`SourceSettings`・`JobBrief`・`JobAccepted`・`ExistingJob`)の項目名・型・`null` 条件。`unavailable` は、単一の応答では最上位のオブジェクトで、キーは項目の正式なパス、一覧の EP では各 `items[i]` の `unavailable`(キーは行の相対パス。AAPI-P-42)で、理由コードは `store_unavailable`・`search_index_unavailable`・`timeout`(優先)・`malformed`。**ジョブ記録・削除記録由来の項目は、保存値が読めないとき `null`(`unavailable` に載せない)で、`JobBrief` の `status`・`job_type`・`trigger`・`queued_at`、`registration` の件数・`partial` などの型は `null` を許し、`phase` は `partial` が `null` のとき `null`**(C 5.0・5.8 の承認済みの案(ゲート3)。AAA-P-25) | 承認済みの案(ゲート3)の修正(PR #10 のレビュー指摘への対応。2026-11-23) | — | 2.2・2.11 |
 | AAPI-P-26 | EP-09 の入力: `source_id` が未登録なら 404 にせず空の結果、`status` の列挙値(`active` を含む)、`sort` は `queued_at` だけ | 承認済みの案(ゲート3。2026-11-23) | 1 | 5.1 |
-| AAPI-P-27 | `stalled` の補足: 実行中でロック文書がない、または別のジョブのロックなら(確認読みの後)`true`(推測)、ロックを読めなければ `null`、`null` のとき `cancellable=false` | 承認済みの案(ゲート3。2026-11-23) | 5 | 2.9 |
+| AAPI-P-27 | `stalled` の補足: 実行中でロック文書がない、または別のジョブのロックなら(確認読みの後)`true`(推測)、ロックを読めなければ `null`(その行・応答の `unavailable` の `stalled`。一覧は行単位。AAPI-P-42)、`null` のとき `cancellable=false` | 承認済みの案(ゲート3)の修正(PR #10 のレビュー指摘への対応。2026-11-23) | 5 | 2.9 |
 | AAPI-P-28 | Crawler クライアントの規約: 固定のパス、リダイレクトに従わない、`error.code` で分岐し `message` は `config_invalid` のときだけ通す、JSON でない・未知の code は 502、起動時の回復中は `crawler_unreachable` | 承認済みの案(ゲート3。2026-11-23) | 2 | 9.1 |
 | AAPI-P-29 | EP-10 の削除結果の読み取り: `crawl` ジョブだけ `deletion` を返す、実行待ちは読まず `not_found`、`current_state`・`fetched_at`、`settings` は設定スナップショットから | 承認済みの案(ゲート3。2026-11-23) | 5 | 5.2 |
-| AAPI-P-30 | EP-11 の補足: 設定の存在確認(404)、同順位は `document_id` の昇順、`existence` の失敗は `unavailable` の `items[].existence` | 承認済みの案(ゲート3。2026-11-23) | 6 | 6.1 |
+| AAPI-P-30 | EP-11 の補足: 設定の存在確認(404)、同順位は `document_id` の昇順、`existence` の失敗は**その行の `unavailable` の `existence`**(一括検索の全体の失敗は全行。AAPI-P-42) | 承認済みの案(ゲート3)の修正(PR #10 のレビュー指摘への対応。2026-11-23) | 6 | 6.1 |
 | AAPI-P-31 | EP-12 の値の正規化: `cat.*` の文字列を整数・`null` に変換、`prirep` → `role`、`state` は小文字、`relocating` の `node` は移動元(推測)、インデックス一覧にないインデックスは `null` で補う | 承認済みの案(ゲート3。2026-11-23) | 7 | 7.1 |
 | AAPI-P-32 | 障害別の挙動(10.2・10.3)。各障害での EP の応答と画面への影響 | 承認済みの案(ゲート3。2026-11-23) | 2 | 10 |
 | AAPI-P-33 | EP-13 の `reason` の値(`connection_refused`・`name_not_resolved`・`unexpected_status`・`missing`・`timeout`・`connection_error`)と、`opensearch` の判定(HTTP エラーの応答は `abnormal`) | 承認済みの案(ゲート3。2026-11-23) | 9 | 8.1 |
@@ -1177,6 +1210,7 @@ Admin API が Crawler に中継する操作は、crawler-api v0.4 の 6 API だ�
 | AAPI-P-39 | EP-07(取消)で、Crawler が `job_id` を理由に返す 400 `invalid_request`・404 `not_found`(`%`・`?` などを含む `job_id` は Admin API の検証を通る)を、502 でなく 404 `job_not_found` に写す(Crawler が生成する ID の形ではなく、存在しない ID と同義) | 承認済みの案(ゲート3。2026-11-23) | 2 | 2.12・2.6・4.2・9.2.2 |
 | AAPI-P-40 | ダッシュボードの更新間隔は 30 秒、OpenSearch Dashboards への導線は外部リンク(設定時のみ)。画面仕様 `dashboard-v0.1.md` 4.1(`admin-view-v0.1.md` 10.1 #26。承認済み(ゲート C 2026-11-22))、`admin-view-v0.1.md` 3章(ナビ。承認済み(ゲート B))の引用。機能設計 AF-18(更新間隔)・AF-20(導線の経路)は後続設計に委ねていた(AF-U-3(c)・AF-U-11)。旧 AAPI-K-9 から区分を訂正 | 承認済みの案(画面仕様のゲート B・C の承認事項の引用。ユーザー確認済み(ゲート3。2026-11-23)) | — | 8.1・8.2 |
 | AAPI-P-41 | `rerun_blocked_reason` に `source_missing`(データソースの設定がない=削除済み)を足す。`rerunnable=null` の条件に「データソースの設定の読み取りの失敗」を加える(C 5.3 の評価順)。画面仕様に理由の文言がないため、E・F・画面仕様の追従が要る | 承認済みの案(ゲート3。2026-11-23) | — | 2.9・5.2 |
+| AAPI-P-42 | **一覧の EP(EP-01・09・11)の `unavailable` を行単位にする**。各 `items[i]` に `unavailable` を持たせ(常に存在。なければ `{}`)、キーは行の中の項目の相対パス(`last_crawl`・`last_crawl.stalled`・`last_completed_at`・`delete_job`・`delete_job.stalled`・`document_count`・`stalled`・`existence`)。最上位 `unavailable` は行に属さない項目(EP-11 の `tab_counts.<タブ>`・`document_count`)だけで、`items[].…` 形式のキーは廃止。「`null` +キーあり」=取得できなかった、「`null` +キーなし」=値がない。一括の失敗は全行に同じキー。単一の応答(EP-02・10・12・13・14)は変えない。AAPI-P-16・25・27・30 の修正 | 承認済みの案(ゲート3)の修正(PR #10 のレビュー指摘への対応。2026-11-23) | — | 2.2・2.11・3.1・5.1・6.1 |
 
 ### 11.4 未決(AAPI-U)
 
@@ -1299,12 +1333,12 @@ Admin API が Crawler に中継する操作は、crawler-api v0.4 の 6 API だ�
 | ID | 判断の要点 |
 | --- | --- |
 | AAPI-P-24 | 未知のクエリ・本文の項目は 400。型は厳密(`30.0` は整数でない)。本文を読まない EP は本文を無視する |
-| AAPI-P-25 | 応答の部品(`SourceSettings`・`JobBrief`・`JobAccepted`・`ExistingJob`)の項目名・型。`unavailable` は最上位のオブジェクトで、キーは応答の項目の正式なパス(一覧は `items[]` 付き。2.2) |
+| AAPI-P-25 | 応答の部品(`SourceSettings`・`JobBrief`・`JobAccepted`・`ExistingJob`)の項目名・型。`unavailable` は、単一の応答では最上位でキーは正式なパス、**一覧の EP では各行の `unavailable`(行の相対パス。AAPI-P-42)** |
 | AAPI-P-26 | `GET /jobs` で未登録の `source_id` は 404 でなく空の結果 |
-| AAPI-P-27 | 実行中でロック文書がないジョブは `stalled=true`(推測)。ロックを読めなければ `stalled=null`・`cancellable=false` |
+| AAPI-P-27 | 実行中でロック文書がないジョブは `stalled=true`(推測)。ロックを読めなければ `stalled=null`・`cancellable=false`(その行の `unavailable` の `stalled`。一覧は行単位) |
 | AAPI-P-28 | Crawler クライアント: リダイレクトに従わない、`code` で分岐、未知の `code`・JSON でない本文は 502 |
 | AAPI-P-29 | J2 の削除結果: 実行待ちは読まない、`current_state`・`fetched_at`・`settings`(設定スナップショット)を足す |
-| AAPI-P-30 | X1 の補足: 設定の存在確認(404)、同順位は `document_id` の昇順、`existence` の失敗は `unavailable` の `items[].existence` |
+| AAPI-P-30 | X1 の補足: 設定の存在確認(404)、同順位は `document_id` の昇順、`existence` の失敗はその行の `unavailable` の `existence`(一括の失敗は全行。AAPI-P-42) |
 | AAPI-P-31 | O1 の値の正規化(`relocating` の `node` は移動元=推測、インデックス一覧にないインデックスは補う) |
 | AAPI-P-32 | 障害別の挙動と画面への影響(10.2・10.3) |
 | AAPI-P-33 | D1 の `reason` の値と `opensearch` の判定 |
@@ -1316,6 +1350,7 @@ Admin API が Crawler に中継する操作は、crawler-api v0.4 の 6 API だ�
 | AAPI-P-15 / BAPI-P-15 | 再実行の専用 EP と `Origin` 検査は、ゲート2の回答で採用が選ばれなかったため不採用として扱った(解釈)。**未対応のリスク(BAPI-U-8)を受け入れるか、軽い緩和を足すか** |
 | BAPI-P-20 | 時刻を ISO 8601(UTC)で返すこと(0001 の「既存設計でそのまま使うもの」をユーザーが確認したか。承認済みの案(既承認文書の引用)に区分を下げた。旧 BAPI-K-6) |
 | AAPI-P-41 | `rerun_blocked_reason` に `source_missing` を足す(`source_deleting` に寄せず専用の値にする案。画面仕様に理由の文言がない)。`rerunnable=null` に設定の読み取りの失敗を加える |
+| AAPI-P-42 | **一覧の EP(EP-01・09・11)の `unavailable` を行単位にする**(PR #10 のレビュー指摘。行の `null` が「取得失敗」と「値がない」を区別できないため。各行に `unavailable`、最上位は行に属さない項目だけ。ゲート3で承認済みの AAPI-P-16・25・27・30 の修正) |
 | AAPI-P-25・P-27 | 読めない保存値は `null`(DTO の型が `null` を許す)。実行中でロックなし・別ジョブのロックは確認読みの後 `stalled=true`(C の案 AAA-P-25・P-18) |
 | AAPI-P-39 | 取消(EP-07)で、`job_id` を理由とする Crawler の 400・404 `not_found` を 404 `job_not_found` に写すこと |
 | AAPI-P-40 | 更新間隔 30 秒・外部リンクを、確定から「承認済みの案(画面仕様のゲート B・C の引用)」に直したこと(旧 AAPI-K-9) |
@@ -1335,5 +1370,5 @@ B は結果と参照だけを書いた。C(`admin-api-architecture-v0.1.md`)で�
 5. **Crawler クライアント**: urllib3 の設定(再試行なし・リダイレクトに従わない・タイムアウト)、例外から 503 `crawler_unreachable`・504 `crawler_response_lost` への分類、`message`・`details` の取り込みと、`config_invalid` の分解の実装(2.5)、スレッドプールの枯渇対策(BAPI-U-6)。
 6. **死活の確認**: `/healthz` と opensearch-py の例外の分類(`abnormal` / `undetermined`。AAPI-P-33・U-11)、並行確認の実装、`web` の確認、任意コンポーネントの `not_configured` の判定。
 7. **部分失敗**: 失敗の理由コードの付け方(例外の種類との対応)、`malformed` の判定規則(AAPI-P-34)、`warnings` の通し方。
-8. **R1 で追加された事項**: (a) **`job_id`・`source_id` の符号化**(`quote(safe="")` の後に `.` を `%2E`。スタブが `%2E%2E` を受けることを確認)と、特殊文字を含む `job_id` の Crawler の挙動(AAPI-U-12)。(b) **`lock_state` の排他的な定義**(`orphan` と `just_acquired` は取得から 60 秒で分かれ、ジョブの `status` が読めなければ `unknown`。2.9)と、**ロック文書 → ジョブ記録の順に読む**ことで `stalled` の偽陽性を避ける。(c) **死活のプローブはリダイレクトに従わず、確認先の URL は環境変数だけで決める**(リクエストから受け取らない。3xx は `unexpected_status`。SSRF の予防)。(d) 応答の `ratio_threshold_percent` の十進数の厳密な変換(AAPI-P-38)。(e) `unavailable` のキーは応答の項目の正式なパス(2.2)。
+8. **R1 で追加された事項**: (a) **`job_id`・`source_id` の符号化**(`quote(safe="")` の後に `.` を `%2E`。スタブが `%2E%2E` を受けることを確認)と、特殊文字を含む `job_id` の Crawler の挙動(AAPI-U-12)。(b) **`lock_state` の排他的な定義**(`orphan` と `just_acquired` は取得から 60 秒で分かれ、ジョブの `status` が読めなければ `unknown`。2.9)と、**ロック文書 → ジョブ記録の順に読む**ことで `stalled` の偽陽性を避ける。(c) **死活のプローブはリダイレクトに従わず、確認先の URL は環境変数だけで決める**(リクエストから受け取らない。3xx は `unexpected_status`。SSRF の予防)。(d) 応答の `ratio_threshold_percent` の十進数の厳密な変換(AAPI-P-38)。(e) `unavailable` は、単一の応答では最上位でキーは項目の正式なパス、一覧の EP(EP-01・09・11)では各行の `unavailable` でキーは行の相対パス(最上位は行に属さない項目だけ。2.2。AAPI-P-42)。
 9. **テスト観点**: Crawler・OpenSearch の偽物(`tests/fakes/`)での写像表(9章)・障害別の挙動(10.2)・部分失敗・ページングの窓の確認。

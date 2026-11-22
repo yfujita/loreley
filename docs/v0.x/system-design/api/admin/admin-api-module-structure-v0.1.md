@@ -5,7 +5,7 @@
 - 前版: なし(初版)
 - 位置づけ: Admin API(`api` コンテナの admin パッケージ)の**コード上のモジュール分割と、モジュール間の依存・呼び出しの流れ**。「何を、どのモジュールが担うか」を一目で分かるようにする。エンドポイント・DTO・Admin 固有 code・Crawler 写像は `admin-api-v0.1.md`(以下 B)が、導出ロジック・データアクセスのクエリ形・環境変数・仮値・並行性の方針は `admin-api-architecture-v0.1.md`(以下 C)が、エラー形式・共通 code・共通設定の規則は `../api-base-design-v0.1.md`(以下 A)が正本で、本書は**参照のみ**で複製しない。Search API・MCP の設計は含まない(同居できる配置の境界だけを書く)。
 - 本書は Admin 画面の詳細設計タスク(`20261122_create_admin_system_design`)の成果物で、SD・PD・crawler / indexer 設計・機能設計・画面仕様を変更しない。追従改訂は A 9章(申し送り一覧。HO-1〜HO-50。本書に関わるものは HO-39)に集約する。
-- 改訂履歴: v0.1 は初版(フェーズ2-3)。C 本文中の「(D)」の注(層、導出の純粋関数、写像表のデータ化、`Ok / Failed` と `unavailable` の組み立て、パッケージ構成、`tests/fakes`・`tests/architecture`)をすべて割り当てた(8.5)。R2(作業記録 0027)の指摘を反映した: 依存ルール(`urllib3.exceptions` の import 範囲、`infrastructure` が `common.http` を import しない、`名前空間.メソッド` の許可リスト、`Depends` も `async def`)、uvicorn の起動引数、部分的な失敗の扱い、EP-13 の期限と放棄、`no-store` の範囲、図の修正、ほか。フェーズ5の統合(2026-11-23): 申し送りへの参照を A 9章の実番号に置き換え、関連文書の表に E・F を足し、8.6 の依頼 8・9 の状態を A の現状(反映済み)に更新し、更新日を統一した。R4 指摘の反映(2026-11-23): 2.1 の図の省略の注記、6章の分類の整理、4.1 の uvicorn 引数の記述を Crawler・Indexer の実物に合わせた限定表現に直し、AAM-P-28(`timeout_graceful_shutdown` と停止の流儀。案)を足し、8.5 の `WEB_DIST_DIR` の行を `/app/web` に直した。 ゲート3の承認(2026-11-23)の反映: 案の区分を承認済みの案(ゲート3。2026-11-23)に更新した(設計の内容は変更なし)。
+- 改訂履歴: v0.1 は初版(フェーズ2-3)。C 本文中の「(D)」の注(層、導出の純粋関数、写像表のデータ化、`Ok / Failed` と `unavailable` の組み立て、パッケージ構成、`tests/fakes`・`tests/architecture`)をすべて割り当てた(8.5)。R2(作業記録 0027)の指摘を反映した: 依存ルール(`urllib3.exceptions` の import 範囲、`infrastructure` が `common.http` を import しない、`名前空間.メソッド` の許可リスト、`Depends` も `async def`)、uvicorn の起動引数、部分的な失敗の扱い、EP-13 の期限と放棄、`no-store` の範囲、図の修正、ほか。フェーズ5の統合(2026-11-23): 申し送りへの参照を A 9章の実番号に置き換え、関連文書の表に E・F を足し、8.6 の依頼 8・9 の状態を A の現状(反映済み)に更新し、更新日を統一した。R4 指摘の反映(2026-11-23): 2.1 の図の省略の注記、6章の分類の整理、4.1 の uvicorn 引数の記述を Crawler・Indexer の実物に合わせた限定表現に直し、AAM-P-28(`timeout_graceful_shutdown` と停止の流儀。案)を足し、8.5 の `WEB_DIST_DIR` の行を `/app/web` に直した。 ゲート3の承認(2026-11-23)の反映: 案の区分を承認済みの案(ゲート3。2026-11-23)に更新した(設計の内容は変更なし)。 PR #10 のレビュー指摘への対応(2026-11-23): 一覧の EP の `unavailable` を行単位にした(B 2.2・C 5.8。AAPI-P-42・AAA-P-45)。DTO(4.4)、`unavailable` の組み立て(4.5・4.7)、シナリオ(5.7・5.8)、テスト(7.3)、AAM-P-29 を更新した。
 
 区分の凡例は A 0章・C 0章と同じ(確定 / 案 / 承認済みの案 / 未決 / 推測 / 導出)。**`-K-` にしたのは、ユーザーの明示回答と、確定として書かれた既承認文書の引用だけ**。B・A・C のゲート1・2で承認済みの案は「承認済みの案」として出典の ID を書いて引用し、本書で新たに決めた判断は、ゲート3(2026-11-23)で承認され、「承認済みの案(ゲート3。2026-11-23)」とした(確定にはしていない。本文中で「案」と書いた判断は、ID の区分欄が正で、承認済みの案(ゲート3)に読み替える)。
 
@@ -174,12 +174,12 @@ apps/api/
 | `server/` | `app.py`(`create_app`)、`health.py`(`GET /healthz`)、`static_web.py`(静的配信と SPA フォールバック) |
 | `admin/` 直下 | `app.py`(`create_admin_app`)、`dependencies.py`(`AdminDependencies` と組み立て関数)、`settings.py`(Admin API 固有の設定型)、`openapi_export.py`(OpenAPI JSON の書き出し) |
 | `admin/base/` | `constants.py`(固定の上限と既定。C 9章)、`codes.py`(B 2.3 の code・`reason` 値・`unavailable` の理由コード・`lock_state`・`state` の値)、`errors.py`(`AdminApiError` と code ごとの生成関数) |
-| `admin/schemas/` | `common.py`(`SourceSettings`・`JobBrief`・`JobAccepted`・`ExistingJob`・ページ付き応答・`Unavailable`)、`sources.py`・`jobs.py`・`documents.py`・`opensearch.py`・`dashboard.py`・`meta.py`(EP ごとのリクエスト・応答)、`errors.py`(OpenAPI 用のエラー応答) |
+| `admin/schemas/` | `common.py`(`SourceSettings`・`JobBrief`・`JobAccepted`・`ExistingJob`・ページ付き応答・`Unavailable`(最上位と行の `unavailable` の型。キーは項目のパス、値は理由コード))、`sources.py`(`SourceListItem` を含む)・`jobs.py`(`JobListItem` を含む)・`documents.py`(各タブの行)・`opensearch.py`・`dashboard.py`・`meta.py`(EP ごとのリクエスト・応答)、`errors.py`(OpenAPI 用のエラー応答) |
 | `admin/routers/` | `sources.py`(EP-01〜05)、`crawl_operations.py`(EP-06〜08)、`jobs.py`(EP-09・10)、`documents.py`(EP-11)、`opensearch.py`(EP-12)、`dashboard.py`(EP-13)、`meta.py`(EP-14)、`request_input.py`(パスの ID・クエリ・本文の検証。B 2.12。依存関係はすべて `async def`) |
 | `admin/services/` | `source_catalog.py`(EP-01・02)、`source_commands.py`(EP-03〜05)、`crawl_commands.py`(EP-06〜08)、`job_queries.py`(EP-09・10)、`document_review.py`(EP-11)、`cluster_overview.py`(EP-12)、`dashboard.py`(EP-13)、`meta.py`(EP-14)、`lock_view.py`(ロック文書 → ジョブ記録 → `lock_state` の読み取りの共通手順。EP-02 と 409 の付随情報で共有)、`stalled_check.py`(`stalled` の確認読みの共通手順。C 5.2) |
 | `admin/derivation/` | `values.py`(読めない値の扱い。C 5.0)、`lock_state.py`(C 5.1)、`stalled.py`(`stalled`・`cancellable`。C 5.2)、`rerun.py`(`latest_for_source`・`rerunnable`・`rerun_blocked_reason`・`cancel_after_finish_notice`。C 5.3)、`job_view.py`(`JobBrief` の元・`registration`・`warnings`。C 5.4)、`deletion_view.py`(`deletion.*`。C 5.4)、`source_summary.py`(R-3 の結果から `last_crawl`・`last_completed_at`・`delete_job`。C 5.5)、`settings_view.py`(`SourceSettings` の元と `malformed`。C 5.8)、`units.py`(TTL・しきい値の十進数変換。C 5.7)、`cluster_view.py`(`cat.*` の正規化・補完・並び・切り詰め。C 3.4) |
 | `admin/crawler_mapping/` | `table.py`(B 9.2 の写像表のデータ)、`translate.py`(表の適用・400 の項目の分岐・`existing_job` の取り込み・EP-07 の 404。C 4.4) |
-| `admin/failures/` | `reasons.py`(`Failed` → 理由コード。`timeout` 優先。C 5.8)、`unavailable.py`(正式なパスのキーの組み立て。C 5.8・8.6) |
+| `admin/failures/` | `reasons.py`(`Failed` → 理由コード。`timeout` 優先。C 5.8)、`unavailable.py`(`unavailable` の組み立て 1 か所。単一応答の最上位(正式なパスのキー)と、一覧の行(相対パスのキー)の 2 つの関数を区別する。C 5.8・8.6。AAM-P-29) |
 | `infrastructure/opensearch/` | `ports.py`(Reader・プローブの Protocol と結果の型)、`readonly_client.py`(**許可リストのクライアントのラッパー**)、`connection.py`(読み取り用・プローブ用クライアントの生成。C 3.7)、`config.py`(接続設定)、`queries.py`(R-1〜R-12 のクエリ本文の組み立て。純粋)、`failure.py`(例外・部分的な失敗の応答 → 失敗の種別。`ConnectionError.info` を `urllib3.exceptions` の型で判定する。C 3.2・5.8・6.2)、`sources_reader.py`、`jobs_reader.py`、`deletions_reader.py`、`search_index_reader.py`、`counts_reader.py`(`msearch` による件数)、`cluster_reader.py`、`health_probe.py`(`cluster.health`) |
 | `infrastructure/crawler_client/` | `client.py`(インターフェースと返り値の型)、`http_client.py`(urllib3 の実装)、`routes.py`(固定 6 経路とエンコード。C 4.8)、`classification.py`(例外の分類。C 4.3)、`payloads.py`(リクエスト本文の組み立て)、`parsing.py`(応答の解釈・上限・期待のステータス)、`config_invalid.py`(`message` の分解。C 4.5)、`config.py` |
 | `infrastructure/probes/` | `http_probe.py`(`GET /healthz`・リダイレクト非追従・本文を読まない)、`classification.py`(urllib3 の例外 → `state`・`reason`。C 6.2)、`web_dist.py`(`index.html` の確認。C 6.3)、`config.py` |
@@ -238,14 +238,14 @@ apps/api/
 
 ### 4.4 `admin/schemas`(AAM-P-7)
 
-- **責務**: B の DTO を型にする。正本は B で、本書は項目を複製しない。リクエストの本文は **strict**(型の変換をしない。未知の項目は 400。A 5.1・B 2.12)。応答は、項目を省略せず値がないときは `null`(A 5.1)。`unavailable` は常に存在する最上位のオブジェクト(B 2.2)。
+- **責務**: B の DTO を型にする。正本は B で、本書は項目を複製しない。リクエストの本文は **strict**(型の変換をしない。未知の項目は 400。A 5.1・B 2.12)。応答は、項目を省略せず値がないときは `null`(A 5.1)。`unavailable` は常に存在するオブジェクトで、**単一の応答は最上位、一覧の EP(EP-01・09・11)は各行(`SourceListItem`・`JobListItem`・EP-11 の各タブの行)が持ち、最上位は行に属さない項目だけ**(B 2.2。AAPI-P-42。AAM-P-29)。`JobBrief` 自体は `unavailable` を持たない(`JobListItem` = `JobBrief` + `unavailable`。EP-01 の入れ子の `last_crawl`・`delete_job` では外側の行が持つ)。
 - **ファイル**: 3 章の表のとおり。共通の部品(`SourceSettings`・`JobBrief`・`JobAccepted`・`ExistingJob`)は `common.py`(B 2.11)。
 - **依存**: `base`(固定の上限・値の列挙)・`common`。`derivation` は `schemas` に依存しない(導出は素の値を返し、`services` が DTO に詰める。6章 R7)。
 - **DTO の `null` を許す範囲**: Crawler・Indexer が書いた値が読めないときは項目を `null` にする(C 5.0。AAA-P-25)。B 2.11・EP-10 が `null` を許す型を定めた: `JobBrief` の `status`・`job_type`・`trigger`・`queued_at`(`status=null` なら `stalled=false`・`cancellable=false`)、EP-10 の `registration` の件数・`partial`・`phase`。`job_id`・`source_id` は `null` 不可。`schemas` はこれに従う。
 
 ### 4.5 `admin/services`(AAM-P-4・P-5)
 
-- **責務**: EP ごとのユースケース。次を順に行う(C 8.6): (1) 主たる読み取りを先に実行(失敗なら `AdminApiError.unavailable`)、(2) 付随する読み取りを独立に実行(結果は `Ok`・`Failed`)、(3) `derivation` の純粋関数で導出、(4) DTO を組み立て、`Failed` の項目を `null` にして `unavailable`(`failures`)を載せる。
+- **責務**: EP ごとのユースケース。次を順に行う(C 8.6): (1) 主たる読み取りを先に実行(失敗なら `AdminApiError.unavailable`)、(2) 付随する読み取りを独立に実行(結果は `Ok`・`Failed`)、(3) `derivation` の純粋関数で導出、(4) DTO を組み立て、`Failed` の項目を `null` にして `unavailable`(`failures`)を載せる。単一の応答は最上位、一覧は**行ごとに失敗を帰属**させて各行の `unavailable` に載せる(読み取りの結果を行の ID で持ち、失敗した行だけにキーを付ける。1 回の読み取りの失敗は全行。C 5.8・8.6。AAM-P-29)。
 - **実行モデル**: サービスのメソッドは `async def`。ブロッキングの呼び出し(Reader・Crawler クライアント・プローブ)は、**1 呼び出しごとに** `await runner.run("<区分>", fn, *args)` で渡す(区分は `opensearch`・`crawler`・`probe`。C 8.1)。1 つのユースケースが複数の区分をまたいでよい(例: EP-06 の `crawler` の呼び出しの後、409 の付随情報の読み取りを `opensearch` で行う)。サービスは `anyio` を直接使わず、並行が要る箇所(EP-13)は `runner.run_all(...)`(`common/concurrency.py`)を使う。
 - **現在時刻**: 1 回のリクエストの先頭で `now = clock.now()` を取り、導出すべてに渡す(C 5.0)。
 - **入口と対応**:
@@ -291,7 +291,7 @@ apps/api/
   - `table.py`: B 9.2 の API ごとの写像表を**データ**として持つ(`(API, ステータス, code, 項目) → Admin のエラー`)。API ごとの分岐を `if` で書かない(C 4.4)。B の表と 1 対 1 にして、表を B と並べて保守する。
   - `translate.py`: 表の適用。未知の組み合わせは 502 `crawler_error`。400 `invalid_request` の項目の分岐(写せる項目だけを Admin の名前で 400、それ以外だけなら 502)、`existing_job` の取り込み(`job_id`・`job_type`・`status`・`trigger`・`lease_expires_at` を型を確かめて)、`config_invalid`(分解結果の受け渡し)、**EP-07 の `job_id` 起因の 400・404 `not_found` を 404 `job_not_found` に写す**(AAPI-P-39)、`CrawlerTransportFailed` の 503 `crawler_unreachable`・504 `crawler_response_lost`(`outcome_unknown=true`)。
   - 依存: `base`・`infrastructure.crawler_client`(返り値の型)・`common`。
-- **`failures`**: `reasons.py` は `Failed`(失敗の種別 `timeout` または `unavailable`、対象 `store` または `search_index`)から B の理由コード(`timeout`・`store_unavailable`・`search_index_unavailable`)を返す(**`timeout` 優先**。C 5.8)。`unavailable.py` は、DTO の正式なパスのキー(`items[].last_crawl.stalled` など)と理由コードから `unavailable` を組み立てる 1 か所(一覧では「全件または 1 行でも失敗」でキーを付ける。C 8.6)。
+- **`failures`**: `reasons.py` は `Failed`(失敗の種別 `timeout` または `unavailable`、対象 `store` または `search_index`)から B の理由コード(`timeout`・`store_unavailable`・`search_index_unavailable`)を返す(**`timeout` 優先**。C 5.8)。`unavailable.py` は、理由コードから `unavailable` を組み立てる 1 か所で、**2 つの関数を区別する**(AAM-P-29): (a) 単一の応答の最上位用(キーは応答の項目の正式なパス。例 `index.document_count`、`deletion.current`)、(b) 一覧の行用(キーは行の中の相対パス。例 `last_crawl.stalled`・`document_count`・`existence`。失敗した行の ID ごとに組み立て、失敗がなければ `{}`)。一覧の最上位用には、行に属さない項目(EP-11 の `tab_counts.<タブ>`・`document_count`)だけを渡す。`items[].…` 形式のキーは作らない(C 5.8)。
 - **`base`**: `codes.py`(B 2.3 の code・`reason` の値・理由コード・`lock_state`・`state` の値の定数)、`errors.py`(`AdminApiError(code, status, retryable, details)`。`common.http.errors.ApiError` の子。code ごとの生成関数)、`constants.py`(窓 10,000・`items_per_page` の選択肢・X1 の 100・O1 の 1,000・`loreley-sources` の 10,000・応答本文 1 MiB。C 9章。**環境変数にしない**固定の上限)。`base` は `common` にだけ依存する admin 内の葉。
 
 ### 4.8 `infrastructure/opensearch`(AAM-P-8・P-9)
@@ -305,7 +305,7 @@ apps/api/
   | Reader | メソッド(目安) | 読み取り単位 | 備考 |
   | --- | --- | --- | --- |
   | `SourcesReader` | `list_all()`、`get(source_id, fields)` | R-1、R-2 | R-1 は上限 10,000 を超えたら `Failed`。`connector_config` を除く |
-  | `JobsReader` | `latest_by_source(source_ids)`、`get_locks(source_ids)`、`get_jobs(job_ids, fields)`、`list_jobs(query)`、`latest_crawl_id(source_id)`、`list_skipped(...)`・`list_oversize(...)` | R-3、R-4、R-5、R-6、R-7、R-10(`loreley-jobs` 側のタブ) | `mget` は文書ごとに `Ok`・`Failed` を返し、`record_type` を確かめる(`Failed` は「なし」と読まない)。`list_*` は窓を超えない |
+  | `JobsReader` | `latest_by_source(source_ids)`、`get_locks(source_ids)`、`get_jobs(job_ids, fields)`、`list_jobs(query)`、`latest_crawl_id(source_id)`、`list_skipped(...)`・`list_oversize(...)` | R-3、R-4、R-5、R-6、R-7、R-10(`loreley-jobs` 側のタブ) | `mget` は文書ごとに `Ok`・`Failed` を返し(ID をキーにした対応で返す。行への帰属に使う。AAM-P-29)、`record_type` を確かめる(`Failed` は「なし」と読まない)。`list_*` は窓を超えない |
   | `DeletionsReader` | `get_result(job_id)` | R-8 | `record_type=deletion_result` を確かめる |
   | `SearchIndexReader` | `count_by_source(source_ids)`、`list_extract_failed(...)`・`list_summary_pending(...)`、`existing_ids(ids)` | R-9(EP-01 の集計)、R-10(検索インデックス側のタブ)、R-11 | エイリアスだけ。`content`・`summary` を読まない(C 3.6) |
   | `CountsReader` | `tab_counts(source_id, tabs)` | R-9(`msearch`) | サブ要求ごとに `Ok`・`Failed` |
@@ -472,7 +472,7 @@ sequenceDiagram
     end
 ```
 
-- 導出の定義は C 5.2〜5.4。付随する読み取りの失敗は該当項目を `null` にして `unavailable` に載せる(`stalled`・`lease_expires_at`・`latest_for_source`・`rerunnable`・`deletion.current`。C 5.8)。
+- 導出の定義は C 5.2〜5.4。付随する読み取りの失敗は該当項目を `null` にして(単一の応答なので最上位の)`unavailable` に載せる(`stalled`・`lease_expires_at`・`latest_for_source`・`rerunnable`・`deletion.current`。C 5.8)。
 - `rerun_blocked_reason` は C 5.3 の評価順(データソース設定がないときは `source_missing`。AAPI-P-41)。
 
 ### 5.4 設定の更新と `config_invalid`(EP-04。EP-03 は差分)
@@ -601,8 +601,8 @@ sequenceDiagram
         svc->>jobs: list_skipped(paging)(主たる読み取り。失敗は 503)
         svc->>cnt: tab_counts(他の 3 タブと document_count。サブ要求ごとの失敗)
         svc->>idx: existing_ids(ページ内の document_id。最大 100 件)
-        svc->>svc: 要求タブの件数は一覧の total。existence を組み立て。Failed は null か unknown + unavailable
-        svc-->>UI: 200(items・total・tab_counts・document_count・unavailable)
+        svc->>svc: 要求タブの件数は一覧の total。existence を組み立て。existence の Failed は全行 unknown + 全行の unavailable.existence。tab_counts・document_count の Failed は null + 最上位の unavailable
+        svc-->>UI: 200(items(各行に unavailable)・total・tab_counts・document_count・unavailable(行に属さない項目だけ))
     end
 ```
 
@@ -639,13 +639,14 @@ sequenceDiagram
             chk->>jobs: get_locks → get_jobs(ロック → ジョブの順の確認読み)
             chk->>d: stalled(読み直した行, ロック)
         end
-        svc->>f: Failed の項目に正式なパスのキーと理由コード(timeout 優先)
-        svc-->>UI: 200(items・unavailable)
+        svc->>f: Failed を行ごとに帰属(R-3・件数は全行、ロックの mget は文書単位)し、各行の unavailable に相対パスのキーと理由コード(timeout 優先)
+        svc-->>UI: 200(items(各行に unavailable。成功なら {})・unavailable(常に {}))
     end
 ```
 
 - **EP-02** は、`SourcesReader.get`(主たる読み取り。設定がなければ 404)、`lock_view`(ロック → ジョブ → `lock_state`。失敗は `lock=null`)、R-3(1 ソース分)、R-9 の件数。保存値は `derivation.settings_view` が `malformed` を判定し、`unavailable.<項目名>=malformed`(C 5.8)。
-- **EP-09** は `JobsReader.list_jobs`(主たる読み取り)の後、そのページの `running` 行の `stalled` を `stalled_check` で判定する。
+- **EP-09** は `JobsReader.list_jobs`(主たる読み取り)の後、そのページの `running` 行の `stalled` を `stalled_check` で判定する。ロック文書の `mget` の失敗は、失敗した文書のソースの行の `unavailable.stalled` だけに付け(`mget` 全体の失敗は `running` の全行)、最上位の `unavailable` は常に `{}`。
+- **EP-01 の行の `unavailable`** は、5.8 の図の `failures` が組み立てる。未実行の行(`last_crawl=null`・キーなし)と、失敗した行(`last_crawl=null`+キーあり)を区別できる(B 2.2 の例)。
 - **EP-10** は 5.3 の流れ(ジョブ → ロック → 確認読みのジョブ。ロックから始められないため。C 5.2)。
 - 失敗の理由コードの付け方と、キーと理由の対応は C 5.8。
 
@@ -781,7 +782,7 @@ C 11章の 16 観点が、次のテストのどこで確かめられるかを示
 | 3 | パスのエンコードと EP-07 の 404 写像 | `infrastructure/crawler_client/`(スタブが受けたパス)、`admin/crawler_mapping/`(EP-07 の行)、`admin/routers/` |
 | 4 | `config_invalid` の分解 | `infrastructure/crawler_client/test_config_invalid`(ベクタ表)、`admin/crawler_mapping/` |
 | 5 | 導出(`lock_state`・`stalled`・`rerunnable` ほか・変換) | `admin/derivation/`(表駆動・固定時刻)、`admin/services/`(確認読みの流れ) |
-| 6 | 部分失敗・障害別・`malformed` | `admin/services/`(障害注入)、`admin/failures/`、`admin/routers/`(応答の形)、`infrastructure/opensearch/`(`mget` の `docs[i].error`・`_shards.failed`・`timed_out` の台本) |
+| 6 | 部分失敗・障害別・`malformed` | `admin/services/`(障害注入)、`admin/failures/`、`admin/routers/`(応答の形)、`infrastructure/opensearch/`(`mget` の `docs[i].error`・`_shards.failed`・`timed_out` の台本)。**行ごとの成否の区別**(未実行の行と失敗した行、文書単位の失敗は該当の行だけ、一括の失敗は全行、最上位は行に属さない項目だけ)は `admin/services/` と `admin/failures/` |
 | 7 | ページングの窓・`total`・同順位 | `admin/routers/`(窓 10,000 の境界)、`infrastructure/opensearch/`(クエリ本文の `from`・`size`・`track_total_hits`・並べ替え + ID) |
 | 8 | 読み取り専用(AST・許可リスト・6 経路) | **`architecture/test_read_only_rules.py`**(R8)。偽の生クライアントが許可リスト外で失敗(`infrastructure/opensearch/`) |
 | 9 | 契約テスト(スキーマ) | **`contract/test_schema_contract.py`**(`queries.py` のフィルタ・並べ替え・集計の項目と、スキーマ JSON の型) |
@@ -835,7 +836,7 @@ C 11章の 16 観点が、次のテストのどこで確かめられるかを示
 | AAM-P-4 | `admin` の内部分け(`base`・`schemas`・`routers`・`services`・`derivation`・`crawler_mapping`・`failures`)と、タグを B の領域(6 種)に合わせること | 承認済みの案(ゲート3。2026-11-23) | 3・4.3〜4.7 |
 | AAM-P-5 | 実行モデル: ルート・依存関係(`Depends`)・サービスは `async def`、`infrastructure` は同期、ブロッキングは `BlockingRunner`(区分別の上限)経由。`anyio` は `common` だけ。`WebDistProbe.check` だけはハンドラから直接呼ぶ(R9 の明示の例外。C 6.3) | 承認済みの案(ゲート3。2026-11-23。C の AAA-P-33 の実装形) | 2.2・4.5・4.11 |
 | AAM-P-6 | `derivation` は純粋関数(時計・I/O・pydantic・`infrastructure` に依存しない。`now` は引数) | 承認済みの案(ゲート3。2026-11-23。C 5章に依存) | 4.6 |
-| AAM-P-7 | `schemas` は B の DTO(strict)。`routers` は検証と受け渡しだけ。422 は A 5.2 の形に変換 | 承認済みの案(ゲート3。2026-11-23。DTO・入力規約は B。AAPI-P-24・P-25 に依存) | 4.3・4.4 |
+| AAM-P-7 | `schemas` は B の DTO(strict)。`routers` は検証と受け渡しだけ。422 は A 5.2 の形に変換 | 承認済みの案(ゲート3。2026-11-23。DTO・入力規約は B。AAPI-P-24・P-25 に依存)。行の `unavailable` を持つ DTO への修正は AAM-P-29 | 4.3・4.4 |
 | AAM-P-8 | OpenSearch: 許可リストのラッパー(公開メソッド 7 つ。許可リストは `名前空間.メソッド` で定義し、引数は明示のものだけ=`**kwargs` を素通ししない)と読み取り単位ごとの Reader。書き込みメソッドを持たない | 承認済みの案(ゲート3。2026-11-23。C の AAA-P-1・P-3 の実装形) | 4.8 |
 | AAM-P-9 | Reader の戻り値は `Ok / Failed`(`mget` は文書ごと)。失敗の分類(例外 → 種別)と部分的な失敗(`docs[i].error`・`_shards.failed`・`timed_out`)の判定は `infrastructure` に閉じる | 承認済みの案(ゲート3。2026-11-23。C の AAA-P-25 の実装形) | 4.8・4.11 |
 | AAM-P-10 | Crawler クライアント: 6 操作だけ、返り値 4 種、`config_invalid` の分解・例外分類をこの層に閉じる | 承認済みの案(ゲート3。2026-11-23。C の AAA-P-10〜14 の実装形) | 4.9 |
@@ -857,6 +858,7 @@ C 11章の 16 観点が、次のテストのどこで確かめられるかを示
 | AAM-P-26 | `Cache-Control: no-store` は `/api/` の応答にだけ付ける(静的アセット・`/healthz` は対象外) | 承認済みの案(ゲート3。2026-11-23。A 5.1 の BAPI-P-16 の実装形) | 4.2・4.11 |
 | AAM-P-27 | `BlockingRunner.run_all` は、期限を過ぎた呼び出しを `abandon_on_cancel=True` で放棄して戻る(スレッドは枠の外に残りうる)。HTTP のプローブは `Timeout(total=…)` | 承認済みの案(ゲート3。2026-11-23。C の AAA-P-42 の実装形) | 4.10・4.11 |
 | AAM-P-28 | uvicorn の停止の流儀: 閉じる契機は Indexer と同じ lifespan の終了(Crawler は `lifespan="off"` で `close_clients` を呼ぶ型)。`timeout_graceful_shutdown`(Crawler は指定、Indexer は未指定)は、指定する場合は compose の `stop_grace_period`(既定 10 秒)より短い値にする。既定は未指定(Indexer と同じ)で、指定するかと値は実装時に決める | 承認済みの案(ゲート3。2026-11-23。R4 S-3。実物: `apps/crawler/src/loreley_crawler/main.py` の `http_server_options`、`apps/indexer/src/loreley_indexer/main.py`) | 4.1・5.9 |
+| AAM-P-29 | 一覧の EP の `unavailable` は行単位: `SourceListItem`・`JobListItem`・EP-11 の各行の DTO が行の `unavailable` を持ち、`failures/unavailable.py` は単一応答の最上位用と一覧の行用の 2 関数に区別する。`services` は読み取りの結果を行の ID で持ち、行ごとに失敗を帰属させる(1 回の読み取りの失敗は全行) | 承認済みの案(ゲート3。2026-11-23)の修正(PR #10 のレビュー指摘への対応。B の AAPI-P-42・C の AAA-P-45 の実装形。AAM-P-4・P-7 の修正) | 4.4・4.5・4.7・5.8 |
 
 ### 8.4 未決・実装時確認(AAM-U)
 
@@ -944,6 +946,7 @@ AAM-P のうち区分が「案」だったもの(実装形が案を含むもの�
 | AAM-P-4 | `admin.routers` のタグを 6 種にすること(EP-06・08 は `sources`、EP-07 は `jobs`。A の BAPI-P-23 と同じ) |
 | AAM-P-22 | 依存パッケージ(`anyio`・`urllib3` を直接 import として明記すること) |
 | AAM-P-23 | サブアプリのマウント下の共通ハンドラ・アクセスログの設置(外側と `admin` の両方) |
+| AAM-P-29 | 一覧の `unavailable` を行単位にする DTO と、組み立ての 2 関数の区別(PR #10 のレビュー指摘への対応。AAPI-P-42) |
 | AAM-P-26・P-27 | `no-store` を `/api/` の応答にだけ付けること、EP-13 の期限後に確認のスレッドを放棄すること(枠の外に残る) |
 | AAM-P-28 | uvicorn の停止(lifespan 方式)と、`timeout_graceful_shutdown` を指定するか(既定は未指定) |
 | AAM-P-21 | 偽物を 2 水準(生のクライアントは台本、Reader は障害注入)にし、クエリの意味は結合テストに任せること |

@@ -5,7 +5,7 @@
 - 前版: なし(初版)
 - 位置づけ: Admin View(管理者向け Web UI)の**フロントエンドの技術構成**を定める。技術スタックとバージョン固定、ビルド・配信、アプリの組み立て(シェル・route `meta`・ガード)、データ取得層(型生成・API クライアント・TanStack Vue Query)、エラー処理の UI 対応、フォームと検証、状態管理、テスト方針、静的解析を書く。見た目・部品・画面ごとの仕様は DS(`design-system-v0.1.md`)と画面仕様、API の中身は A・B が正本で、本書は**参照して合わせる**。ディレクトリ・モジュール分割・画面×モジュールの対応は F(`ui-admin-frontend-module-structure-v0.1.md`。v0.1。作成済み)が正本。
 - 本書は **Admin 画面の詳細設計タスク(`20261122_create_admin_system_design`)の成果物**で、SD・PD・DS・画面仕様・機能設計・crawler / indexer 設計を変更しない。既存設計と食い違う点・追従改訂が要る点は `I-n`(12.5)に挙げ、申し送りは A の 9章(HO-1〜HO-50)に集約する。本書は申し送りを持たない。
-- 改訂履歴: v0.1 は初版(フェーズ3-1)。初稿は B 骨子に基づいて書き、B 本文の完成後に照合して直し、さらに B・A の R1 修正に追従した(`unavailable` の正式なパス、`lock_state` の排他、Content-Type の規約、`ttl` 下限 1、しきい値の桁、`connector_config` 自身の `config_invalid`、K の区分整理。12.6)。前者の照合では(部分失敗の `unavailable` のキーと理由コード、`stalled`・`rerunnable` の `null`、`deletion.fetched_at`、番兵の日時、EP-03・04 の入力の規約、保存系の再送など。12.6)。その後、R3 の指摘(区分の統一、`viewState`・パンくず・`featureFlag`・ロック状態の写像、マウント時の再取得ほか)と、0020・0022 の B・A の追従(値の読めない `null`、`source_missing`)に対応した(12.6)。フェーズ5の統合(2026-11-23): 申し送りへの参照を A 9章の実番号に置き換え、関連文書の表に C・D を足し、更新日を統一した。R4 指摘の反映(2026-11-23): FARC-K-8 を欠番にして FARC-P-38(承認済みの案(ゲート1)。「テストコード」の部分は案)へ移し、4.5 に `.`・`..` だけの ID の例外を足し、12.6 の B の案 ID の範囲を 12.4 に揃えた。B の内容は複製せず、EP 番号・code 名・項目名の引用に限る。 ゲート3の承認(2026-11-23)の反映: 案の区分を承認済みの案(ゲート3。2026-11-23)に更新した(設計の内容は変更なし)。
+- 改訂履歴: v0.1 は初版(フェーズ3-1)。初稿は B 骨子に基づいて書き、B 本文の完成後に照合して直し、さらに B・A の R1 修正に追従した(`unavailable` の正式なパス、`lock_state` の排他、Content-Type の規約、`ttl` 下限 1、しきい値の桁、`connector_config` 自身の `config_invalid`、K の区分整理。12.6)。前者の照合では(部分失敗の `unavailable` のキーと理由コード、`stalled`・`rerunnable` の `null`、`deletion.fetched_at`、番兵の日時、EP-03・04 の入力の規約、保存系の再送など。12.6)。その後、R3 の指摘(区分の統一、`viewState`・パンくず・`featureFlag`・ロック状態の写像、マウント時の再取得ほか)と、0020・0022 の B・A の追従(値の読めない `null`、`source_missing`)に対応した(12.6)。フェーズ5の統合(2026-11-23): 申し送りへの参照を A 9章の実番号に置き換え、関連文書の表に C・D を足し、更新日を統一した。R4 指摘の反映(2026-11-23): FARC-K-8 を欠番にして FARC-P-38(承認済みの案(ゲート1)。「テストコード」の部分は案)へ移し、4.5 に `.`・`..` だけの ID の例外を足し、12.6 の B の案 ID の範囲を 12.4 に揃えた。B の内容は複製せず、EP 番号・code 名・項目名の引用に限る。 ゲート3の承認(2026-11-23)の反映: 案の区分を承認済みの案(ゲート3。2026-11-23)に更新した(設計の内容は変更なし)。PR #10 のレビュー指摘への対応(2026-11-23。0037・0038): 一覧の `unavailable` を行単位にする B の変更(AAPI-P-42)に追従した(5.7・5.9・6.2。FARC-P-27・36 を修正、FARC-P-39 を新設。区分は承認済みの案(ゲート3)の修正で、`-K-` は増やしていない)。
 
 ## 0. この文書について
 
@@ -339,13 +339,13 @@ F はこの表を「画面 → route → ページ → composable → EP」に�
 | 画面 | 読み取り(EP。key) | 更新 | 初回の失敗 | 更新の失敗(前回データあり) | 部分失敗・補足 |
 | --- | --- | --- | --- | --- | --- |
 | D1 | EP-13(`['dashboard']`)だけ(EP-14 はシェルが取得する。dashboard 画面仕様に cron のタイムゾーン・Dashboards の URL を使う項目はない) | 30 秒+手動(5.5) | エラーブロック(`d1-state-error`)。通知なし | 警告アラート+**前回「正常」「異常」だったタイルを判定不能に降格**し「前回の状態」を添える。「未設定」は維持(dashboard 4.3。#25)。`dataUpdatedAt` を最終取得成功日時に | 下の「D1 の補足」 |
-| S1 | EP-01(`['sources','list']`)、EP-14 | 手動のみ | エラーブロック(`s1-state-error`) | stale アラート(`s1-state-stale`)。操作は無効にしない | `unavailable` のキーは `items[]` 付きの正式なパス(`items[].last_crawl`・`items[].last_completed_at`・`items[].delete_job`・`items[].last_crawl.stalled`・`items[].delete_job.stalled`・`items[].document_count`。B 2.2・3.1)。キーがあり行の値が `null` なら「取得できません」(キーがない `last_crawl=null` は「未実行」)。`document_count` は「—」+「取得できません」。`last_crawl.stalled` は DS 4.1 のタグ(リース切れ) |
+| S1 | EP-01(`['sources','list']`)、EP-14 | 手動のみ | エラーブロック(`s1-state-error`) | stale アラート(`s1-state-stale`)。操作は無効にしない | 取得失敗は**各行の `items[i].unavailable`**(常に存在。キーは行内の相対パス `last_crawl`・`last_completed_at`・`delete_job`・`last_crawl.stalled`・`delete_job.stalled`・`document_count`。最上位 `unavailable` は常に `{}`。B 2.2・3.1。AAPI-P-42)で判定する。行の値が `null` で**その行の** `unavailable` にキーがあれば「取得できません」、キーがなければ値がない(`last_crawl=null` は「未実行」。source-a が未実行、source-b が読み取り失敗でも区別できる)。主たる読み取りや検索インデックスの全体の失敗は全行に同じキーが付く。`document_count` は「—」+「取得できません」。`last_crawl.stalled` は DS 4.1 のタグ(リース切れ) |
 | S2 | EP-02(`['sources','detail',id]`)、EP-14 | 画面を開いたとき・操作の後 | 404 `source_config_not_found` → 「見つかりません」(`s2-state-notfound`)。その他は取得できません(`s2-state-error`) | stale アラート(`s2-state-stale`)。404 になったら stale にせず「見つかりません」に切り替える | `unavailable` のキー `lock`・`last_crawl`・`last_completed_at`・`delete_job`・`last_crawl.stalled`・`delete_job.stalled`・`index.document_count` は各カードで「取得できません」(ロック状態カードの写像は 5.10)。設定の項目が読めない(`unavailable.<項目名>=malformed`)ときの表示は I-87。`lock.job.lease_expires_at` は読めなければ `null`(番兵は出ない。期限切れかどうかは `lock.state`(`lease_expired` など)で表す。B 3.2)。`status=deleting` は操作を出し分ける(DS 4.13。sources 1.8) |
 | S3 | —(EP-14 のみ) | — | EP-14 の失敗はタイムゾーン警告(sources 2.4。`cron_timezone=null` と同じ扱い) | — | — |
 | S4 | EP-02(編集用 `['sources','edit',id]`)、EP-14 | 開くたびに取得 | **フォームを出さず**エラーブロック(`s4-…`。現在値がないまま全置換しない。B 3.2、sources 2.6) | — (編集中は再取得しない。5.8) | 404 → 見つかりません。`status=deleting` → 編集不可(sources 2.6)。**`unavailable` に設定の項目があるとき**(`malformed`)は 7.6 |
-| J1 | EP-09(`['jobs','list',params]`)、EP-01(選択肢) | 手動のみ | エラーブロック(`j1-state-error`) | stale アラート(`j1-state-stale`。「実行中のジョブの状態が実際と異なる可能性」) | ジョブ記録の値が読めず `status=null` の行は、状態列を「—」にし、ステータスタグも取消も出さない(5.9)。`status` の絞り込みは保存上の状態で、画面の「実行待ち・実行中」は複合値 `active`。未登録の `source_id` は 404 にならず空の結果(B 5.1)。`unavailable` の `items[].stalled` があるとき、行の `stalled` は `null`・`cancellable=false`(取消を出さない)。EP-01 が失敗しても一覧は出し、選択肢は「すべて」と URL の指定値だけにする(案) |
+| J1 | EP-09(`['jobs','list',params]`)、EP-01(選択肢) | 手動のみ | エラーブロック(`j1-state-error`) | stale アラート(`j1-state-stale`。「実行中のジョブの状態が実際と異なる可能性」) | ジョブ記録の値が読めず `status=null` の行は、状態列を「—」にし、ステータスタグも取消も出さない(5.9)。`status` の絞り込みは保存上の状態で、画面の「実行待ち・実行中」は複合値 `active`。未登録の `source_id` は 404 にならず空の結果(B 5.1)。その行の `unavailable` に `stalled` があるとき、その行の `stalled` は `null`・`cancellable=false`(取消を出さない。他の行には影響しない。最上位 `unavailable` は常に `{}`。AAPI-P-42)。EP-01 が失敗しても一覧は出し、選択肢は「すべて」と URL の指定値だけにする(案) |
 | J2 | EP-10(`['jobs','detail',jobId]`) | 実行待ち・実行中は 10 秒(5.5) | 404 `job_not_found` → 見つかりません。その他は取得できません(`j2-state-error`) | stale アラート(`j2-state-stale`)。404 は「見つかりません」に切り替え | `unavailable` のキー: `stalled`・`lease_expires_at`・`latest_for_source`・`rerunnable`・`deletion.current`。**`stalled`・`rerunnable`・`latest_for_source` が `null` のときは再実行・取消の操作を出さない**(1.2)。`status=null` ならタグ・操作とも出さず、`registration` の件数・`partial`・`phase` の `null` は「—」(5.9)。`rerun_blocked_reason=source_missing`(データソースの設定がない)は出さない(6.7)。`deletion.current_state=unavailable`・`not_found` は「結果不明」の説明(jobs 2.9)で、`deletion.fetched_at` を現在値の「取得時刻」に出す。`registration.phase` で途中/確定を示す。未知の `failure_reason`・警告コードは一般的な文言(B 5.2。jobs 2.5・2.7) |
-| X1 | EP-11(`['documents',sourceId,params]`)、EP-01(選択肢) | 手動のみ | **パネルだけ**エラーブロック(`x1-state-error`)。タブ名の件数は「—」。データソース未選択は `enabled: false` | パネル上部の stale アラート(`x1-state-stale`) | `unavailable` のキー `tab_counts.<タブ>`・`document_count`・`items[].existence`(B 2.2・6.1。AAPI-P-30)。`tab_counts.<タブ>`・`document_count` の `null` は「—」。`existence` が `unknown`(`unavailable` に `items[].existence`)は「確認できません」。`tab` は必須(画面は常に送る)。404 `source_config_not_found` は I-87 |
+| X1 | EP-11(`['documents',sourceId,params]`)、EP-01(選択肢) | 手動のみ | **パネルだけ**エラーブロック(`x1-state-error`)。タブ名の件数は「—」。データソース未選択は `enabled: false` | パネル上部の stale アラート(`x1-state-stale`) | 最上位 `unavailable` は行に属さない `tab_counts.<タブ>`・`document_count` だけ。各行の `unavailable` のキーは `existence`(B 2.2・6.1。AAPI-P-30・42)。`tab_counts.<タブ>`・`document_count` の `null` は「—」。`existence` が `unknown`(その行の `unavailable` に `existence`。一括検索の全体の失敗は全行、文書単位の失敗はその行だけ)は「確認できません」。`tab` は必須(画面は常に送る)。404 `source_config_not_found` は I-87 |
 | O1 | EP-12(`['opensearch','cluster']`) | 手動のみ | カード内のエラーブロック(`o1-state-error`)。**1 取得=カード全体**(どれかの読み取りが失敗したら全体が 503。B 7.1) | ページ上部の stale アラート+カード全体を前回の値で(`o1-state-stale`) | 絞り込み(`q`・`state`)は画面側。`indices[].status`・`document_count` の `null` は「—」。`truncated=true` は I-87 |
 | シェル | EP-14(`['meta']`。`staleTime: Infinity`。FARC-P-25) | 再読み込みまで | 失敗してもシェルを止めない。Dashboards リンクは出さず、タイムゾーンは「取得できません」の警告(sources 2.4) | — | — |
 
@@ -382,7 +382,7 @@ F はこの表を「画面 → route → ページ → composable → EP」に�
 - 時刻の比較・並べ替えは API の ISO 8601 文字列(UTC・ミリ秒精度。A 5.1)を `Date` に変換してから行う。
 - **番兵の日時**: 409 の `details.existing_job.lease_expires_at`(`lock_held`・`lock_in_use`)は、Crawler が値を日時として読めないときだけ `0001-01-01T00:00:00.000Z` を返す(B 2.11・I-73)。**日時として整形せず「期限切れ」として扱う**(「0001-01-01 …」を表示しない)。`null` は「期限なし(実行待ち)」で、番兵とは別。S2 の `lock.job.lease_expires_at` は Admin API が読むため、読めなければ `null` で番兵は出ない(期限切れは `lock.state` で分かる。B 3.2)。整形関数は番兵を判定する 1 か所に置く(案)。
 - **`null` の 2 種類(FARC-P-36。B 2.2・2.11)**: (a) **取得失敗**=`unavailable` にキーがある `null` → 「—」+「取得できません」。**表示は画面仕様に従う**(表のセル(S1 の登録文書数・X1 の件数など)は視覚的に隠した「取得できません」、S2 のカードは見える文言)。(b) **値が読めない**=ジョブ記録・削除記録・ロック文書など Crawler・Indexer が書いた値が欠落・型違いで `null`(`unavailable` には載らない。`malformed` は EP-02 の設定項目だけ)→ 「—」+視覚的に隠した「読み取れません」(見える文言は足さない)。表のセルでは、いずれも見た目は「—」で、読み上げ(視覚的に隠した文言)と診断で区別する。`JobBrief` の `status`・`job_type`・`trigger`・`queued_at`、`registration` の件数・`partial`・`phase` は、**値があるはずの項目**で、`null` は (b) として扱う(`started_at`・`finished_at` などの `null` は「値がない」で「—」+「なし」)。`status=null` のジョブには**ステータスタグ・操作を出さない**。画面仕様に定義がないため案(I-120)。
-- `unavailable`(B 2.2)は最上位のオブジェクトで、キーは**応答の項目の正式なパス**(`deletion.current`・`tab_counts.skipped`・`index.document_count`、一覧の EP(EP-01・09)は `items[]` 付きの `items[].document_count`・`items[].last_crawl.stalled`・`items[].stalled` など)。一覧のキーは「その項目の取得が全件または 1 行でも失敗した」ことを表し、どの行が `null` かは行の値で決まる(B 2.2)。画面は `unavailable[path]` を引く 1 つの関数を通して使い、`null`(取得できなかった=キーがある)と `null`(値がない=キーがない)を区別する。**一覧でキーがあり行が `null` のときは、その行を「取得できません」として扱う**(行ごとの失敗か否かは B では区別できない。安全側。FARC-U-12)。
+- **`unavailable` の位置とキー(B 2.2。AAPI-P-42。FARC-P-39)**: 単一の応答(EP-02・10・12・13・14)は**最上位の `unavailable`**で、キーは応答の項目の正式なパス(`deletion.current`・`index.document_count`・`last_crawl.stalled` など)。**一覧の EP(EP-01・09・11)は各行 `items[i].unavailable`(常に存在)**で、キーはその行の中の相対パス(`last_crawl`・`last_crawl.stalled`・`document_count`・`stalled`・`existence` など)。一覧の最上位 `unavailable` は、行に属さない項目(EP-11 の `tab_counts.<タブ>`・`document_count`)だけで、EP-01・09 では常に `{}`。**判定は「その行(または最上位)の `unavailable` のキー」で行う**: 値が `null` でキーがあれば取得失敗、`null` でキーがなければ値がない(読めない値は (b))。旧規則の「一覧でキーがあり行が `null` なら取得できません(安全側)」は廃止した(行ごとに失敗が区別できるため)。画面は行の `unavailable` を引く関数と、最上位を引く関数の 2 つを通す(F 3.5。FMOD-P-14・FMOD-P-33)。
 
 ### 5.10 ロック状態の写像(S2 のロック状態カード。FARC-P-34)
 
@@ -427,7 +427,7 @@ S2 の `lock.state`(B 2.9。7 値)を、画面仕様の 6 種+取得失敗(sourc
 | 見つかりません | `error.code` が `source_config_not_found`・`job_not_found`(EP-07 の取消でも、`job_id` 起因の Crawler の 400・404 `not_found` がこの code に写る。6.3)、400 `invalid_request`(パスの ID の形式違反)、404 `not_found`(`/` を含む ID は Admin API のルーティングで 404。B 2.12)。**データの有無を問わない** | 「見つかりません」ブロック(S2・S4・J2・X1)。前回データがあっても stale にせず切り替える(消えたリソースを「最新ではない」と読ませない) |
 
 - 503 `unavailable`(A 5.2。OpenSearch の読み取りの失敗)と、`network`・`timeout`・`invalid_response` は、エラーブロックまたは stale になる。文言は画面仕様(例: `s2-error` の「データソースの詳細を取得できません」)。
-- **部分失敗**(B 2.2。FARC-P-27): 200 の本体に `unavailable` があるときは、その項目だけ「—」+視覚的に隠した「取得できません」にする(画面仕様どおり)。理由コード(`store_unavailable`・`search_index_unavailable`・`timeout`・`malformed`)は画面では**区別せず**同じ表示にする(案。`malformed` だけ S4 で扱いが違う。7.6)。主たる読み取りの失敗は 503 `unavailable` で、部分失敗ではなく上の「エラー」の表示になる(B 2.2)。
+- **部分失敗**(B 2.2。FARC-P-27): 200 の本体(一覧は各行・単一の応答は最上位)の `unavailable` にキーがあるときは、その項目だけ「—」+視覚的に隠した「取得できません」にする(画面仕様どおり)。理由コード(`store_unavailable`・`search_index_unavailable`・`timeout`・`malformed`)は画面では**区別せず**同じ表示にする(案。`malformed` だけ S4 で扱いが違う。7.6)。主たる読み取りの失敗は 503 `unavailable` で、部分失敗ではなく上の「エラー」の表示になる(B 2.2)。
 - 自動更新(D1・J2)の失敗は通知を出さず、ページ内の stale に留める(DS 4.7)。
 
 ### 6.3 書き込みの失敗(`code` → 表示。承認済みの案(ゲート2)の code 名は B 2.3。A 5.2)
@@ -661,6 +661,7 @@ Crawler の API を直接使って登録された値(例 `0.12345` → 応答は
 
 ### 12.1 確認した事実(2026-11-22)
 
+- PR #10 のレビュー指摘(0037)に基づく B・A の修正(0038。AAPI-P-42。一覧の `unavailable` を行単位に)を読み、5.7・5.9・6.2 を B 2.2・2.11・3.1・5.1・6.1 と再照合した。
 - R3 の修正(0018)と、0020・0022 後の B・A(`JobBrief`・`registration` の `null` 許容、`rerun_blocked_reason=source_missing`、AAPI-P-39・41)を読んで、5.7・5.9・6.3・6.7 を B と再照合した。
 - 読んだ文書: A(R1 の修正後)、B(初稿は骨子。本文の完成後に 2〜8章・9章・10章・11.3〜11.5・11.8〜11.10 を読んで照合し、**R1 の修正後に、2・3・8 章の変更部分と 11.1・11.2・11.6・11.7 を読んで再照合した**。11.1 は事実の確認範囲、11.2 は K の整理(AAPI-K-6 欠番・K-9 の出典)、11.6 は AF-U の状態表、11.7 はゲート2の回答表で、E の記述と食い違いはない)、DS(0・2〜5・7〜10・14章)、admin-view(4・5・7・8・10章)、画面仕様 5 本(各状態・更新・データ項目)、作業記録 0001・0002・0004・0006・0007。
 - リポジトリ: `apps/web/` は存在しない(新規)。`apps/crawler`・`apps/indexer` の Dockerfile のコンテキストはアプリのディレクトリ(`build: ../../apps/<名前>`)で、Indexer の Dockerfile はベースイメージをタグとダイジェストで固定している。`tests/integration/crawler/README.md` はホストの固定ポート(9200・8000・8001)と同時実行不可を述べる。
@@ -718,7 +719,7 @@ Crawler の API を直接使って登録された値(例 `0.12345` → 応答は
 | FARC-P-24 | 日時の整形は `Intl.DateTimeFormat` のみ(日時ライブラリなし)。409 の `existing_job.lease_expires_at` の番兵 `0001-01-01T00:00:00.000Z` は「期限切れ」として扱い、整形しない(B 2.11・I-73) | 承認済みの案(ゲート3。2026-11-23) | 5.9 |
 | FARC-P-25 | `/meta`(EP-14)は `staleTime: Infinity`。失敗は Dashboards リンク非表示・タイムゾーン警告 | 承認済みの案(ゲート3。2026-11-23) | 3.1・5.7 |
 | FARC-P-26 | 入れないもの: Pinia・Tailwind・vue-i18n・VueUse・検証ライブラリ・日時ライブラリ・axios | 承認済みの案(ゲート3。2026-11-23。DS 10.1 の案を踏襲) | 2.4 |
-| FARC-P-27 | 部分失敗(B 2.2。AAPI-P-25。`unavailable` に載る取得失敗と、載らない値の読めない `null` は別。FARC-P-36): `unavailable` は正式なパス(一覧は `items[]` 付き)をキーに引く 1 関数を通す。`null` の「取得できなかった」と「値がない」を区別し、一覧でキーがあり行が `null` なら「取得できません」(安全側)。理由コードは画面では区別しない | 承認済みの案(ゲート3。2026-11-23。B の側は同じゲート3で承認) | 5.9・6.2 |
+| FARC-P-27 | 部分失敗(B 2.2。AAPI-P-25・42。`unavailable` に載る取得失敗と、載らない値の読めない `null` は別。FARC-P-36): 単一の応答は最上位、**一覧の EP は各行の `unavailable`**(キーは行内の相対パス)を、それぞれ引く関数を通す。`null` でキーがあれば取得できない、キーがなければ値がない。理由コードは画面では区別しない | 承認済みの案(ゲート3。2026-11-23)の修正(PR #10 のレビュー指摘への対応。AAPI-P-42。B の側は同じ修正) | 5.9・6.2 |
 | FARC-P-28 | S4 で保存済みの設定項目が読めないとき(`malformed`): 該当項目を空欄・必須にして再入力させる。`connector_config` が読めないときはフォームを出さない(AAPI-U-10 への回答) | 承認済みの案(ゲート3。2026-11-23) | 7.6 |
 | FARC-P-29 | 保存値のしきい値が小数第 3 位以下を持つとき(応答が小数第 2 位を超える): S4 は丸めた値(四捨五入が案)を入力欄に入れて注意を出し、保存を確認とみなす。S2 は丸めずに表示(AAPI-P-38 への対応) | 承認済みの案(ゲート3。2026-11-23。B の側は同じゲート3で承認) | 7.7 |
 | FARC-P-30 | 構成要素: Vue 3、Vite、Vue Router、TanStack Vue Query、Vitest、`vite-plugin-vuetify`、ESLint / Prettier、Playwright(旧 FARC-K-2) | 承認済みの案(ゲート1。2026-11-22。0002 2章がこれらを 0001 の確定事項として挙げ、ゲート1で承認された。0003。DS 10.1 では案。区分の変更はゲート3でユーザー確認済み。2026-11-23) | 2.1 |
@@ -727,9 +728,10 @@ Crawler の API を直接使って登録された値(例 `0.12345` → 応答は
 | FARC-P-33 | 日時はブラウザのローカル時刻(`YYYY-MM-DD HH:mm`。タイムゾーン略称なし)で表示する(旧 FARC-K-7)。API の時刻の形式(UTC の ISO 8601)は BAPI-P-20(承認済みの案。ゲート3でユーザー確認済み。2026-11-23)。**ブラウザと Crawler のタイムゾーンが異なる場合の表示は DS 4.9・14章で未決**(FARC-U-19) | 承認済みの案(DS 4.9・ゲート C #36 の引用。ユーザー確認済み(ゲート3。2026-11-23)) | 5.9 |
 | FARC-P-34 | S2 のロック状態カード(と J2 のリース切れのカード)の写像: `lock.state` 7 値+取得失敗 → 画面仕様の 6 種+取得失敗。`held_*` の実行待ちは「実行待ち」のタグ、`unknown` は「状態を確認できません」 | 承認済みの案(ゲート3。2026-11-23) | 5.10 |
 | FARC-P-35 | `lock_held`・`lock_in_use` の導線: `existing_job.status`(または `job_type`)が `null`(`orphan`・`just_acquired`・`unknown`)のとき、「ジョブを表示」(J2)を出さず、S2 のロック状態カードへ導く。admin-view 7.7 との差は I-88 | 承認済みの案(ゲート3。2026-11-23。ゲート3でユーザー確認済み。2026-11-23) | 6.3 |
-| FARC-P-36 | 値の読めない `null`(ジョブ記録・削除記録・ロック文書など。B 2.2・2.11。AAPI-P-25)と取得失敗(`unavailable`)の表示: どちらも「—」で、取得失敗は「取得できません」、読めない `null` は視覚的に隠した「読み取れません」。`status=null` のジョブにはタグ・操作を出さない | 承認済みの案(ゲート3。2026-11-23。B の側は同じゲート3で承認) | 5.9・5.7 |
+| FARC-P-36 | 値の読めない `null`(ジョブ記録・削除記録・ロック文書など。B 2.2・2.11。AAPI-P-25)と取得失敗(`unavailable`。一覧は各行・単一は最上位)の表示: どちらも「—」で、取得失敗は「取得できません」(表示の見える・隠すは画面仕様に従う)、読めない `null` は視覚的に隠した「読み取れません」。`status=null` のジョブにはタグ・操作を出さない | 承認済みの案(ゲート3。2026-11-23)の修正(PR #10 のレビュー指摘への対応。AAPI-P-42) | 5.9・5.7 |
 | FARC-P-37 | `rerun_blocked_reason=source_missing` は「再実行」を出さない(削除済みのソースを再実行しない)。`rerunnable=null`(設定の読み取り失敗を含む)も出さない。専用文言は画面仕様に足す(HO-30) | 承認済みの案(ゲート3。2026-11-23。AAPI-P-41) | 6.7 |
 | FARC-P-38 | E2E は方針までを設計し、テストコード・設定ファイルは作らない(旧 FARC-K-8) | 承認済みの案(ゲート1。0003 で作業プラン 0002 を承認)。「方針までを設計し、実装コードは作らない」は要件 0000 のスコープ外(ユーザー記載)と 0002 に基づく。「テストコード」の部分は承認済みの案(ゲート3。2026-11-23)(0001 の確定ブロックはユーザーの個別回答ではないため) | 10 |
+| FARC-P-39 | 一覧の EP(EP-01・09・11)の `unavailable` を**行単位**で判定する: 各 `items[i].unavailable`(キーは行内の相対パス)で取得失敗を判定し、最上位の `unavailable` は行に属さない項目(EP-11 の `tab_counts.<タブ>`・`document_count`)だけ。旧規則「一覧でキーがあり行が `null` なら取得できません」は廃止。単一の応答は最上位のまま | 承認済みの案(ゲート3。2026-11-23)の修正(PR #10 のレビュー指摘への対応。2026-11-23。AAPI-P-42)。**`-K-` ではない** | 5.7・5.9 |
 
 ### 12.4 未決・実装時確認(FARC-U)
 
@@ -746,7 +748,7 @@ Crawler の API を直接使って登録された値(例 `0.12345` → 応答は
 | FARC-U-9 | Vitest を jsdom にするか Browser Mode にするか、`test.server.deps.inline` が Vitest 5 で有効か、`ResizeObserver` のモック(0004、DS 10.1) | 実装時 |
 | FARC-U-10 | Vuetify 4.3.4 公式の Node 最小要件(第三者ミラーで 24.11.1)、TypeScript 6.x の最新パッチ、Vite 8 の既定の `build.target` とブラウザ要件の整合(0004) | 実装時 |
 | FARC-U-11 | Docker のビルドコンテキスト(I-82)と Node ベースイメージのタグ・ダイジェスト | infra の前提作業 |
-| FARC-U-12 | B の案(AAPI-P-16〜18・24〜34・37〜39・41。ゲート3で承認済み)が変わったときの追従と、C(導出ロジック。B 11.10)の確定後の再確認(12.6) | C 確定後 |
+| FARC-U-12 | B の案(AAPI-P-16〜18・24〜34・37〜39・41・42。ゲート3で承認済み。P-16・25・27・30 は PR #10 のレビュー指摘で修正)が変わったときの追従と、C(導出ロジック。B 11.10)の確定後の再確認(12.6) | C 確定後 |
 | FARC-U-13 | 9 桁を超える既存値(Crawler API を直接使って登録された `ttl_seconds` など)の編集時の扱い | 実装時 |
 | FARC-U-14 | DS が「実機 4.3.4 で要確認」とする Vuetify の挙動(9.2・10.3) | 実装後(`web-ui-reviewer`) |
 | FARC-U-15 | Firefox 128・Safari 16.4 の実機確認の範囲(自動 E2E は Chromium のみ) | 実装後 |
@@ -778,7 +780,7 @@ Crawler の API を直接使って登録された値(例 `0.12345` → 応答は
 
 **B 本文に合わせて直した箇所**(B 本文の完成後に照合。2026-11-22):
 
-1. 部分失敗: `unavailable` は最上位でキーは項目のパス(一覧は `items[]` 付きの正式なパス。R1 後の追従は次の節)、理由コードは `store_unavailable`・`search_index_unavailable`・`timeout`・`malformed`(B 2.2。5.7・5.9・6.2。FARC-P-27)。
+1. 部分失敗: `unavailable` は最上位でキーは項目のパス(R1 後の追従で正式なパスにし、その後、一覧は行単位に変更した。12.6 の末尾)、理由コードは `store_unavailable`・`search_index_unavailable`・`timeout`・`malformed`(B 2.2。5.7・5.9・6.2。FARC-P-27)。
 2. J2 の `stalled`・`rerunnable`・`latest_for_source` が `null` になりうる: 取消・再実行を出さない(1.2・5.7・6.7)。`deletion.fetched_at` を「取得時刻」に(5.7)。
 3. 番兵の日時 `0001-01-01T00:00:00.000Z`(B 2.11・I-73): 「期限切れ」として扱う(5.9。FARC-P-24)。
 4. EP-03・04 の入力: 型は厳密、`ttl_days` か `ttl_seconds` の一方、`ratio_threshold_percent` は小数第 2 位まで、EP-04 は `source_id`・`connector_type` を含めない(7.2・7.5)。
@@ -792,6 +794,8 @@ Crawler の API を直接使って登録された値(例 `0.12345` → 応答は
 
 **B・A の追従(0020。2026-11-22)**: (1) ジョブ記録などの値が読めない `null`(`JobBrief` の `status`・`job_type`・`trigger`・`queued_at`、`registration` の件数・`partial`・`phase`)と取得失敗の表示の区別(5.9・5.7・6.7。FARC-P-36。I-120)。(2) `rerun_blocked_reason=source_missing`(AAPI-P-41)は「再実行」を出さない案、`rerunnable=null` の条件の増加(6.7。FARC-P-37。I-121)。(3) AAPI-P-25・P-27 の引用は、`null` を許す型と部分失敗の整理に合わせた。
 
+**PR #10 のレビュー指摘への追従(0037・0038。2026-11-23)**: 一覧の EP(EP-01・09・11)の `unavailable` が行単位になった(AAPI-P-42)ため、5.7(S1・J1・X1)・5.9・6.2 を、行の `unavailable`(キーは相対パス)と最上位(行に属さない項目だけ)に分けて判定する形に直した。旧規則(一覧でキーがあり行が `null` なら取得できません)と `items[].…` 形式のキーは廃止した。FARC-P-39 を新設し、FARC-P-27・36 の区分を「承認済みの案(ゲート3)の修正」とした。
+
 **R3 の指摘への対応(2026-11-22)**:
 
 1. 区分: DS・画面仕様のゲート B・C の承認事項の引用は、A・B の基準に合わせて承認済みの案に統一した。FARC-K-5・K-7 を欠番にして FARC-P-32・P-33 へ移した(K-6 → P-31 と同じ)。K は FARC-K-1・3・4・9(K-8 は R4 の指摘で欠番にして FARC-P-38 へ)(K-9 は DS 前提 2〜4・6 の範囲に絞った)。
@@ -801,7 +805,7 @@ Crawler の API を直接使って登録された値(例 `0.12345` → 応答は
 
 **B・A の R1 修正への追従(2026-11-22)**:
 
-1. `unavailable` のキーを正式なパスに(`items[].last_crawl`・`items[].last_crawl.stalled`・`items[].delete_job.stalled`・`items[].document_count`・`items[].stalled` など。B 2.2・3.1・3.2・5.1)。一覧でキーがあり行が `null` のときの扱いを定めた(5.7・5.9)。
+1. `unavailable` のキーを正式なパスに(B 2.2・3.1・3.2・5.1)。一覧の扱いは、その後 AAPI-P-42 で行単位に変更した(12.6 の末尾。この時点の「一覧でキーがあり行が `null` なら取得できません」は廃止)。
 2. `lock_state`: `orphan`(取得から 60 秒超)と `just_acquired`(60 秒以内)は排他、ジョブの `status`・`job_type` が読めなければ `unknown`(B 2.9。6.3)。
 3. 本文が空なら Content-Type は問われない(`{}`)、本文があれば `application/json` 必須(B 2.12。7.5)。
 4. `ttl` の下限 1(AAPI-P-37。案)、しきい値の小数第 3 位以下の保存値の注意と丸め(AAPI-P-38。案)(7.2・7.7。FARC-P-29)。
@@ -815,7 +819,7 @@ Crawler の API を直接使って登録された値(例 `0.12345` → 応答は
 
 1. AAPI-K-9 の欠番(→ AAPI-P-40。承認済みの案(画面仕様ゲート B・C の引用。ユーザー確認済み(ゲート3。2026-11-23)))に合わせ、FARC-K-6 を欠番にして FARC-P-31 に移した(A の凡例: 既承認文書の承認済みの案の引用は確定にせず、出典を区分欄に書く)。(この時点で K のまま残した FARC-K-5・K-7 は、後の R3 の指摘で FARC-P-32・P-33 へ移した。現在の K は FARC-K-1・3・4・9(K-8 は R4 の指摘で欠番にして FARC-P-38 へ)。)
 2. EP-07 の取消で、`job_id` を理由とする Crawler の 400 `invalid_request`・404 `not_found` は 404 `job_not_found` に写る(AAPI-P-39。案。6.2・6.3)。画面の表示は既存の 404 の扱いのまま。
-3. `unavailable` の EP-11 のキーが `items[].existence`(AAPI-P-30)。5.7 の X1 の行を更新した。5.9 の正式パスの説明は B 2.2 と一致する。
+3. EP-11 の `existence` の `unavailable` は、その後、行単位(各行の `unavailable`)に変更した(AAPI-P-30・42。12.6 の末尾)。
 4. N-1(ブラウザの単純なリクエストで届くのは本文なし POST の EP-05・06・07。EP-04・08 は preflight 対象。B 2.10・A 2.3): E に Origin 検査・書き込みの保護の記述はないため、追記しない。E は同一オリジン・CORS 不要(FARC-K-4)のみを述べ、CORS を許可する設定を持たない。
 5. AAPI-P-7 の注記(`ttl` 下限を除く。P-37)、BAPI-P-20(承認済みの案(引用)。ゲート3)、BAPI-P-21(導出)と E の記述(7.2・FARC-P-33)に食い違いはない。
 

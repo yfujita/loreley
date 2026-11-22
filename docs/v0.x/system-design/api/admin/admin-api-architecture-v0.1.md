@@ -5,7 +5,7 @@
 - 前版: なし(初版)
 - 位置づけ: Admin API(`api` コンテナの admin パッケージ)の**実装レベルの設計**。B(`admin-api-v0.1.md`)が「C が決める」とした事項(導出ロジック、データアクセスのクエリ形、Crawler クライアントの実装方針、死活判定、環境変数の個別一覧、仮値、部分失敗の理由コードの付け方、テスト観点)を定める。エンドポイント・DTO・Admin 固有 code・Crawler 写像は B が、エラー応答の形式・共通 code・共通の設定規則・タイムアウトとリトライの共通方針は `../api-base-design-v0.1.md`(以下 A)が正本で、本書は**参照のみ**で複製しない。Search API・MCP の設計は含まない。
 - 本書は Admin 画面の詳細設計タスク(`20261122_create_admin_system_design`)の成果物で、SD・PD・crawler / indexer 設計・機能設計・画面仕様を変更しない。既存設計と食い違う点は I-90 以降に、追従改訂は A 9章(申し送り一覧。HO-1〜HO-50)に集約する。
-- 改訂履歴: v0.1 は初版(フェーズ2-2)。B の R1 レビュー(作業記録 0010〜0014)で C に引き継がれた事項(ロックとジョブの読み順、`lock_state` の排他定義、プローブのリダイレクト非追従と確認先 URL の環境変数限定、`job_id`・`source_id` の全文字エンコード、EP-07 の `job_id` 起因の 400・404 を 404 `job_not_found` に写すこと、`unavailable` の正式パス、CORS を許可しないことのテスト観点)をすべて含めた。B 11.10 との対応は 12.7。A・B の C 追従(作業記録 0020)を受け、5.0・5.2・5.3(`source_missing`)・5.4・12章を更新した。R2(作業記録 0027)の指摘を反映した: `job_id` の `.` の符号化(4.8)、`mget`・検索の部分的な失敗の扱い(3.2・5.8)、`urllib3.exceptions` の import 範囲(2.3・5.8)、索引名の渡し方(10章・I-90)、再試行条件の区分(3.7)、`SSLError` の分類と `CRAWLER_URL`・`INDEXER_URL` の http 限定(4.3・7.3)、`WEB_DIST_DIR` の既定(7.2)、EP-13 の期限と放棄(6.1・8.1)、uvicorn のログ(8.5)、`JobBrief` の各項目の規則(5.4)、ほか。フェーズ5の統合(2026-11-23): 申し送りへの参照を A 9章の実番号に置き換え、関連文書の表に D・E・F を足し、更新日を統一した。R4 指摘の反映(2026-11-23): 2.3(2)の「Repository」の語を A 7章の語に合わせた。 ゲート3の承認(2026-11-23)の反映: 案の区分を承認済みの案(ゲート3。2026-11-23)に更新した(設計の内容は変更なし)。
+- 改訂履歴: v0.1 は初版(フェーズ2-2)。B の R1 レビュー(作業記録 0010〜0014)で C に引き継がれた事項(ロックとジョブの読み順、`lock_state` の排他定義、プローブのリダイレクト非追従と確認先 URL の環境変数限定、`job_id`・`source_id` の全文字エンコード、EP-07 の `job_id` 起因の 400・404 を 404 `job_not_found` に写すこと、`unavailable` の正式パス、CORS を許可しないことのテスト観点)をすべて含めた。B 11.10 との対応は 12.7。A・B の C 追従(作業記録 0020)を受け、5.0・5.2・5.3(`source_missing`)・5.4・12章を更新した。R2(作業記録 0027)の指摘を反映した: `job_id` の `.` の符号化(4.8)、`mget`・検索の部分的な失敗の扱い(3.2・5.8)、`urllib3.exceptions` の import 範囲(2.3・5.8)、索引名の渡し方(10章・I-90)、再試行条件の区分(3.7)、`SSLError` の分類と `CRAWLER_URL`・`INDEXER_URL` の http 限定(4.3・7.3)、`WEB_DIST_DIR` の既定(7.2)、EP-13 の期限と放棄(6.1・8.1)、uvicorn のログ(8.5)、`JobBrief` の各項目の規則(5.4)、ほか。フェーズ5の統合(2026-11-23): 申し送りへの参照を A 9章の実番号に置き換え、関連文書の表に D・E・F を足し、更新日を統一した。R4 指摘の反映(2026-11-23): 2.3(2)の「Repository」の語を A 7章の語に合わせた。 ゲート3の承認(2026-11-23)の反映: 案の区分を承認済みの案(ゲート3。2026-11-23)に更新した(設計の内容は変更なし)。PR #10 のレビュー指摘への対応(2026-11-23): 一覧の EP(EP-01・09・11)の `unavailable` を行単位にした(B 2.2・AAPI-P-42)。キーは行の中の相対パスで、最上位は行に属さない項目だけ。失敗の帰属の規則(5.8)を足し、3.2・3.3・5.2・5.5・5.6・5.10・8.6・11章・12章を更新した(AAA-P-45。AAA-P-25・P-35 などの区分は承認済みの案(ゲート3)の修正)。
 
 ## 0. この文書について
 
@@ -131,7 +131,7 @@ api コンテナ(uvicorn 単一プロセス)── admin パッケージ(本書�
 - **ページング**: `from = (page-1) × items_per_page`、`size = items_per_page`。API 層で `page × items_per_page ≤ 10,000` を検証済みのため(AAA-P-4)、OpenSearch の `max_result_window`(既定 10,000)を超えない(承認済みの案。AAPI-P-1。ゲート2)。`track_total_hits: true` で総件数を正確に取る(既定の 10,000 での頭打ちを避ける)。並べ替えは、指定の項目+ ID(`job_id`・`document_id`)の昇順で、同順位でも取りこぼし・重複が出ないようにする。
 - **件数だけの取得**は `size: 0` の検索(`track_total_hits: true`)。`count` API は使わない(`msearch` にまとめるため)。
 - **集計の `size`** は、対象のソース数(上限 10,000)に合わせる。
-- **部分的な失敗を成功と読まない**(AAA-P-39): OpenSearch は HTTP 200 のまま一部の失敗を返しうる。応答を使う前に、(a) `mget`: `docs[i]` に `error` がある、または `found` が真偽値でない文書は、その文書の取得が `Failed`(`found=false` の「記録なし」とは読まない。読み違えると、実在するロックを `lock_state=none` に、実在するジョブを EP-10 の 404 にしてしまう)。他の文書の結果は使う。(b) `search`・`msearch`(サブ要求ごと): `timed_out` が `true`、`_shards.failed` が 0 より大きい、または `_shards`・`hits` が期待の形でない応答は `Failed`(部分的な結果を使わない)。(c) 理由コードは、`timed_out=true` を `timeout`、それ以外を対象別(5.8)とし、`error.type`・理由文は読まず出さない。実機での応答の形は AAA-U-2。
+- **部分的な失敗を成功と読まない**(AAA-P-39): OpenSearch は HTTP 200 のまま一部の失敗を返しうる。応答を使う前に、(a) `mget`: `docs[i]` に `error` がある、または `found` が真偽値でない文書は、その文書の取得が `Failed`(`found=false` の「記録なし」とは読まない。読み違えると、実在するロックを `lock_state=none` に、実在するジョブを EP-10 の 404 にしてしまう)。他の文書の結果は使う。(b) `search`・`msearch`(サブ要求ごと): `timed_out` が `true`、`_shards.failed` が 0 より大きい、または `_shards`・`hits` が期待の形でない応答は `Failed`(部分的な結果を使わない)。(c) 理由コードは、`timed_out=true` を `timeout`、それ以外を対象別(5.8)とし、`error.type`・理由文は読まず出さない。(d) 失敗は、その結果が担う行(または最上位の項目)に帰属させる(`mget` の文書単位の失敗はその文書の行、`msearch` の `responses[i].error` はそのサブ要求が担う項目。5.8。AAA-P-45)。実機での応答の形は AAA-U-2。
 - **失敗の分類**は 5.8。OpenSearch の例外は、`str(例外)` を応答・ログに出さない(`root_cause` の理由・リソース ID を含みうる。opensearch-py 3.2.0 の `TransportError.__str__` で確認)。
 - **refresh 遅延**(AAA-P-6): `mget` は書き込みの直後でも見える(リアルタイム)。`search`・`msearch` は最大でおよそ 1 秒古い(`refresh_interval` は索引の設定に書かれておらず既定の 1 秒のはず。推測。実機で確認。AAA-U-3)。このため、起動・登録の直後に一覧を取り直すと、最大約 1 秒は反映されないことがある。Admin API は `refresh` を呼ばない(索引管理系の API を呼ばないため)。画面は次の取得で追いつく(E)。
 
@@ -167,9 +167,9 @@ POST <jobs>/_search
         "latest": {"top_hits": {"size": 1, "sort": [{"queued_at": "desc"}, {"job_id": "asc"}], "_source": {"includes": ["<JobBrief の項目>"]}}}}}}}} }
 ```
 
-`<JobBrief の項目>` は `job_id`・`source_id`・`job_type`・`trigger`・`status`・`force_delete`・`rewrite_mode`・`queued_at`・`started_at`・`finished_at`・`failure_reason`。`max` は `value`(エポックミリ秒。該当なしは `null`)を使い、UTC ミリ秒の文字列にして返す。`last_completed_at` は `completed.at`、`last_crawl` は `crawl.latest`、`delete_job` は `delete.latest`(ソースが `deleting` のときだけ使う。5.5)。
+`<JobBrief の項目>` は `job_id`・`source_id`・`job_type`・`trigger`・`status`・`force_delete`・`rewrite_mode`・`queued_at`・`started_at`・`finished_at`・`failure_reason`。`max` は `value`(エポックミリ秒。該当なしは `null`)を使い、UTC ミリ秒の文字列にして返す。`last_completed_at` は `completed.at`、`last_crawl` は `crawl.latest`、`delete_job` は `delete.latest`(ソースが `deleting` のときだけ使う。5.5)。R-3 は 1 回の検索なので、成否は全行で同じになる(失敗は全行。5.5・5.8)。
 
-**R-4 ロック文書(EP-01・02・09・10、409 の付随情報)**: `mget` `index=<jobs>` `ids=["lock-<source_id>", …]` `_source_includes=[record_type, source_id, job_id, lease_expires_at, acquired_at]`。文書ごとに、3.2 の部分的な失敗でなければ、`found=true` かつ `record_type=lock` のものを「ロックあり」、`found=false` または `record_type` が `lock` でないものを「ロックなし」とする(`Failed` はロックなしとは読まない)。
+**R-4 ロック文書(EP-01・02・09・10、409 の付随情報)**: `mget` `index=<jobs>` `ids=["lock-<source_id>", …]` `_source_includes=[record_type, source_id, job_id, lease_expires_at, acquired_at]`。文書ごとに、3.2 の部分的な失敗でなければ、`found=true` かつ `record_type=lock` のものを「ロックあり」、`found=false` または `record_type` が `lock` でないものを「ロックなし」とする(`Failed` はロックなしとは読まない)。失敗は、その文書のソースの行(`running` のジョブを持つ行)の `stalled` のキーになる(5.2・5.8)。
 
 **R-5 ジョブ記録の取得(EP-10、`stalled` の確認、`lock_state`)**: `mget` `index=<jobs>` `ids=[job_id, …]`、`_source_includes` は用途で変える(JobBrief の項目。EP-10 はさらに `failure_detail`・`warnings`・`registration`・`deletion_summary`・`confirmation`・`settings_snapshot`・`finish_notice.send_started_at`)。文書ごとの部分的な失敗(3.2)は `Failed`。`record_type=job` でなければ「ジョブ記録なし」。
 
@@ -194,12 +194,12 @@ POST <jobs>/_search
 
 | 用途 | 対象 | 条件(`size: 0`、`track_total_hits: true`) |
 | --- | --- | --- |
-| EP-01 の `items[].document_count` | 検索インデックス | `terms` クエリ(`source_id` の一覧)+ `terms` 集計(`source_id`、`size` はソース数)。バケットのないソースは `0` |
+| EP-01 の行の `document_count` | 検索インデックス | `terms` クエリ(`source_id` の一覧)+ `terms` 集計(`source_id`、`size` はソース数)。バケットのないソースは `0` |
 | EP-02 の `index.document_count`、EP-11 の `document_count` | 検索インデックス | `term source_id`(`index_status` は問わない。AAPI-P-23) |
 | EP-11 の `tab_counts.skipped`・`oversize` | `loreley-jobs` | `record_type=skip` / `oversize`、`term source_id` |
 | EP-11 の `tab_counts.extract_failed`・`summary_pending` | 検索インデックス | `term source_id` + `term index_status=extract_failed` / `term summary_status=pending` |
 
-EP-11 は、要求されたタブの件数を一覧(R-10)の `total` から取り、他の 3 タブと `document_count` を `msearch` で取る(件数の食い違いを避けるため)。
+EP-11 は、要求されたタブの件数を一覧(R-10)の `total` から取り、他の 3 タブと `document_count` を `msearch` で取る(件数の食い違いを避けるため)。**失敗の帰属**: EP-01 の件数は 1 つのサブ要求が全行を担うので、失敗は全行の `unavailable.document_count`。EP-11 の `tab_counts.<タブ>`・`document_count` は行に属さないので、サブ要求ごとの失敗は最上位の `unavailable` のそのキー(5.8)。
 
 **R-10 X1 の一覧(EP-11)**: 並び・出所・`_source` はタブごと(B 6.1 の表に従う)。共通の形は R-6 と同じ(`from`・`size`・`track_total_hits`・並べ替え+ ID)。
 
@@ -212,7 +212,7 @@ EP-11 は、要求されたタブの件数を一覧(R-10)の `total` から取�
 
 `sort` の指定は B 2.1 のとおり各タブの 1 項目だけで、上の既定の項目を昇順にするか降順にするかだけを受ける。
 
-**R-11 `existence`(EP-11 の `skipped`)**: 検索インデックスに `ids` クエリ(`values` はそのページの `document_id`。最大 100 件)、`size` はその件数、`_source: false`、`track_total_hits: false`。返った `_id` の集合にあれば `existing`、なければ `new`。`document_id` が読めない行は `unknown`。
+**R-11 `existence`(EP-11 の `skipped`)**: 検索インデックスに `ids` クエリ(`values` はそのページの `document_id`。最大 100 件)、`size` はその件数、`_source: false`、`track_total_hits: false`。返った `_id` の集合にあれば `existing`、なければ `new`。`document_id` が読めない行は `unknown`。 R-11 は 1 回の `ids` クエリなので、失敗(部分的な失敗を含む)はページの全行の `unavailable.existence` になる(5.6・5.8)。
 
 **R-12 クラスタ情報(EP-12)**: 3.4。
 
@@ -412,7 +412,7 @@ Crawler に送る経路は次の 6 つだけ(B 1.1。ほかに 6 章のプロー
 
 `running` と読めたジョブ行 `J` ごとに:
 
-1. `J` のソースのロック文書を R-4 で読む(行ごとにではなく、対象ソースをまとめて 1 回の `mget`)。**読み取りに失敗したら `stalled=null`**(`unavailable` の該当キー。理由は 5.8)。
+1. `J` のソースのロック文書を R-4 で読む(行ごとにではなく、対象ソースをまとめて 1 回の `mget`)。**読み取りに失敗したら `stalled=null`**(その行の `unavailable` の該当キー(EP-01 は `last_crawl.stalled`・`delete_job.stalled`、EP-09 は `stalled`)。単一の応答は最上位。理由は 5.8)。`mget` は文書単位に失敗しうるので、失敗した文書のソースの行だけが `null` になり、他の行は影響を受けない。`mget` 全体が失敗したときは、`running` を持つ全行に同じキーが付く(5.8)。
 2. ロック文書の `job_id` が `J.job_id` と一致するなら: `now < lease_expires_at`(読めた場合)なら `false`、それ以外(`null`・読めない・期限切れ)なら `true`。
 3. **ロック文書がない、または別のジョブのもの**なら、**確認読み**をする: ロック文書(R-4)→ ジョブ記録(R-5。リアルタイム)の順に 1 回読み直し、(a) ジョブがもう `running` でなければ `false`(行の `status` も読み直した値にする)、(b) ロックが一致するようになっていれば手順 2、(c) ロックが一致せずジョブがまだ `running` なら `true`。確認読みが失敗したら `null`。
 
@@ -475,11 +475,11 @@ R-3 の結果から作る。
 - `last_crawl`: `crawl.latest` のジョブ(なければ `null`)。`JobBrief` の `stalled`・`cancellable` は 5.2。
 - `last_completed_at`: `crawl.completed.at.value`(エポックミリ秒)を UTC ミリ秒の文字列に。なければ `null`。`succeeded`・`partially_succeeded` の `finished_at` の最大値(AAPI-P-4。AF-U-9)。
 - `delete_job`: **ソースの `status=deleting` のときだけ** `delete.latest` のジョブ(`JobBrief`。`stalled` は 5.2)、なければ `null`。`active` のソースは常に `null`。
-- R-3 全体が失敗したら、EP-01 は全行の 3 項目を `null` とし、`unavailable` の `items[].last_crawl`・`items[].last_completed_at`・`items[].delete_job` を付ける(理由は 5.8。B 3.1)。
+- R-3 は 1 回の検索なので、失敗したら全行が失敗する。EP-01 は全行の `last_crawl`・`last_completed_at` を `null` とし、**各行の `unavailable`** に `last_crawl`・`last_completed_at` を付ける。`delete_job` は `status=deleting` の行だけ `null`+キー(`active` の行は値がないので `null`・キーなし)。理由は 5.8(B 3.1・AAPI-P-42)。EP-02 は最上位の `unavailable`(`last_crawl`・`last_completed_at`・`delete_job`)。
 
 ### 5.6 `existence`(EP-11 の `skipped`。承認済みの案: AAPI-P-5。実装形はゲート3で承認(2026-11-23)。AAA-P-22)
 
-ページ内の `document_id` を R-11(1 回の `ids` クエリ。最大 100 件)で検索インデックスに問い合わせ、見つかれば `existing`、なければ `new`。`document_id` が読めない行は `unknown`。R-11 が失敗したらページ全件を `unknown` にし、`unavailable` の `items[].existence` に理由を付ける(ページ全体は返す)。スキップ記録の `document_id` は検索インデックスの `_id` と同じ算出値(interface 5.2。実機での一致の確認は AAPI-U-7)。
+ページ内の `document_id` を R-11(1 回の `ids` クエリ。最大 100 件)で検索インデックスに問い合わせ、見つかれば `existing`、なければ `new`。`document_id` が読めない行は `unknown`。R-11 が失敗したらページ全件を `unknown` にし、**全行の `unavailable`** に `existence` の理由を付ける(ページ全体は返す。R-11 は 1 回の一括検索なので、行ごとに成否が分かれることはない。AAPI-P-42)。スキップ記録の `document_id` は検索インデックスの `_id` と同じ算出値(interface 5.2。実機での一致の確認は AAPI-U-7)。
 
 ### 5.7 TTL・しきい値の変換(B 2.8。承認済みの案: AAPI-P-14。小数の扱いの細部は承認済みの案(ゲート3)。AAA-P-23)
 
@@ -514,24 +514,38 @@ def reason_of(exc, target):                 # target: "store"(loreley-*)また�
 ```
 
 - **タイムアウトを優先する**(遅いのか止まっているのかを区別する。案)。`opensearchpy` は urllib3 の読み取りのタイムアウトだけを `ConnectionTimeout` にし、接続のタイムアウト(`ConnectTimeoutError`)は `ConnectionError` として扱う(`connection/http_urllib3.py` で確認)ので、`ConnectionError` の `info` も見る。
-- `msearch` のサブ要求のエラー(応答の `responses[i].error`)は、`error.type` などを使わず、対象で `store_unavailable` / `search_index_unavailable`。`msearch` 全体が例外なら全サブ要求が同じ理由で失敗。
+- `msearch` のサブ要求のエラー(応答の `responses[i].error`)は、`error.type` などを使わず、対象で `store_unavailable` / `search_index_unavailable`。`msearch` 全体が例外なら全サブ要求が同じ理由で失敗。サブ要求の失敗は、そのサブ要求が担う項目に帰属する(行に属さない `tab_counts.<タブ>`・`document_count` は最上位、EP-01 の `document_count` は 1 つのサブ要求が全行を担うので全行。下の「失敗の帰属」)。
 - **部分的な失敗**(3.2。AAA-P-39): `timed_out=true` は `timeout`。`mget` の文書単位の `error`・`found` が真偽値でない、`search`・`msearch` の `_shards.failed>0`・形の異常は、`error.type` などを使わず対象別(`store_unavailable` / `search_index_unavailable`)。
 - **例外の型の判定に `urllib3.exceptions` を使う**(`failure.py`・`health_probe.py`。AAA-P-40): `opensearchpy.ConnectionError` は元の例外を `info` に持ち、接続のタイムアウト・接続拒否・名前解決の失敗の区別はその型でしかできない。クラス名の文字列比較は、継承(`NewConnectionError` は `ConnectTimeoutError` の子)を表せず、名前の変更に弱いので採らない。
 - `TransportError` のうち 400(`RequestError`)は、実装・スキーマの不一致を示すことが多いので、ログに **ERROR** でクラス名・ステータス・`error.type` だけを出す(値・理由文は出さない)。応答の扱いは他の OpenSearch の失敗と同じ(`unavailable`)。
 
-**キーと理由コードの対応**(キーは B の正式な項目パス。一覧の EP は `items[]` 付き。AAPI-P-25)。
+**`unavailable` の位置とキー**(B 2.2・AAPI-P-42。AAA-P-45): 一覧の EP(EP-01・09・11)は**各 `items[i]` に `unavailable`**(常に存在。なければ `{}`)を持ち、キーは**行の中の項目の相対パス**。最上位の `unavailable` は行に属さない項目(EP-11 の `tab_counts.<タブ>`・`document_count`)だけで、EP-01・09 では常に `{}`。単一の応答(EP-02・10・12〜14)は最上位で、キーは応答の項目の正式なパス。**`items[].…` 形式のキーは使わない**。読み方は「`null` でキーあり=取得できなかった」「`null` でキーなし=値がない(未実行・該当なし)、または保存値が読めない(5.0)」。
 
-| `unavailable` のキー | 失敗した読み取り | 対象 | 理由コード |
+**キーと理由コードの対応**(AAPI-P-25・P-42)。
+
+| `unavailable` のキー(位置) | 失敗した読み取り | 対象 | 理由コード |
 | --- | --- | --- | --- |
-| `items[].last_crawl`・`items[].last_completed_at`・`items[].delete_job`、`last_crawl`・`last_completed_at`・`delete_job` | R-3 | store | `store_unavailable` / `timeout` |
-| `items[].last_crawl.stalled`・`items[].delete_job.stalled`・`last_crawl.stalled`・`delete_job.stalled`・`items[].stalled`・`stalled`・`lease_expires_at` | R-4・R-5(確認読みを含む) | store | 同上 |
-| `lock` | R-4(EP-02) | store | 同上 |
-| `latest_for_source` | R-7 | store | 同上 |
-| `rerunnable` | `stalled`・`latest_for_source` の失敗、または R-2(状態) | store | 原因と同じ |
-| `deletion.current` | R-8 | store | 同上 |
-| `items[].document_count`・`index.document_count`・`document_count`・`tab_counts.extract_failed`・`tab_counts.summary_pending`・`items[].existence` | R-9・R-11 | search_index | `search_index_unavailable` / `timeout` |
-| `tab_counts.skipped`・`tab_counts.oversize` | R-9 | store | `store_unavailable` / `timeout` |
-| (`SourceSettings` の項目名。EP-02) | 保存値の読み取り | — | `malformed` |
+| `last_crawl`・`last_completed_at`・`delete_job`(EP-01 は各行。EP-02 は最上位) | R-3 | store | `store_unavailable` / `timeout` |
+| `last_crawl.stalled`・`delete_job.stalled`(EP-01 は各行。EP-02 は最上位)、`stalled`(EP-09 は各行。EP-10 は最上位)、`lease_expires_at`(EP-10。最上位) | R-4・R-5(確認読みを含む) | store | 同上 |
+| `lock`(EP-02。最上位) | R-4 | store | 同上 |
+| `latest_for_source`(EP-10。最上位) | R-7 | store | 同上 |
+| `rerunnable`(EP-10。最上位) | `stalled`・`latest_for_source` の失敗、または R-2(状態) | store | 原因と同じ |
+| `deletion.current`(EP-10。最上位) | R-8 | store | 同上 |
+| `document_count`(EP-01 は各行)、`existence`(EP-11 は各行)、`index.document_count`(EP-02。最上位)、`document_count`・`tab_counts.extract_failed`・`tab_counts.summary_pending`(EP-11。最上位) | R-9・R-11 | search_index | `search_index_unavailable` / `timeout` |
+| `tab_counts.skipped`・`tab_counts.oversize`(EP-11。最上位) | R-9 | store | `store_unavailable` / `timeout` |
+| (`SourceSettings` の項目名。EP-02。最上位) | 保存値の読み取り | — | `malformed` |
+
+**失敗の帰属**(一覧の EP。AAA-P-45): 失敗は、その読み取りの結果が担う行にだけキーを付ける。
+
+| 読み取り | 失敗の単位 | キーを付ける場所 |
+| --- | --- | --- |
+| R-3(EP-01) | 1 回の検索 | 全行(`delete_job` は `status=deleting` の行だけ) |
+| 件数(EP-01 の R-9) | 1 つのサブ要求が全行を担う | 全行の `document_count` |
+| ロック文書の `mget`(R-4。EP-01・09) | 文書単位 | 失敗した文書のソースの行のうち、`running` のジョブを持つ行(EP-01 は `last_crawl`・`delete_job` のうち `running` のもの) |
+| 同上の `mget` 全体の失敗 | 全体 | `running` のジョブを持つ全行 |
+| 確認読み(R-4 → R-5。5.2) | 確認の対象の行ごと | 失敗した行 |
+| R-11(EP-11) | 1 回の一括検索 | 全行の `existence` |
+| R-9(EP-11 の `tab_counts.<タブ>`・`document_count`) | サブ要求ごと | 最上位の該当キー(行には付けない) |
 
 **主たる読み取りの失敗は 503**(`unavailable`。B 2.2): EP-01 の R-1、EP-02 の R-2、EP-09 の R-6、EP-10 の R-5(ジョブ記録)、EP-11 の設定の存在確認と R-10、EP-12 の全体。
 
@@ -560,7 +574,7 @@ def reason_of(exc, target):                 # target: "store"(loreley-*)また�
 | 導出 | B の応答項目(EP) | 入力(読み取り単位) | 定義 |
 | --- | --- | --- | --- |
 | `lock_state`・`lock.job`・`lock.acquired_at` | `lock.state`・`lock.job`・`lock.acquired_at`(EP-02)、`details.lock_state`(EP-05・06・08 の 409) | R-4・R-5 | 5.1 |
-| `stalled` | `items[].last_crawl.stalled`・`items[].delete_job.stalled`(EP-01)、`last_crawl.stalled`・`delete_job.stalled`(EP-02)、`items[].stalled`(EP-09)、`stalled`(EP-10) | R-4・R-5 | 5.2 |
+| `stalled` | 行の中の `last_crawl.stalled`・`delete_job.stalled`(EP-01 の `items[]`)、`last_crawl.stalled`・`delete_job.stalled`(EP-02)、行の `stalled`(EP-09 の `items[]`)、`stalled`(EP-10)。失敗のキーは EP-01・09 は行の `unavailable`、EP-02・10 は最上位 | R-4・R-5 | 5.2・5.8 |
 | `cancellable` | `JobBrief.cancellable`(EP-01・02・09・10) | 5.2 | 5.2 |
 | `lease_expires_at` | `lease_expires_at`(EP-10) | R-4 | 5.2 |
 | `latest_for_source` | `latest_for_source`(EP-10) | R-7 | 5.3 |
@@ -570,10 +584,10 @@ def reason_of(exc, target):                 # target: "store"(loreley-*)また�
 | `deletion.summary`・`confirmation`・`current`・`current_state`・`fetched_at`・`settings` | 同名(EP-10) | R-5・R-8 | 5.4 |
 | `warnings`・`failure_detail` | 同名(EP-10) | R-5 | 5.4 |
 | `last_crawl`・`last_completed_at`・`delete_job` | 同名(EP-01・02) | R-3 | 5.5 |
-| `existence` | `items[].existence`(EP-11) | R-11 | 5.6 |
-| `document_count`・`tab_counts` | `items[].document_count`(EP-01)、`index.document_count`(EP-02)、`document_count`・`tab_counts.*`(EP-11) | R-9 | 3.3 |
+| `existence` | 行の `existence`(EP-11 の `items[]`)。失敗のキーは行の `unavailable` | R-11 | 5.6 |
+| `document_count`・`tab_counts` | 行の `document_count`(EP-01 の `items[]`。失敗のキーは行の `unavailable`)、`index.document_count`(EP-02)、`document_count`・`tab_counts.*`(EP-11。失敗のキーは最上位) | R-9 | 3.3・5.8 |
 | `ttl_days`・`ttl_seconds`・`ratio_threshold_percent` | `SourceSettings`(EP-02・03・04)、`deletion.settings`(EP-10) | 保存値・要求 | 5.7 |
-| `unavailable`・`null` | 全 EP | — | 5.8 |
+| `unavailable`・`null` | 一覧の EP(EP-01・09・11)は各行の `unavailable`(相対パス)と、行に属さない項目だけの最上位。単一の応答(EP-02・10・12〜14)は最上位(正式なパス) | — | 5.8 |
 | `total`・`page`・`items_per_page`・`window_limit` | EP-09・11 | R-6・R-10 | 3.2 |
 | O1(`cluster`・`nodes`・`indices`・`shards`・`truncated`・`total_indices`・`fetched_at`) | EP-12 | R-12 | 3.4 |
 | D1(`components[].state`・`reason`・`checked_at`、`checked_at`) | EP-13 | プローブ | 6章 |
@@ -729,8 +743,8 @@ A 4章に従う(`pydantic-settings` の `BaseSettings`、`env_prefix="LORELEY_AP
 
 1. **主たる読み取りを先に実行**する。失敗(例外・上限超過)なら、他の読み取りをせず 503 `unavailable`。
 2. 付随する読み取りは、**それぞれ独立に実行**し、結果を `Ok(値)` または `Failed(理由コード)` で持つ(例外を呼び出し側に漏らさない。D)。複数の独立な読み取りは、同じ枠(`opensearch`)の中で続けて実行する。
-3. 応答を組み立てるとき、`Failed` の項目は `null` にし、`unavailable` に正式なパス → 理由コード(5.8)を載せる。失敗がなければ `unavailable={}`(常に存在する。B 2.2)。
-4. 一覧の EP では、**項目の全件が失敗した、または 1 行でも失敗した**ときにキーを付け、どの行が `null` かは行の中の値で表す(B 2.2)。
+3. 応答を組み立てるとき、`Failed` の項目は `null` にし、単一の応答は最上位の `unavailable` に正式なパス → 理由コード、一覧の EP は**各行の `unavailable`** に相対パス → 理由コード(5.8)を載せる。失敗がなければ `{}`(最上位も各行も常に存在する。B 2.2)。
+4. 一覧の EP では、失敗を**行ごとに帰属**させ(5.8 の表)、失敗した行の `unavailable` にだけキーを付ける。行ごとに成否が分かれる読み取りは失敗した行だけ、1 回の読み取りの失敗は全行に同じキーを付ける。最上位の `unavailable` には行に属さない項目だけを載せる。キーのない `null` は値がない(B 2.2・AAPI-P-42)。読み取りの結果は行の ID(`source_id`・`job_id`・`document_id`)で持つ(D)。
 
 ---
 
@@ -779,7 +793,7 @@ A 4章に従う(`pydantic-settings` の `BaseSettings`、`env_prefix="LORELEY_AP
 | 3 | **パスのエンコードと EP-07 の 404 写像** | `job_id` に `%`・`?`・`#`・`.`・`..`・`%2F` を含む値で、スタブが受けた**生のリクエスト行**のパスが全文字エンコードされていること(`.` は `/jobs/%2E/cancel`、`..` は `/jobs/%2E%2E/cancel` を受け、ドットセグメントとして除去されないこと。実際の urllib3 で確認する。`source_id` の `.` も `%2E`)。スタブが 400(`job_id`)・404 `not_found` を返したとき EP-07 は 404 `job_not_found`、`source_id` を使う EP では 502 |
 | 4 | **`config_invalid` の分解**(4.5) | `include_patterns[2]: …`・`root: …`・`connector_config: …`(`field="connector_config"`)・末尾に改行を含む前半・512 文字・`: ` のない文字列・前半が形に一致しない文字列・`message` が文字列でない |
 | 5 | **導出**(5章) | `lock_state` の 10 行の表を、時計の偽物(猶予の境界の前後)で表駆動。`stalled` の確認読み(ロックなし → 読み直しで終端 / まだ `running`、ロックが別のジョブ、読み取りの失敗)。`rerunnable` の評価順。`last_completed_at`・`delete_job` の条件。`ttl`・しきい値の変換(`0.29`・`0.1`・`12.345`・`1e-3`・`20`・範囲外・小数第 3 位以下)・`int64` の境界 |
-| 6 | **部分失敗・障害別**(B 2.2・10.2) | OpenSearch の偽物に、索引単位・サブ要求単位の失敗を注入(`loreley-jobs` だけ、検索インデックスだけ、`msearch` の一部、タイムアウト)。主たる読み取りの失敗が 503、付随の失敗が `null`+`unavailable`(正式パスのキー。旧表記が出ないこと)・理由コード(`timeout` が優先)。`malformed`(設定項目)。**部分的な失敗**(3.2): `mget` の `docs[i].error`・`found` が真偽値でない文書(他の文書は使えること)、検索の `_shards.failed>0`・`timed_out=true` を注入し、実在するロックを `lock_state=none` に、実在するジョブを EP-10 の 404 にしないこと |
+| 6 | **部分失敗・障害別**(B 2.2・10.2) | OpenSearch の偽物に、索引単位・サブ要求単位の失敗を注入(`loreley-jobs` だけ、検索インデックスだけ、`msearch` の一部、タイムアウト)。主たる読み取りの失敗が 503、付随の失敗が `null`+`unavailable`(単一の応答は最上位の正式パス、一覧は**行の `unavailable` の相対パス**。`items[].…` 形式のキーが出ないこと)・理由コード(`timeout` が優先)。**行ごとの成否の区別**: EP-01 で、未実行の source-a(`last_crawl=null`・キーなし)と、ロック文書の `mget` が文書単位で失敗した source-b(`last_crawl.stalled=null`+キー。source-a は影響なし)を区別できること。R-3 の失敗は全行にキー(`delete_job` は `deleting` の行だけ)。EP-09 の `stalled`、EP-11 の `existence`(全行)と `tab_counts.<タブ>`(最上位)も同様で、EP-01・09 の最上位は常に `{}`。`malformed`(設定項目)。**部分的な失敗**(3.2): `mget` の `docs[i].error`・`found` が真偽値でない文書(他の文書は使えること)、検索の `_shards.failed>0`・`timed_out=true` を注入し、実在するロックを `lock_state=none` に、実在するジョブを EP-10 の 404 にしないこと |
 | 7 | **ページングの窓** | `page × items_per_page` が 10,000 ちょうど(通る)と 10,001(400 `range`)、`total` が窓を超えても正確(`track_total_hits`)、同順位の ID の昇順(取りこぼし・重複なし) |
 | 8 | **読み取り専用**(2.3) | (a) AST 検査: クライアント由来の呼び出しの名前が許可リストの中だけ・書き込み系の名前がない・`opensearchpy`・`urllib3` の import 場所(`urllib3.exceptions` は `infrastructure.opensearch` の `failure.py`・`health_probe.py` に限って可。`infrastructure` が `common.http` を import しない)。(b) OpenSearch の偽物が許可リスト外の呼び出しで失敗する。(c) Crawler クライアントが 6 経路と `GET /healthz` 以外を送れない |
 | 9 | **契約テスト(スキーマ)**(3.5) | `infra/opensearch/schema/*.json` を読み、本書のフィルタ・並べ替え・集計の項目が期待の型でマップされていること |
@@ -847,11 +861,11 @@ A 4章に従う(`pydantic-settings` の `BaseSettings`、`env_prefix="LORELEY_AP
 | AAA-P-18 | `stalled`・`cancellable`(定義)と、ロック不一致の確認読み(ロック → ジョブの順の読み直し) | 承認済みの案(定義: AAPI-P-4。ゲート1)。確認読みは承認済みの案(ゲート3。2026-11-23)(B 2.9・AAPI-P-27 に反映済み) | 5.2 |
 | AAA-P-19 | `latest_for_source`・`rerunnable`・`rerun_blocked_reason` の評価順、設定がない・読み取り失敗の扱い | 承認済みの案(ゲート3。2026-11-23。AAPI-P-18・P-41 に依存。`source_missing` と `rerunnable=null` の条件は B に反映済み。作業記録 0020) | 5.3 |
 | AAA-P-20 | `registration.phase`・`cancel_after_finish_notice`・`deletion.*` の読み方、`warnings`・`failure_detail` の通し方 | 承認済みの案(`phase`: AAPI-P-4。ゲート1)。他は承認済みの案(ゲート3。2026-11-23)(AAPI-P-29) | 5.4 |
-| AAA-P-21 | `last_crawl`・`last_completed_at`・`delete_job` の集計(R-3) | 承認済みの案(定義: AAPI-P-4。ゲート1)。クエリ形は承認済みの案(ゲート3。2026-11-23) | 5.5 |
-| AAA-P-22 | `existence` の算出(1 回の `ids` クエリ。最大 100 件) | 承認済みの案(方針: AAPI-P-5。ゲート1・2)。実装形はゲート3で承認(2026-11-23) | 5.6 |
+| AAA-P-21 | `last_crawl`・`last_completed_at`・`delete_job` の集計(R-3) | 承認済みの案(定義: AAPI-P-4。ゲート1)。クエリ形は承認済みの案(ゲート3。2026-11-23)。失敗の帰属(全行)は AAA-P-45 | 5.5 |
+| AAA-P-22 | `existence` の算出(1 回の `ids` クエリ。最大 100 件) | 承認済みの案(方針: AAPI-P-5。ゲート1・2)。実装形はゲート3で承認(2026-11-23)。失敗の帰属(全行)は AAA-P-45 | 5.6 |
 | AAA-P-23 | TTL・しきい値の十進数での変換(`repr` 経由。整数値は整数で出す) | 承認済みの案(方針: AAPI-P-14。ゲート2)。細部は承認済みの案(ゲート3。2026-11-23)(AAPI-P-38 に依存) | 5.7 |
 | AAA-P-24 | `just_acquired` の猶予を環境変数 `ADMITTING_LOCK_GRACE_SECONDS`(既定 60)で持ち、compose で Crawler と同じ値を渡す | 承認済みの案(ゲート3。2026-11-23) | 5.9・7.2 |
-| AAA-P-25 | 部分失敗の理由コードの付け方(`timeout` 優先、対象別)、キーと理由の対応、`malformed` の判定、読めない値は `null` | 承認済みの案(ゲート3。2026-11-23。AAPI-P-25・P-34 に依存。`null` を許す型・`timeout` 優先・`ttl_days` のキーは B に反映済み。作業記録 0020) | 5.0・5.8 |
+| AAA-P-25 | 部分失敗の理由コードの付け方(`timeout` 優先、対象別)、キーと理由の対応、`malformed` の判定、読めない値は `null` | 承認済みの案(ゲート3。2026-11-23。AAPI-P-25・P-34 に依存。`null` を許す型・`timeout` 優先・`ttl_days` のキーは B に反映済み。作業記録 0020)。キーの位置(一覧は行の相対パス)は AAPI-P-42 により修正(AAA-P-45) | 5.0・5.8 |
 | AAA-P-26 | 死活確認の方式(GET・2xx だけ・本文を読まない・リダイレクト非追従・並行・全体の期限) | 承認済みの案(方針: BAPI-P-13・AAPI-P-8。ゲート1・2)。実装形はゲート3で承認(2026-11-23) | 6.1 |
 | AAA-P-27 | 例外・結果と `state`・`reason` の対応(urllib3・opensearch-py) | 承認済みの案(ゲート3。2026-11-23。AAPI-P-33・U-11 への回答) | 6.2 |
 | AAA-P-28 | `api`・`web`・任意コンポーネントの判定と、確認先の URL の扱い(環境変数のみ・scheme の検証) | 承認済みの案(AAPI-P-8。ゲート1・2)。検証は承認済みの案(ゲート3。2026-11-23)。`web` の確認を枠に渡さないこと(8.1 の原則の例外)も承認済みの案(ゲート3。2026-11-23) | 6.3・6.4 |
@@ -861,7 +875,7 @@ A 4章に従う(`pydantic-settings` の `BaseSettings`、`env_prefix="LORELEY_AP
 | AAA-P-32 | 固定の上限(定数。設定にしない): `loreley-sources` 全件 10,000 件、集計の `size`、O1 の 1,000 件、X1 の 100 件、応答本文 1 MiB(9章) | 承認済みの案(O1・X1・窓の値: AAPI-P-5・P-6。ゲート2)。他は承認済みの案(ゲート3。2026-11-23) | 9章 |
 | AAA-P-33 | 実行モデル: `async def` + 区分別の上限(`opensearch` 16・`crawler` 4・`probe` 8)+ `/healthz` はスレッドを使わない。EP-13 の期限後の放棄は AAA-P-42 | 承認済みの案(ゲート3。2026-11-23。BAPI-U-6 への回答) | 8.1〜8.3 |
 | AAA-P-34 | 起動時に外部へ接続しない。クライアントは起動時に作り停止時に閉じる | 承認済みの案(ゲート3。2026-11-23) | 7.3・8.4 |
-| AAA-P-35 | 部分失敗の集約手順(主たる読み取り → 付随を独立に → `unavailable`) | 承認済みの案(ゲート3。2026-11-23。AAPI-P-16 に依存) | 8.6 |
+| AAA-P-35 | 部分失敗の集約手順(主たる読み取り → 付随を独立に → `unavailable`) | 承認済みの案(ゲート3。2026-11-23。AAPI-P-16 に依存)。一覧の `unavailable` を行単位にする修正を含む(AAPI-P-42。PR #10 のレビュー指摘への対応。AAA-P-45) | 8.6 |
 | AAA-P-36 | テスト観点の方針(偽物・契約テスト・AST 検査・時計の偽物) | 承認済みの案(ゲート3。2026-11-23) | 11章 |
 | AAA-P-37 | CORS を許可しない(ミドルウェアを入れず、`Access-Control-*` を付けない)。同一オリジンのため | 承認済みの案(ゲート3。2026-11-23。BAPI-K-2・A 2.3 に基づくテスト観点) | 11章 |
 | AAA-P-38 | ログ: ロガーの制限(`uvicorn.access` を含む)、出すもの・出さないもの、uvicorn の起動引数(`log_config=None`・`access_log=False`)、想定外の例外を再送出しない | 承認済みの案(ゲート3。2026-11-23。A 5.5・BAPI-P-17 に依存) | 8.5 |
@@ -871,6 +885,7 @@ A 4章に従う(`pydantic-settings` の `BaseSettings`、`env_prefix="LORELEY_AP
 | AAA-P-42 | EP-13 の全体の期限: `probe` の並行実行は `abandon_on_cancel=True` で呼び、期限後も確認のスレッドは自身のタイムアウトまで残る。HTTP のプローブは `Timeout(total=…)` | 承認済みの案(ゲート3。2026-11-23。AAA-P-26 の実装形。R2 S-2) | 6.1・8.1 |
 | AAA-P-43 | `WEB_DIST_DIR` の既定を `/app/web`(イメージ内の固定パス。Dockerfile が `dist/` をコピーする) | 承認済みの案(ゲート3。2026-11-23。A 4 が「既定は C 7.2」とする。R2 S-8) | 7.2・10 |
 | AAA-P-44 | `JobBrief` の各項目の導出規則(許される値の列挙にない値は `null`、`failure_reason` は `failed` のときだけ)と、`job_type`・`status` が読めないときの `rerunnable`(`not_crawl`・`not_failed`) | 承認済みの案(ゲート3。2026-11-23。AAPI-P-25 に依存。R2 S-11) | 5.3・5.4 |
+| AAA-P-45 | 一覧の EP(EP-01・09・11)の `unavailable` は行単位: 各 `items[i]` に持ち(常に存在)、キーは行の中の相対パス。最上位は行に属さない項目だけ。失敗の帰属(1 回の読み取りの失敗は全行、文書単位・サブ要求単位の失敗は該当の行だけ、行に属さない項目は最上位)。キーのない `null` は値がない | 承認済みの案(ゲート3。2026-11-23)の修正(PR #10 のレビュー指摘への対応。AAPI-P-42 に依存。AAA-P-25・P-35 の修正) | 5.8・8.6 |
 
 ### 12.4 未決・実装時確認(AAA-U)
 
@@ -916,6 +931,7 @@ A 4章に従う(`pydantic-settings` の `BaseSettings`、`env_prefix="LORELEY_AP
 | AAA-P-43 | `WEB_DIST_DIR` の既定 `/app/web` |
 | AAA-P-44 | `JobBrief` の各項目の規則(未知の値は `null`)と、読めない `job_type`・`status` の `rerunnable` |
 | I-90・I-93 | 索引名の渡し方(compose への要求。infra の前提作業に直結。HO-35) |
+| AAA-P-45 | 一覧の `unavailable` の行単位化(AAPI-P-42)と失敗の帰属の規則。AAA-P-25・P-35 の修正を含む(PR #10 のレビュー指摘への対応) |
 
 ### 12.7 B 11.10 の全項目の割り当て
 

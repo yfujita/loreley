@@ -5,7 +5,7 @@
 - 前版: なし(初版)
 - 位置づけ: Admin View(`apps/web/`)のコード上の**モジュール分割・ディレクトリ・依存ルール・画面とモジュールの対応**を定める。「何を、どのモジュールが担うか」を一目で分かるようにする。技術構成・データ取得の方針・エラー処理の UI 対応・テスト方針は E、見た目・部品の仕様は DS と画面仕様、EP・DTO・エラー code は B が正本で、本書は**参照して置き場を決める**(再掲しない)。
 - 本書は **Admin 画面の詳細設計タスク(`20261122_create_admin_system_design`)の成果物**で、SD・PD・DS・画面仕様・A・B・E を変更しない。E・B に直してほしい点があれば 8.7 に「修正依頼」として挙げる(現在は修正依頼なし)。既存設計との食い違いは `I-n`(8.5)に挙げる。追従改訂が要る点は A の 9章(HO-1〜HO-50。本書に関わるものは HO-27)に集約し、本書は申し送りを持たない。
-- 改訂履歴: v0.1 は初版(フェーズ3-2)。E 12.6 の「F への引き継ぎ」と、0013・0015 の追加の引き継ぎ(パスエンコード、`unavailable` を引く関数、番兵日時、S4 のしきい値の丸め注意、ルート遅延読み込みの判断)を、すべて 8.6 の表で割り当てた。R3 の指摘(区分の統一、`viewState`・パンくず・`featureFlag`・ロック状態の置き場、依存ルールの整合、I-104 の解消ほか)に対応した。フェーズ5の統合(2026-11-23): 申し送りへの参照を A 9章の実番号に置き換え、関連文書の表に C・D を足し、更新日を統一した。R4 指摘の反映(2026-11-23): FARC-K-8 の参照を FARC-P-38 に直し、FMOD-K-2 から「コード・設定ファイルは作らない」を外した(確定にせず FARC-P-38 に従う)。 ゲート3の承認(2026-11-23)の反映: 案の区分を承認済みの案(ゲート3。2026-11-23)に更新した(設計の内容は変更なし)。
+- 改訂履歴: v0.1 は初版(フェーズ3-2)。E 12.6 の「F への引き継ぎ」と、0013・0015 の追加の引き継ぎ(パスエンコード、`unavailable` を引く関数、番兵日時、S4 のしきい値の丸め注意、ルート遅延読み込みの判断)を、すべて 8.6 の表で割り当てた。R3 の指摘(区分の統一、`viewState`・パンくず・`featureFlag`・ロック状態の置き場、依存ルールの整合、I-104 の解消ほか)に対応した。フェーズ5の統合(2026-11-23): 申し送りへの参照を A 9章の実番号に置き換え、関連文書の表に C・D を足し、更新日を統一した。R4 指摘の反映(2026-11-23): FARC-K-8 の参照を FARC-P-38 に直し、FMOD-K-2 から「コード・設定ファイルは作らない」を外した(確定にせず FARC-P-38 に従う)。 ゲート3の承認(2026-11-23)の反映: 案の区分を承認済みの案(ゲート3。2026-11-23)に更新した(設計の内容は変更なし)。PR #10 のレビュー指摘への対応(2026-11-23。0037・0038): 一覧の `unavailable` を行単位にする B の変更(AAPI-P-42)に追従した(3.5 の `unavailable.ts` を行・最上位の 2 系統に、3.9・5.5・7 章。FMOD-P-14・31 を修正、FMOD-P-33 を新設。区分は承認済みの案(ゲート3)の修正で、`-K-` は増やしていない)。
 
 区分の凡例(A・B・E と同じ。`crawler-api-v0.4.md` に合わせる):
 
@@ -247,10 +247,11 @@ E の要点に対応する。`package.json`(`engines`・スクリプトは E 11.
 
 **`unavailable` の参照(`admin/lib/unavailable.ts`。FMOD-P-14)**:
 
-- `unavailableReason(response, path)`: `response.unavailable` を**正式なパス**(B 2.2。単一応答は `index.document_count`・`deletion.current`・`tab_counts.skipped`、一覧は `items[]` 付き: `items[].last_crawl`・`items[].last_crawl.stalled`・`items[].delete_job.stalled`・`items[].document_count`・`items[].stalled`・`items[].existence`)で引き、理由コードまたは `undefined` を返す。
-- `isRowUnavailable(response, path, rowValue)`: **一覧でキーがあり行の値が `null` なら `true`**(「取得できません」。行ごとの失敗か否かは B で区別できないため安全側。E 5.9。FARC-U-12)。キーがなく `null` なら「値がない」(`false`)。
-- `cellState(response, path, value, { expected })`: セルの表示状態を返す(E 5.9 の (a)・(b)。FMOD-P-31)。`value` があれば `value`。`null` で `unavailable` にキーがあれば `unavailable`(「—」+「取得できません」)。キーがなく `null` のとき、`expected=true`(`JobBrief` の `status`・`job_type`・`trigger`・`queued_at`、`registration` の件数・`partial`・`phase` など、値があるはずの項目)なら `unreadable`(「—」+視覚的に隠した「読み取れません」)、`expected=false`(`started_at` など)なら `none`(「—」+「なし」)。`expected` の項目の一覧は 1 つの表(`admin/lib/expectedFields.ts`)に持つ。`unavailable` の見える文言の有無は画面仕様に従う(表のセルは視覚的に隠した「取得できません」、S2 のカードは見える文言。E 5.9)。
-- 画面は `unavailable` を直接読まず、これらの関数だけを使う。理由コードは画面では区別しない(E 6.2。`malformed` だけ S4 で扱いが違う)。パスの文字列は定数にまとめ、B の変更に追従する場所を 1 か所にする。
+- **行の `unavailable`(一覧の EP。EP-01・09・11。FMOD-P-33)**: `rowUnavailableReason(row, path)` は、各 `items[i]` の `unavailable`(常に存在)を**行内の相対パス**(EP-01: `last_crawl`・`last_crawl.stalled`・`last_completed_at`・`delete_job`・`delete_job.stalled`・`document_count`、EP-09: `stalled`、EP-11: `existence`)で引き、理由コードまたは `undefined` を返す。**取得できなかったか否かは、その行の `unavailable` のキーだけで判定する**(他の行の失敗に影響されない)。
+- **最上位の `unavailable`**: `topUnavailableReason(response, path)` は、最上位の `unavailable` を応答の項目の**正式なパス**で引く。単一の応答(EP-02・10・12・13・14)は `index.document_count`・`deletion.current`・`last_crawl.stalled`・`lock` など。一覧の EP の最上位は**行に属さない項目だけ**(EP-11 の `tab_counts.<タブ>`・`document_count`。EP-01・09 では常に `{}`)。
+- 旧規則の `isRowUnavailable`(一覧でキーがあり行が `null` なら取得できません)は**廃止**した(行ごとに失敗を区別できるため。AAPI-P-42)。
+- `cellState(unavailable, path, value, { expected })`: セルの表示状態を返す(E 5.9 の (a)・(b)。FMOD-P-31)。`unavailable` は**引く対象の 1 つの `unavailable` オブジェクト**で、呼び出しは薄い 2 つのラッパー `rowCell(row, path, value, opts)`(行の `unavailable`)と `topCell(response, path, value, opts)`(最上位)を通す。`value` があれば `value`。`null` でその `unavailable` にキーがあれば `unavailable`(「—」+「取得できません」)。キーがなく `null` のとき、`expected=true`(`JobBrief` の `status`・`job_type`・`trigger`・`queued_at`、`registration` の件数・`partial`・`phase` など、値があるはずの項目)なら `unreadable`(「—」+視覚的に隠した「読み取れません」)、`expected=false`(`started_at`・未実行の `last_crawl` など)なら `none`(「—」+「なし」。`last_crawl` は「未実行」)。`expected` の項目の一覧は 1 つの表(`admin/lib/expectedFields.ts`)に持つ。`unavailable` の見える文言の有無は画面仕様に従う(表のセルは視覚的に隠した「取得できません」、S2 のカードは見える文言。E 5.9)。
+- 画面は `unavailable` を直接読まず、これらの関数だけを使う(行の関数と最上位の関数を取り違えないよう、一覧の行には `rowCell`、単一の応答・一覧の最上位には `topCell` を使う)。理由コードは画面では区別しない(E 6.2。`malformed` だけ S4 で扱いが違う)。パスの文字列は定数にまとめ、B の変更に追従する場所を 1 か所にする。
 
 **番兵の日時(`admin/lib/leaseExpiry.ts`。FMOD-P-15)**:
 
@@ -355,7 +356,7 @@ D1 は EP-14 を直接使わない(Dashboards のリンクはシェル。I-104 �
 | `pages/SourceCreatePage.vue`(S3)・`SourceEditPage.vue`(S4) | `FormPage`+`SourceForm`(**共有**)。S4 は現在値を取得できなければフォームを出さない |
 | `components/` | `SourcesTable.vue`(S1。クライアント側のページ・並べ替え。`AdminDataTable`)・`SourceRowActions.vue`・`SourceSettingsCard.vue`・`LockStateCard.vue`・`LastJobCard.vue`・`IndexCard.vue`・`SourceForm.vue`・`SourceFormAlerts.vue`(読めない項目・丸め・削除中・上部アラート) |
 | `composables/` | `useSourcesListPage`(EP-01・EP-14。表の行モデル)、`useSourceDetailPage`(EP-02・EP-14)、`useSourceForm`(下) |
-| `models/sourceRow.ts` | 一覧の行の表示用変換(`last_crawl` と `delete_job` からタグ・補足文。`isRowUnavailable` を使う) |
+| `models/sourceRow.ts` | 一覧の行の表示用変換(`last_crawl` と `delete_job` からタグ・補足文。行の `unavailable` を `rowCell` で引く。source-a の未実行と source-b の読み取り失敗を区別する) |
 | `sourceActions.ts` | 状態 → 操作の表(DS 4.13・sources 1.8): 削除中は起動・編集・削除を出さない、削除ジョブが失敗なら「削除を再実行」、ロック状態に応じた「ロックを解放…」の入口 |
 | `form/` | S3・S4 のフォーム(下) |
 
@@ -485,7 +486,7 @@ E 5.8 の表を、置き場に対応づけた。
 1. `DocumentsPage` → `useDocumentsPage`。URL の `source`・`tab`・`page`・`size`・`sort` を `documentsParams` で正規化(不正値は既定値にして `replace`)。
 2. `source` 未選択なら `useDocumentsQuery` は `enabled: false`(「データソースを選んでください」)。選択肢は `useSourcesListQuery`(EP-01。削除中は選べない)。
 3. タブの切替は `router.push` で `tab` を変え、1 ページ目に戻る(`documentTabs` の kebab の `id` を URL に、snake の `tab` を API に)。`useDocumentsQuery`(EP-11)が取得。前回データは**同じデータソース・同じタブ**のページ・並べ替えの変更のときだけ保持(`placeholder.ts`)。
-4. 応答の `tab_counts` を `CountTabs` の件数に使う(`null`・`unavailable` の `tab_counts.<タブ>` は「—」。取得は `isRowUnavailable` ではなく単一応答の `unavailableReason`)。スキップのタブは `items[].existence`(`unknown` は「確認できません」。`unavailable` の `items[].existence`)。
+4. 応答の `tab_counts` を `CountTabs` の件数に使う(`null`・最上位 `unavailable` の `tab_counts.<タブ>` は「—」。引くのは `topCell`)。スキップのタブは各行の `existence`(`unknown` は「確認できません」。その行の `unavailable` の `existence`。一括検索の全体の失敗は全行、文書単位の失敗はその行だけ。引くのは `rowCell`)。
 5. エラーはパネルだけ(`x1-state-error`)。タブ名・データソースの選択は操作できる。更新は手動の「更新」のみ(`refetch()`)。
 
 ---
@@ -549,7 +550,7 @@ tests/e2e/
 | `admin/api/errors/errorTable` | Vitest(単体) | **B 2.3 の全 `code`(Admin 固有 14 種+共通 6 種)を表から網羅**(code を足すとテストが落ちる。E 10.1)。`lock_state` ごとの variant |
 | `admin/api/pathParams`・`client` | Vitest(契約) | `job_id='a%b?c#d'` などの実 URL(生成 SDK を通す)、`ApiError` への正規化(`network`・`timeout`・`invalid_response`・A 5.2 の形) |
 | `admin/queries/*` | Vitest | key factory、`polling.ts`(D1 のオン・オフ、J2 の状態ごとの間隔)、`placeholder.ts`(同スコープだけ)、`invalidation.ts` の表、`enabled: false` |
-| `admin/lib/unavailable`・`leaseExpiry`・`lockStateView`・`viewState`・`units`・`validation` | Vitest(純粋) | 正式パス・「一覧でキーがあり行が `null`」・`cellState` の 4 状態・番兵・ロック状態 7 値+取得失敗の写像(E 5.10)・`viewState` の写像(E 6.2)・日 ↔ 秒・丸め・9 桁・パターンのバイト数 |
+| `admin/lib/unavailable`・`leaseExpiry`・`lockStateView`・`viewState`・`units`・`validation` | Vitest(純粋) | 正式パス(最上位)と行内の相対パス(行の `unavailable`)・`cellState` の 4 状態(行・最上位のそれぞれ)・**source-a の未実行(キーなし)と source-b の読み取り失敗(キーあり)の区別・全行失敗(全行に同じキー)・1 行だけの失敗(他の行に影響しない)**・番兵・ロック状態 7 値+取得失敗の写像(E 5.10)・`viewState` の写像(E 6.2)・日 ↔ 秒・丸め・9 桁・パターンのバイト数 |
 | `admin/composables/useListParams`・`useBreadcrumbs`・`useViewState` | Vitest | URL ↔ 条件、不正値の正規化(`replace`)、条件を変えたら 1 ページ目に戻る、`push`/`replace`。パンくずの親の解決(`params` の引き継ぎ)。`viewState` の組み立て(404 の「見つかりません」・stale・`describeError` の結果) |
 | `features/*/models`・`*Actions.ts`・`*Params.ts` | Vitest(純粋) | `dashboardViewModel`(降格)、`indexFilter`・`matrixModel`、`jobActions`・`sourceActions`(状態 → 操作の全組合せ)、`documentTabs` の kebab ↔ snake、`fromSettings`・`toRequest`(TTL モード・丸め・`malformed`) |
 | `shared/ui`・`admin/components` | Vitest(コンポーネント) | props と状態の出し分け(`StatusTag` の未登録警告、`ConfirmDialog` の実行ボタンの有効/無効と理由、`PatternListInput` の追加・削除・Enter、`ShardMatrix` の列数)。レイアウト・コンテナクエリ・フォーカスの実挙動は E2E と実機 |
@@ -560,7 +561,7 @@ tests/e2e/
 
 ### 7.3 モックとフィクスチャの規約(E 10.2。FMOD-P-20)
 
-- フィクスチャは **EP ごと・状態ごと**(正常・空・部分失敗(`unavailable`)・`null` のフラグ・値の読めない `null`(`status=null` のジョブ)・`source_missing`・番兵日時・読めない設定項目・保存値のしきい値が小数第 3 位以下)の関数として `tests/support/fixtures/` に集め、Vitest と Playwright で**共有**する。すべて生成した型で `satisfies` する(B の変更が型エラーになる)。
+- フィクスチャは **EP ごと・状態ごと**(正常・空・部分失敗(`unavailable`。行単位: 全行失敗・1 行だけの失敗・未実行の行と失敗の行が混在)・`null` のフラグ・値の読めない `null`(`status=null` のジョブ)・`source_missing`・番兵日時・読めない設定項目・保存値のしきい値が小数第 3 位以下)の関数として `tests/support/fixtures/` に集め、Vitest と Playwright で**共有**する。すべて生成した型で `satisfies` する(B の変更が型エラーになる)。
 - エラー応答は `apiErrors.ts` のビルダーで A 5.2 の形を作る(`code`・`retryable`・`details`)。
 - `mockApi.ts` は「パス+メソッド → 応答(固定または関数)」の宣言を受け、`**/api/admin/v1/**` に束ねる。ポーリング・再取得のテストのため、応答の差し替え(呼び出し回数ごと)ができる。
 
@@ -571,6 +572,7 @@ tests/e2e/
 ### 8.1 確認した事実(2026-11-22)
 
 - 読んだ文書: E(R3 の修正と 0020・0022 の追従後)、0002・0009・0013・0015(F への引き継ぎ)、B(1.3 の画面×EP 対応表、EP-01〜14、2.2・2.9・2.11・2.12)、A(2・5・8 章)、DS(0・4〜6・9〜11 章)、admin-view(4・7・8・10 章)、画面仕様 5 本(各コンポーネント・状態・更新・`data-testid`)、`crawler-module-structure-v0.5.md`(書式の手本)。
+- PR #10 のレビュー指摘(0037)に基づく B の修正(0038。AAPI-P-42。一覧の `unavailable` を行単位に)を読み、3.5・3.9・5.5・7 章を E 5.7・5.9 と合わせた。
 - リポジトリ: `apps/web/` は存在しない(新規)。`apps/crawler`・`apps/indexer` の構成(`tests/architecture/`・`tests/fakes/`)は `crawler-module-structure-v0.5.md` 経由で確認した。
 - 技術事実(Hey API・Vite・Vitest・Playwright の挙動)は E・0004 による。**本書の作成者は再確認していない**。
 
@@ -606,7 +608,7 @@ tests/e2e/
 | FMOD-P-11 | `features/<名前>/` の内部構成(`pages`・`components`・`composables`・`models`・定義表)と各画面のファイル | 承認済みの案(ゲート3。2026-11-23) | 3.9 |
 | FMOD-P-12 | 定義表の置き場(`navGroups`・`documentTabs`・`dashboardComponents`・条件の定義・`fieldMap`・catalogs・検証・単位・操作表) | 承認済みの案(ゲート3。2026-11-23) | 3.5 |
 | FMOD-P-13 | 一覧の条件は `composables/useListParams` と画面ごとの `*Params.ts` で URL ↔ API を対応づける | 承認済みの案(ゲート3。2026-11-23。E 5.6 の実装) | 3.5・3.9 |
-| FMOD-P-14 | `admin/lib/unavailable.ts`: 正式パスで引く関数(`unavailableReason`・`isRowUnavailable`・`cellState`)。一覧でキーがあり行が `null` なら「取得できません」。値の読めない `null` は `cellState` で別に扱う | 承認済みの案(ゲート3。2026-11-23。E 5.9・FARC-P-27・36 の置き場) | 3.5 |
+| FMOD-P-14 | `admin/lib/unavailable.ts`: 行の `unavailable` を引く関数(`rowUnavailableReason`・`rowCell`)と最上位を引く関数(`topUnavailableReason`・`topCell`)、`cellState`。**行単位で判定**し、旧規則の `isRowUnavailable` は廃止。値の読めない `null` は `cellState` で別に扱う | 承認済みの案(ゲート3。2026-11-23)の修正(PR #10 のレビュー指摘への対応。AAPI-P-42。E 5.9・FARC-P-27・36・39 の置き場) | 3.5 |
 | FMOD-P-15 | `admin/lib/leaseExpiry.ts`: 番兵日時を判定し「期限切れ」にする 1 か所。`lease_expires_at` の表示はすべてここを通す | 承認済みの案(ゲート3。2026-11-23。E 5.9・FARC-P-24 の置き場) | 3.5 |
 | FMOD-P-16 | S3・S4 共有のフォーム(`form/`): `connectors/fileSystem.ts`・`fromSettings`・`toRequest`・`rules`・`fieldMap`・`serverErrors`。TTL モード・しきい値の丸め注意・`malformed` の判定を `fromSettings` に持たせる | 承認済みの案(ゲート3。2026-11-23。E 7.5〜7.7・FARC-P-16・28・29 の置き場) | 3.9 |
 | FMOD-P-17 | ルートは**遅延読み込みしない**(MVP。同期 import の単一チャンク)。根拠: 9 画面で規模が小さく、再配備後の開いたままのタブの旧アセット取得失敗(E 3.3)と構成の複雑さを避けられる。ただし**ビルドサイズの実測前の判断**で、実装後に測って再判断する(FMOD-U-11)。使うことにした場合は `router.onError` を足す(E 3.3・FARC-P-18) | 承認済みの案(ゲート3。2026-11-23。E 12.6 の「遅延読み込みの判断」への回答) | 4.1 |
@@ -623,8 +625,9 @@ tests/e2e/
 | FMOD-P-28 | パンくずは `AppShell` が `useBreadcrumbs` で作って provide し、`PageHeader` が inject する(`PageBreadcrumbs` は `templates`)。`shell` と `templates` の層の向き、`templates` と `components` の同層禁止を保つため | 承認済みの案(ゲート3。2026-11-23) | 3.7 |
 | FMOD-P-29 | 外部リンクは route を持たない定義表(`shell/externalLinks.ts`)で持ち、`featureFlag` の評価は `SideNav`・外部リンク領域だけ(ガードでは評価しない)。DS 5.3 との差は E の I-89 | 承認済みの案(ゲート3。2026-11-23) | 3.5・3.7 |
 | FMOD-P-30 | ロック状態の写像は `admin/lib/lockStateView.ts`(S2・J2・DLG-1 が共有。E 5.10) | 承認済みの案(ゲート3。2026-11-23) | 3.5 |
-| FMOD-P-31 | セルの表示状態 `cellState`(`value`・`unavailable`・`unreadable`・`none`)と、値があるはずの項目の表 `expectedFields.ts`。`status=null` のジョブはタグ・操作なし(E 5.9。FARC-P-36) | 承認済みの案(ゲート3。2026-11-23。B の AAPI-P-25 は同じゲート3で承認) | 3.5・3.9 |
+| FMOD-P-31 | セルの表示状態 `cellState`(`value`・`unavailable`・`unreadable`・`none`)と、値があるはずの項目の表 `expectedFields.ts`。引く対象の `unavailable`(行または最上位)を引数に取る。`status=null` のジョブはタグ・操作なし(E 5.9。FARC-P-36) | 承認済みの案(ゲート3。2026-11-23。B の AAPI-P-25 は同じゲート3で承認)の修正(PR #10 のレビュー指摘への対応。AAPI-P-42) | 3.5・3.9 |
 | FMOD-P-32 | `jobActions.ts` は `rerun_blocked_reason=source_missing` を「出さない」(E 6.7。FARC-P-37) | 承認済みの案(ゲート3。2026-11-23。AAPI-P-41) | 3.9 |
+| FMOD-P-33 | 一覧の EP(EP-01・09・11)の画面は、行の `unavailable`(`rowCell`)で取得失敗を判定し、最上位の `unavailable`(`topCell`)は行に属さない項目(EP-11 の `tab_counts.<タブ>`・`document_count`)と単一の応答だけに使う。S1・J1・X1 の行モデルは行ごとに失敗を持つ | 承認済みの案(ゲート3。2026-11-23)の修正(PR #10 のレビュー指摘への対応。2026-11-23。AAPI-P-42・FARC-P-39)。**`-K-` ではない** | 3.5・3.9・5.5 |
 
 ### 8.4 未決・実装時確認(FMOD-U)
 
@@ -666,7 +669,7 @@ E の I-120(値の読めない `null` の表示)・I-121(`source_missing` の文
 | (6) トークンと `defaults` を Search View と共有できる置き場 | 2.3・3.1(`shared/theme`) |
 | ルート遅延読み込みの判断(`router.onError`) | FMOD-P-17(遅延読み込みしない) |
 | `job_id`・`source_id` のパスエンコードをどの層で保証するか(FARC-U-18) | 3.3(FMOD-P-4。`admin/api` の層。確認は FMOD-U-2) |
-| `unavailable` を引く関数(正式パス・一覧でキーがあり行が `null` なら取得できません) | 3.5(FMOD-P-14) |
+| `unavailable` を引く関数(行の `unavailable`・最上位の `unavailable` の 2 系統。行単位で判定) | 3.5(FMOD-P-14・FMOD-P-33) |
 | 日時整形の番兵を判定する 1 か所 | 3.5(FMOD-P-15) |
 | S4 のフォームモデルのしきい値の丸め注意の状態 | 3.9 の `form/fromSettings.ts`(FMOD-P-16) |
 

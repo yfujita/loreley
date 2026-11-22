@@ -163,7 +163,7 @@ API の技術スタックは Indexer・Crawler に揃える(`apps/crawler/pyproj
 - `code`: 小文字の `snake_case`。画面の文言は `code`(と `details`)から E が決める。`message` は**固定の英語文(診断用)**で、入力値・パス・認証情報・例外メッセージを含めない。
 - `retryable`: 同じ要求の再試行で成功しうるとき `true`(503 の `unavailable` など)。操作の結果が不明な場合は `false` で、`details.outcome_unknown=true` を付ける(B 2.3)。
 - `details`: 任意。入力の違反は `errors`(`field`・`reason` の配列。必要なら `detail`)。項目名は `connector_config.include_patterns[2]` のようにドット区切り・添字つきで書く。**値は載せない**。未知の項目名は、孤立サロゲートの置換・制御文字のエスケープ・100 文字への切り詰めをして載せる(CAPI-P-22 と同じ)。
-- 部分失敗を表す応答の項目 `unavailable`(取得できなかった項目と理由)は、下の 503 の code `unavailable` とは別のもので、**形とキーの規則は B 2.2 が正本**(本書は定めない)。
+- 部分失敗を表す応答の項目 `unavailable`(取得できなかった項目と理由)は、下の 503 の code `unavailable` とは別のもので、**形とキーの規則は B 2.2 が正本**(本書は定めない。一覧の EP は各行に持ち、単一の応答は最上位に持つ。B AAPI-P-42)。
 - 共通 code(Admin API 固有の code は B 2.3 が正本。名前は承認済みの案(ゲート2。2026-11-22)):
 
 | HTTP | `code` | `retryable` | 意味 |
