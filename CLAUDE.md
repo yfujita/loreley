@@ -21,6 +21,8 @@ CrawlerとIndexerは別コンテナで、メッセージブローカーを介さ
 - プロダクト設計: `docs/v0.x/product-design/`(版番号が最大のファイルが最新。改訂履歴は各文書の冒頭を参照)
 - システム設計: `docs/v0.x/system-design/`(同上。実装レベルの詳細はこちら)
   - Admin View の機能設計: `docs/v0.x/system-design/ui-admin/`(同上。Admin 画面の機能一覧・MVP/将来拡張の区分)
+  - Admin View のフロントエンド設計: `docs/v0.x/system-design/ui-admin/frontend/`(同上。アーキテクチャ・モジュール構成)
+  - api の共通設計と Admin API の設計: `docs/v0.x/system-design/api/`(同上。`api/admin/` が Admin API の仕様書・アーキテクチャ・モジュール構成。他文書への追従改訂の申し送りは `api/api-base-design-v0.x.md` の申し送り章に集約)
 - UIデザイン仕様: `docs/v0.x/ui-design/`(仕様書・ワイヤーフレーム・静的HTMLモック(`mockups/`)。版番号が最大のファイルが最新。Web UI実装時の参照先。`web-ui-designer` が作成・更新する)
 - タスク管理: `agent_tasks/`(新規タスクは `scripts/new-task.sh` で作成する)
 - 作業ワークフロー: `.claude/rules/task-workflow.md`
