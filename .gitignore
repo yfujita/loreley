@@ -1,3 +1,5 @@
+.DS_Store
+
 # 監査ログ(.claude/hooks/audit.py が出力する)
 audit/
 
