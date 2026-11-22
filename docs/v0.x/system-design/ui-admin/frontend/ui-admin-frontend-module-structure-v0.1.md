@@ -486,7 +486,7 @@ E 5.8 の表を、置き場に対応づけた。
 1. `DocumentsPage` → `useDocumentsPage`。URL の `source`・`tab`・`page`・`size`・`sort` を `documentsParams` で正規化(不正値は既定値にして `replace`)。
 2. `source` 未選択なら `useDocumentsQuery` は `enabled: false`(「データソースを選んでください」)。選択肢は `useSourcesListQuery`(EP-01。削除中は選べない)。
 3. タブの切替は `router.push` で `tab` を変え、1 ページ目に戻る(`documentTabs` の kebab の `id` を URL に、snake の `tab` を API に)。`useDocumentsQuery`(EP-11)が取得。前回データは**同じデータソース・同じタブ**のページ・並べ替えの変更のときだけ保持(`placeholder.ts`)。
-4. 応答の `tab_counts` を `CountTabs` の件数に使う(`null`・最上位 `unavailable` の `tab_counts.<タブ>` は「—」。引くのは `topCell`)。スキップのタブは各行の `existence`(`unknown` は「確認できません」。その行の `unavailable` の `existence`。一括検索の全体の失敗は全行、文書単位の失敗はその行だけ。引くのは `rowCell`)。
+4. 応答の `tab_counts` を `CountTabs` の件数に使う(`null`・最上位 `unavailable` の `tab_counts.<タブ>` は「—」。引くのは `topCell`)。スキップのタブは各行の `existence`(`unknown` は「確認できません」。その行の `unavailable` の `existence`。一括検索(1 回の `ids` クエリ)の失敗は全行。行ごとに成否が分かれることはない。引くのは `rowCell`)。
 5. エラーはパネルだけ(`x1-state-error`)。タブ名・データソースの選択は操作できる。更新は手動の「更新」のみ(`refetch()`)。
 
 ---

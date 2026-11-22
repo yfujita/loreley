@@ -5,7 +5,7 @@
 - 状態: done
 - 現在工程: 完了(PR #10 のレビュー指摘への対応を含む)
 - 最終更新: 2026-11-23
-- 最新作業記録: 0039-CD-EF-unavailable-per-row-and-completion.md
+- 最新作業記録: 0040-existence-fetch-consistency.md
 
 ## 現在の状況
 

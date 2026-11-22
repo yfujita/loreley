@@ -812,7 +812,7 @@ SD §14.4 の「重複起動を冪等な成功として扱う」案は採らな�
 | `oversize` | `document_id`、`external_id`、`detected_by`(`crawler`・`indexer`)、`size`(分かる場合だけ。なければ `null`)、`first_detected_at`、`last_detected_at`、`last_job_id` |
 | `summary_pending` | `document_id`、`title`、`external_id`、`mime_type`、`source_updated_at`、`indexed_at` |
 
-- **`existence`(承認済みの案。AAPI-P-5・P-24)**: ページ内の `document_id`(スキップ記録の値は検索インデックスの `_id` と同じ算出値。AAPI-U-7)を **1 回の一括検索**(ID の一括取得。**上限 100 件**。`items_per_page` の上限と同じ)で検索インデックスに問い合わせ、見つかれば `existing`、なければ `new`。一括検索の全体が失敗したら、そのページの全件を `unknown` にしてページ全体は返し、**全行の `unavailable` に `existence`(`search_index_unavailable`・`timeout`)を付ける**(2.2)。`mget` が文書単位で失敗を返したときは、その文書の行だけを `unknown` にし、その行の `unavailable` にキーを付ける。スキップ以外のタブの項目に `existence` はない。
+- **`existence`(承認済みの案。AAPI-P-5・P-24)**: ページ内の `document_id`(スキップ記録の値は検索インデックスの `_id` と同じ算出値。AAPI-U-7)を **1 回の一括検索**(ID の一括取得。**上限 100 件**。`items_per_page` の上限と同じ)で検索インデックスに問い合わせ、見つかれば `existing`、なければ `new`。一括検索の全体が失敗したら、そのページの全件を `unknown` にしてページ全体は返し、**全行の `unavailable` に `existence`(`search_index_unavailable`・`timeout`)を付ける**(2.2)。一括検索は 1 回の `ids` クエリなので、行ごとに成否が分かれることはない(C 3.3 R-11)。`document_id` が読めない行は `unknown` にする。スキップ以外のタブの項目に `existence` はない。
 - 要約未生成タブの実データでの検証は、要約機能(LLM プロバイダ)の実装後(AF-14。AAPI-U-8)。画面は 0 件の空状態として先に実装できる。
 - 設定の存在確認(`loreley-sources` の ID 取得)、一覧、件数は同じリクエストの中で読み、**同順位は `document_id` の昇順**で決める(AAPI-P-30)。
 - 要約が無効のときも `summary_pending` は 0 件になるだけで、有効 / 無効は返さない(AAPI-P-9)。
