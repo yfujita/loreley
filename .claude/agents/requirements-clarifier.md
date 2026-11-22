@@ -2,7 +2,7 @@
 name: requirements-clarifier
 description: "要件定義の不明点・矛盾・不足を洗い出し、ユーザーへの質問リスト(推奨案つき)を返すエージェント。タスクワークフローの「要件確認」工程で使う。呼び出し元がユーザーに質問し、回答を添えて再呼び出しすることで、要件定義を完成させる。要件定義(0000)は書き換えず、確定内容は「確定した要件」として報告する。プランは作らず、コードも書かない。\n\n<example>\nContext: agent_tasks 配下のタスクを開始する前に、要件に漏れがないか確認したい。\nuser: \"login-api のタスクの要件を確認して\"\nassistant: \"requirements-clarifierエージェントで要件の不明点・矛盾・不足を洗い出します\"\n</example>"
 tools: Glob, Grep, Read, WebFetch, WebSearch, Skill
-model: sonnet
+model: opus
 color: red
 ---
 
