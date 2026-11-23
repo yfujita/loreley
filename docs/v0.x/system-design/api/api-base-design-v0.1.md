@@ -1,11 +1,11 @@
 # api 共通基本設計 v0.1
 
-- 版: v0.1(ドラフト。ゲート3(2026-11-23)の承認を反映済み。実装はスコープ外で、実装時確認事項が残る)
+- 版: v0.1(ドラフト。ゲート3(2026-11-23)の承認を反映済み。API 基盤(`apps/api`)は実装済み(PR #16)で、設計書は HO-51 により実装に追従した。Admin API は未実装で、実装時確認事項が残る)
 - 更新日: 2026-11-23
 - 前版: なし(初版)
 - 位置づけ: `api` コンテナ(Admin API・将来の Search API・MCP Server が同居する)の**共通の土台**を定める。コンテナ・プロセス構成、URL の名前空間、技術スタック、設定(環境変数)の命名、共通の HTTP 規約(**エラー応答の統一形式と共通 code**、時刻、OpenAPI の方針)、ヘルスチェックの位置づけ、構成の共通方針、compose への要求を書く。Admin API のエンドポイント・DTO・Admin 固有のエラー code・Crawler への写像は `admin/admin-api-v0.1.md`(以下 B)が正本。Search API・MCP Server の設計は本書の対象外(境界だけを書く)。
 - 本書は **Admin 画面の詳細設計タスク(`20261122_create_admin_system_design`)の成果物**で、SD・PD・crawler / indexer 設計を変更しない。既存設計と食い違う点・追従改訂が要る点は 9章(申し送り一覧 HO-1〜HO-51。ゲート3の確認事項と回答 G3-1〜G3-23)に集約し、本書の他の章は該当する HO 番号で参照する。
-- 改訂履歴: v0.1 は初版。フェーズ1(A→B 骨子)で作成した。ゲート1(2026-11-22。ユーザー承認)で承認された方針は「承認済みの案」とした(確定にしていない)。具体値・名前はゲート2(2026-11-22。B 11.7)で承認された(確定にはしていない)。再実行の専用エンドポイントと書き込み系の `Origin` 検査の2件は、ゲート2の回答で採用が選ばれなかったため、**不採用として扱った(当初は解釈。ゲート3(2026-11-23)で「不採用のままでよい」と明示回答を得た)**。`Origin` 検査を採用しなかったことに伴い、2.3 に未対応のリスクを明記し、BAPI-U-8 に登録した。R1(document-reviewer)の指摘を反映した(`-K-` の出典と区分の見直し、`job_id` のエンコード、`Content-Type` の扱いほか)。フェーズ5の統合(2026-11-23)で、9章に申し送り(HO-1〜HO-50)とゲート3の確認事項(G3-1〜G3-23)を集約し、本文中の申し送りへの参照を実番号に置き換えた。6 文書の参照・ID・表の整合を機械チェックし、更新日を統一した。R4 指摘の反映(2026-11-23): 9.3 の G3-23 を C・D の案の ID の列挙に拡張(G3-3 に FARC-P-38、G3-22 に AAM-P-28)、9.1 に状態の付け方と「タスク内の引き継ぎは申し送りでない」、2.3 に PD §2 の引用、4 の `WEB_DIST_DIR` の既定を `/app/web` に、5.6 のプローブの時間、3・7 の `anyio`、10.3 の BAPI-P の並び、HO-5 の注記、レビュー記号の削除。ゲート3の承認(2026-11-23)の反映: 9.3 に回答の列を足して G3-1〜G3-23 の承認を記録し(G3-1=不採用のまま、G3-2=リスクは受け入れ・README に注意書き、G3-13=画面設計に任せる)、案の区分を承認済みの案(ゲート3。2026-11-23)に、HO の状態「ゲート3待ち」を「未対応」に、BAPI-P-15・BAPI-U-8・2.3 の記述をゲート3の明示回答に更新した(設計の内容は変更なし。リスクは受け入れた未対応のリスクとして残る)。API 基盤の実装タスク(`20261123_implement_api_base`。2026-11-23)で、9章に HO-51(D の追従改訂の前提条件。実装が D と異なる点と実装上の注意)を追記した(設計の本文は変更していない)。
+- 改訂履歴: v0.1 は初版。フェーズ1(A→B 骨子)で作成した。ゲート1(2026-11-22。ユーザー承認)で承認された方針は「承認済みの案」とした(確定にしていない)。具体値・名前はゲート2(2026-11-22。B 11.7)で承認された(確定にはしていない)。再実行の専用エンドポイントと書き込み系の `Origin` 検査の2件は、ゲート2の回答で採用が選ばれなかったため、**不採用として扱った(当初は解釈。ゲート3(2026-11-23)で「不採用のままでよい」と明示回答を得た)**。`Origin` 検査を採用しなかったことに伴い、2.3 に未対応のリスクを明記し、BAPI-U-8 に登録した。R1(document-reviewer)の指摘を反映した(`-K-` の出典と区分の見直し、`job_id` のエンコード、`Content-Type` の扱いほか)。フェーズ5の統合(2026-11-23)で、9章に申し送り(HO-1〜HO-50)とゲート3の確認事項(G3-1〜G3-23)を集約し、本文中の申し送りへの参照を実番号に置き換えた。6 文書の参照・ID・表の整合を機械チェックし、更新日を統一した。R4 指摘の反映(2026-11-23): 9.3 の G3-23 を C・D の案の ID の列挙に拡張(G3-3 に FARC-P-38、G3-22 に AAM-P-28)、9.1 に状態の付け方と「タスク内の引き継ぎは申し送りでない」、2.3 に PD §2 の引用、4 の `WEB_DIST_DIR` の既定を `/app/web` に、5.6 のプローブの時間、3・7 の `anyio`、10.3 の BAPI-P の並び、HO-5 の注記、レビュー記号の削除。ゲート3の承認(2026-11-23)の反映: 9.3 に回答の列を足して G3-1〜G3-23 の承認を記録し(G3-1=不採用のまま、G3-2=リスクは受け入れ・README に注意書き、G3-13=画面設計に任せる)、案の区分を承認済みの案(ゲート3。2026-11-23)に、HO の状態「ゲート3待ち」を「未対応」に、BAPI-P-15・BAPI-U-8・2.3 の記述をゲート3の明示回答に更新した(設計の内容は変更なし。リスクは受け入れた未対応のリスクとして残る)。API 基盤の実装タスク(`20261123_implement_api_base`。2026-11-23)で、9章に HO-51(D の追従改訂の前提条件。実装が D と異なる点と実装上の注意)を追記した(設計の本文は変更していない)。HO-51 に対応する追従改訂(`20261123_update_api_design_after_base_impl`。2026-11-23): 7章の層に `server` と `health` を加え、5.4 に OpenAPI の生成元・422・`openapi_url` の明示を、5.5 に 500 変換の保証の範囲を足した(詳細は D 4.12)。10.1 と 10.4 の BAPI-U-2 を、サブアプリへの `FastAPI(root_path=…)`・入れ子のマウント・OpenAPI の `servers`・`paths` に絞り(外側アプリの `root_path`・例外ハンドラ・アクセスログの適用範囲は D の AAM-K-5 で確定)、HO-48 の AAM-U-2 を確定にし、HO-51 を対応済みにした(AAM-P-23 の分担の変更はユーザー確認済み。2026-11-23)。
 
 ## 0. この文書について
 
@@ -191,13 +191,13 @@ API の技術スタックは Indexer・Crawler に揃える(`apps/crawler/pyproj
   - 対話型のドキュメント(Swagger UI・ReDoc)は**常に無効**にする(`docs_url`・`redoc_url` を `None`)。標準の UI が外部の CDN から JS を読み、外部通信を必須としない方針(SD §7。PD)に反するため(承認済みの案(ゲート2。2026-11-22)。導出)。
   - **型生成は実行時の公開に依存しない**: `app.openapi()` で OpenAPI の JSON をファイルに書き出して入力にする(サーバー起動不要・CI で再現可。承認済みの案(ゲート3)。BAPI-P-10)。
 - **型生成ツールは Hey API(`@hey-api/openapi-ts`。exact pin)を推奨**する(承認済みの案(ゲート2。2026-11-22)。BAPI-P-10)。理由: TanStack Vue Query 向けの `queryOptions` / `mutationOptions` を公式プラグインで生成でき、TypeScript 6 に対応する。0.x のため、更新のたびに移行を確認する。詳細(生成コードのコミット方針、`throwOnError` と stale 表示の接続)は E が正本(BAPI-U-5)。代替の `openapi-typescript` は TypeScript 6 の対応が未整備、`openapi-react-query` は React 専用で採らない(出典: 0004)。
-- **Admin API の構成は、サブアプリのマウントを推奨**する(承認済みの案(ゲート2。2026-11-22)。BAPI-P-9): Admin API を独立した `FastAPI` アプリとして `/api/admin/v1` にマウントする。理由: (1) Admin 専用の OpenAPI を独立に出せ、型生成の入力が Search API・MCP の追加で混ざらない、(2) 例外ハンドラ・ミドルウェアを Admin API ごとに持てる、(3) Search API・MCP を別のマウントとして足せる。代替は、1 つの `FastAPI` アプリに `APIRouter` を足す方式(単純だが OpenAPI が 1 つに混ざる)。サブアプリでは `root_path`・OpenAPI の `servers` の確認が要る(BAPI-U-2。出典: 0004)。どちらでも URL・エラー形式は変わらない。
+- **Admin API の構成は、サブアプリのマウントを推奨**する(承認済みの案(ゲート2。2026-11-22)。BAPI-P-9): Admin API を独立した `FastAPI` アプリとして `/api/admin/v1` にマウントする。理由: (1) Admin 専用の OpenAPI を独立に出せ、型生成の入力が Search API・MCP の追加で混ざらない、(2) 例外ハンドラ・ミドルウェアを Admin API ごとに持てる、(3) Search API・MCP を別のマウントとして足せる。代替は、1 つの `FastAPI` アプリに `APIRouter` を足す方式(単純だが OpenAPI が 1 つに混ざる)。外側アプリの `root_path`(プロキシ配下)・例外ハンドラ・アクセスログの適用範囲は基盤の実装で確定した(D の AAM-K-5)。サブアプリへの `FastAPI(root_path=…)`・入れ子のマウント・OpenAPI の `servers`・`paths` は未検証で、admin 実装時に確認する(BAPI-U-2)。サブアプリの OpenAPI は `create_admin_app(...).openapi()` で生成する(外側の `app.openapi()` には集約されない)。FastAPI は検証のある操作に 422 の応答を既定で足すが、基盤は検証エラーを 400 `invalid_request` に変えるため、422 の宣言を除いて 400 の共通エラースキーマを宣言する。サブアプリを素の `FastAPI(...)` で作ると `/openapi.json` が既定で公開されるため、`docs_url`・`redoc_url`・`openapi_url` を明示する(D 4.12)。どちらでも URL・エラー形式は変わらない。
 - OpenAPI の `operationId` は安定した名前(関数名)にし、生成物の名前が版で揺れないようにする。エラー応答の共通スキーマ(5.2)を各操作に宣言する。タグは **6 種**(sources・jobs・documents・opensearch・dashboard・meta)で、**操作の対象のリソースで決める**: EP-06(クロール起動)・EP-08(ロック解放)は `sources`(ソースに対する操作)、EP-07(取消)は `jobs`(ジョブに対する操作)。B 1.1 の「領域」列の「クロール操作」は章立ての区分で、タグではない(承認済みの案(ゲート3。2026-11-23)。BAPI-P-23。D の AAM-P-4 と同じ)。
 
 ### 5.5 アクセスログ
 
 - 出すのは**メソッド・ルートのテンプレート・ステータス・所要時間(ミリ秒)だけ**。ID を含む実際のパス・クエリ・本文・ヘッダーは出さない(CAPI-P-27 と同じ。承認済みの案(ゲート3)。BAPI-P-17)。ルートに当たらないリクエストはパスの代わりに `-`。水準は INFO(`GET /healthz` は DEBUG)。**uvicorn は `log_config=None`・`access_log=False` で起動し、標準のアクセスログ(ID を含むパスを出す)は使わず、アクセスログは自前で出す**(Crawler・Indexer と同じ。D 4.1、C 8.5 の承認済みの案(ゲート3)。AAA-P-38)。
-- 想定外の例外は、ログにクラス名・理由名・送出元の位置(ファイル:行・関数名)だけを出し、メッセージ・入力値は出さない。**想定外の例外は middleware が 500 `internal_error` に変換し、再送出しない**(再送出すると uvicorn が例外のメッセージを含むトレースバックを出すため。C 8.5 の承認済みの案(ゲート3)。AAA-P-38)。
+- 想定外の例外は、ログにクラス名・理由名・送出元の位置(ファイル:行・関数名)だけを出し、メッセージ・入力値は出さない。**想定外の例外は middleware が 500 `internal_error` に変換し、再送出しない**(再送出すると uvicorn が例外のメッセージを含むトレースバックを出すため。C 8.5 の承認済みの案(ゲート3)。AAA-P-38)。この保証は、**応答の開始前(ハンドラの中)に起きた例外に限る**。`StreamingResponse` の本文の生成中や `BackgroundTask` の中の例外は対象外(基盤・Admin API は JSON の応答だけを返す前提。D 4.12)。
 
 ### 5.6 タイムアウト・リトライの共通方針(承認済みの案。BAPI-P-12)
 
@@ -223,7 +223,7 @@ API の技術スタックは Indexer・Crawler に揃える(`apps/crawler/pyproj
 
 具体的なディレクトリ・モジュールは D が正本。本書は、Search API・MCP を足しても崩れない共通の規則だけを定める(Crawler・Indexer の構成に倣う)。
 
-- **層**: エントリ(`main`・設定の読み込み)→ 機能パッケージ(`admin`。将来 `search`・`mcp`)→ `infrastructure`(外部システムへのアクセス)→ `common`(共通部品。葉で、誰にも依存しない)。
+- **層**: エントリ(`main`・設定の読み込み)→ `server`(外側のアプリの汎用の口。機能パッケージを import しない)→ 機能パッケージ(`health`・`admin`。将来 `search`・`mcp`)→ `infrastructure`(外部システムへのアクセス)→ `common`(共通部品。葉で、誰にも依存しない)。機能パッケージを組み立てて `server` に渡すのは `main` だけ(D 4.1・4.2)。`health`(`GET /healthz`)は最初の機能パッケージで、`common` だけに依存する。
 - **機能パッケージどうしは依存しない**(`admin` は `search`・`mcp` を import しない)。共通のものは `common` か `infrastructure` に置く。
 - **外部システムへのアクセスは `infrastructure` だけ**: `opensearchpy` は OpenSearch アクセス(`cluster.health` のプローブを含む)、`urllib3` は Crawler クライアントと HTTP のヘルスプローブだけ、`anyio` は `common` の並行の部品だけが import する(D R5)。例外として `urllib3.exceptions` は、OpenSearch の例外の分類のため `infrastructure.opensearch`(`failure.py`・`health_probe.py`)に限って import してよい(3章。BAPI-P-22)。
 - **Store 層へは読み取りだけ**: OpenSearch アクセスの Reader(許可リストのラッパー。D の語)は、書き込みのメソッドを**持たない**(型で書けない構成にする)。書き込みの経路は Crawler の HTTP クライアントだけ。
@@ -253,7 +253,7 @@ API の技術スタックは Indexer・Crawler に揃える(`apps/crawler/pyproj
 - **HO-51 だけは、設計タスクの後に API 基盤の実装タスク(`20261123_implement_api_base`)が追加した**(他の HO-1〜HO-50 は設計タスクが出した。内訳は 9.2.10 の表の直後)。
 - 「出典」は本タスクの文書の ID(`I-n` は各文書の表。A は I-60〜、B は I-70〜、C は I-90〜、D は I-110〜、E は I-80〜89・I-120〜、F は I-100〜)。既存設計の ID(`CAPI-*`・`IA K n`・`AF-U-n`)は引用。
 - 本タスク内の引き継ぎ(B 11.10 の C への引き継ぎ、E 12.6 の F への引き継ぎ、D 8.6 の A・B・C への修正依頼)は、6 文書の間で完結する作業の記録で、申し送りではない(HO には入れない)。
-- 状態の付け方: ゲート3の承認後は、承認を待つものはなく、「未対応」(別タスクでの改訂・実施待ち)と「実装時確認」だけを使う。HO-50(0000 のパス記載の差)はユーザー判断待ち。
+- 状態の付け方: ゲート3の承認後は、承認を待つものはなく、「未対応」(別タスクでの改訂・実施待ち)と「実装時確認」を使う。HO-50(0000 のパス記載の差)はユーザー判断待ち。**HO-51 だけは、追従改訂を終えたので「対応済み」(2026-11-23)**。
 - 申し送りにしなかったもの: SD §6.1・§6.2 の `Origin` 検査(ゲート2で不採用として扱った。BAPI-P-15。リスクは HO-41 と G3-2)、機能設計の「AF-5 は専用再実行 EP」(不採用のため。読み替えを HO-19 に書いた)、admin-view 10.4 の `web` と `api` の同居の扱い(I-72。画面は返された `state` を表示するだけで更新不要)。
 
 ### 9.2 申し送り一覧
@@ -354,12 +354,14 @@ API の技術スタックは Indexer・Crawler に揃える(`apps/crawler/pyproj
 | --- | --- | --- | --- | --- | --- | --- |
 | HO-46 | crawler-api 3.3「パスの扱い」(実機確認) | `job_id`(`%`・`?`・`#`・`.`・`%2F` など)を全文字符号化(`quote(safe="")` の後に `.` を `%2E` に置換)して送ったときの Crawler の挙動を、実 uvicorn で確認する(現在の記述は TestClient の実測)。400・404 が返れば EP-07 では 404 `job_not_found` に写す。生成 SDK がパスの値をどうエンコードするかも確認する | AAPI-U-12・AAA-U-4・FARC-U-18・FMOD-U-2 | 実装時確認 | 中 | 実装時確認(符号化の方式は G3-6) |
 | HO-47 | E・F(フロントエンド) | 実装時に確認する。Vuetify 4.3.4(`VDataTableServer` の挙動、公式の Node 要件、DS が「実機で要確認」とする挙動)、`@mdi/js`(Apache-2.0)の社内ポリシー、`vite-plugin-vuetify` 2.1.x と Vite 8(Rolldown)の組み合わせ、Hey API 0.99 の `throwOnError` の既定と stale 表示の接続・生成コードのコミット方針、`app.frontend("/admin")` の細部、Playwright の `baseURL`・時計操作、Vue Query v5 の `isLoading` の意味(推測として本文に明記した点のひとつ)ほか。生成型は B の `null` 許容(`registration.partial` ほか)をそのまま反映する。一覧は E 12.4(FARC-U-1〜19)・F 8.4(FMOD-U-1〜11) | FARC-U・FMOD-U・B 2.2 | 実装時確認 | 中 | 実装時確認 |
-| HO-48 | A・B・C・D(API) | 実装・結合テストで確認する。A 10.4(BAPI-U-1〜7)、B 11.4(AAPI-U-1〜12。上流の状態名・理由コードの確定時の再確認 U-3、要約未生成タブの実データでの検証 U-8 を含む)、C 12.4(AAA-U-1〜10。`cluster.health`・`cat.*`・`mget`・`msearch` の応答の形、`Connection: close` の挙動、実行中でロックなしの `stalled`、同時実行の上限と所要時間の実測、最小権限、EP-13 の期限後に残るスレッド)、D 8.4(AAM-U-1〜9) | BAPI-U・AAPI-U・AAA-U・AAM-U | 実装時確認 | 中 | 実装時確認 |
+| HO-48 | A・B・C・D(API) | 実装・結合テストで確認する。A 10.4(BAPI-U-1〜7)、B 11.4(AAPI-U-1〜12。上流の状態名・理由コードの確定時の再確認 U-3、要約未生成タブの実データでの検証 U-8 を含む)、C 12.4(AAA-U-1〜10。`cluster.health`・`cat.*`・`mget`・`msearch` の応答の形、`Connection: close` の挙動、実行中でロックなしの `stalled`、同時実行の上限と所要時間の実測、最小権限、EP-13 の期限後に残るスレッド)、D 8.4(AAM-U-1・3〜9。AAM-U-2 は基盤の実装とユーザー回答で確定した。AAM-K-5。HO-51)。A 10.4 の BAPI-U-2 は、サブアプリへの `FastAPI(root_path=…)`・入れ子のマウント・OpenAPI の `servers`・`paths` に絞って残る | BAPI-U・AAPI-U・AAA-U・AAM-U | 実装時確認 | 中 | 実装時確認 |
 | HO-49 | Search API・MCP の設計時 | 再検討する。Admin API の破壊的操作が Search API と同じ公開範囲になる問題(認証の追加が前提。BAPI-U-3)、`/`(ルート)と Search View の配置・`/admin/` 以外のフォールバック(BAPI-U-4)、`search`・`mcp` を `admin` の兄弟に置く構成(AAM-U-6)、`shared/` の範囲と Search View と同じビルドにするか(FMOD-U-7・FARC-U-17) | BAPI-U-3・U-4、AAM-U-6、FMOD-U-7、FARC-U-17 | 将来課題 | 低 | 未対応 |
 | HO-50 | 要件 0000(`agent_tasks/20261122_create_admin_system_design/`) | 成果物パスの記載(`ui-admins/api/ui-admin-api-*`)が、ユーザー確認済みの構成(`docs/v0.x/system-design/api/` と `ui-admin/frontend/`)と異なる(0001 Q3)。0000 はユーザー記載のため、本タスクでは修正していない | 0001 Q3 | 追記 | 低 | 未対応(ユーザー判断) |
-| HO-51 | D(`admin/admin-api-module-structure-v0.1.md`)・A 7章(admin 実装前) | **admin の実装(Admin API のタスク)の前に、D を追従改訂する**(前提条件)。API 基盤の実装(`apps/api`)で、ヘルスチェックを独立した機能パッケージ `health/` にしたため、D と構成が異なる。D の章別の改訂内容・実装上の注意は、この表の直後の「HO-51 の内訳」に書く。承認済みの案(AAM-P-23)の一部を変える点を含むため、D の改訂時にユーザー確認を取る。 | 作業記録 `agent_tasks/20261123_implement_api_base/`(完了後は `agent_tasks/_archive/` 配下)の 0002 2.2・0003・0004・0005・0006(確定内容は内訳に書いたので、作業記録は参考)。AAM-P-23 の承認は D 8.7。AAM-P-23・AAM-U-2、BAPI-P-9・BAPI-P-10 | 既存設計の改訂要求 | 高 | 未対応 |
+| HO-51 | D(`admin/admin-api-module-structure-v0.1.md`)・A 7章(admin 実装前) | **admin の実装(Admin API のタスク)の前に、D を追従改訂する**(前提条件)。API 基盤の実装(`apps/api`)で、ヘルスチェックを独立した機能パッケージ `health/` にしたため、D と構成が異なる。D の章別の改訂内容・実装上の注意は、この表の直後の「HO-51 の内訳」に書く。承認済みの案(AAM-P-23)の一部を変える点を含むため、D の改訂時にユーザー確認を取る(**確認済み。2026-11-23**)。 | 作業記録 `agent_tasks/20261123_implement_api_base/`(完了後は `agent_tasks/_archive/` 配下)の 0002 2.2・0003・0004・0005・0006(確定内容は内訳に書いたので、作業記録は参考)。AAM-P-23 の承認は D 8.7。AAM-P-23・AAM-U-2、BAPI-P-9・BAPI-P-10 | 既存設計の改訂要求 | 高 | **対応済み**(`20261123_update_api_design_after_base_impl`。2026-11-23。D・A・B・C を改訂した) |
 
 **HO-51 の内訳**(設計タスクの後に、API 基盤の実装タスクが追加した申し送り。9.2.1〜9.2.10 の他の HO は設計タスクが出したもの)
+
+> 以下は申し送り当時の記述(2026-11-23 に対応済み。反映先は D の改訂履歴と 4.12)。「改める」「更新する」は未来形のまま残し、旧名称(`server/health.py`・`create_app(settings, admin_app)` など)も経緯の記録として残している。
 
 - **D の改訂(章別)**
   - D 3章・4.2: `server/health.py` は `health/` パッケージ(`create_health_router()`・`HEALTH_PATH`)になった。`server` は機能パッケージを import しない汎用の口で、入口は `create_app(settings, admin_app)` ではなく `create_app(*, routers, mounts, debug_access_log_paths, lifespan)`(`SubAppMount(prefix, app)`)。組み立ては `main` が行い、admin は `main` で `SubAppMount("/api/admin/v1", create_admin_app(...))` を渡すだけ。`server` 専用の設定 dataclass(D 4.1)は作っていない。`README` は `apps/api/README.md` として作った(D 3章の「README は本タスクでは作らない」は設計タスクの記述)。
@@ -370,7 +372,7 @@ API の技術スタックは Indexer・Crawler に揃える(`apps/crawler/pyproj
   - D 4.2「ログと例外ハンドラ」・8.3 AAM-P-23・8.4 AAM-U-2: 「AAM-U-2 の確定」の項に合わせて改める。A 10.4 の BAPI-U-2 と HO-48 の AAM-U-2 の扱い(実装時確認)も更新する。
   - D 4.11: `ApiError(status_code, code, message, *, retryable=False, details=None)` は `retryable`・`details` がキーワード専用。`error_response` は `headers` 引数を持つ(405 の `Allow` のため)。422 の項目名の整形(孤立サロゲートの置換・制御文字のエスケープ・100 文字への切り詰め。Crawler の `display_text.py` 相当)は `common/http/handlers.py` 内に小さく実装した(`common/` に独立の部品は作っていない)。ログ AST 検査の対象メソッドは `debug`・`info`・`warning`・`warn`・`error`・`critical`・`fatal`・`exception`・`log`。
 - **A の改訂**: A 7章の層の記述(エントリ → 機能パッケージ(`admin`。将来 `search`・`mcp`)→ …)に、`server`(汎用の口。機能を import しない)と `health`(最初の機能パッケージ)を加える。A 2.1 は `/healthz` を `api` の URL として列挙するだけで、`health` の導入による変更は不要(`health` のルーターは外側のアプリに載せている)。
-- **AAM-U-2 の確定**: アクセスログは**外側のアプリの middleware だけが、サブアプリの処理後に 1 回出す**。サブアプリには `install_common_http(app, log_access=False)` で例外の吸収と `no-store` だけを設置する。D の「外側はサブアプリ担当パスを除き、サブアプリ側が出す」(**AAM-P-23 は承認済みの案(ゲート3)であり、その分担を逆にする変更のため、D の改訂時にユーザー確認を取る**)とは逆の分担になる。テンプレートは `scope["root_path"]` から `scope["app_root_path"]` を除いた部分と `scope["route"].path` で組み立てる。`route` が `methods` を持たない(Starlette の `Mount` など)ときは `-`(接頭辞が二重になるため)。同じ `scope` が共有される Starlette の挙動に依存する(FastAPI 0.165.0・Starlette 1.10.0 で確認。`tests/server/test_mounts.py` が固定し、更新時に検知する)。`FastAPI(root_path=...)` をサブアプリに設定すると壊れうる。サブアプリ内の `Mount` 配下と外側アプリの `root_path`(プロキシ配下)はテストで固定済み。サブアプリの中にサブアプリをマウントする入れ子は未検証。`create_app` は `redirect_slashes=False` をサブアプリにも強制する。サブアプリ側(admin の factory)では `install_common_http` を呼ばない(二重になる)。
+- **AAM-U-2 の確定**: アクセスログは**外側のアプリの middleware だけが、サブアプリの処理後に 1 回出す**。サブアプリには `install_common_http(app, log_access=False)` で例外の吸収と `no-store` だけを設置する。D の「外側はサブアプリ担当パスを除き、サブアプリ側が出す」(**AAM-P-23 は承認済みの案(ゲート3)であり、その分担を逆にする変更のため、D の改訂時にユーザー確認を取る。確認済み(2026-11-23。D の AAM-K-5)**)とは逆の分担になる。テンプレートは `scope["root_path"]` から `scope["app_root_path"]` を除いた部分と `scope["route"].path` で組み立てる。`route` が `methods` を持たない(Starlette の `Mount` など)ときは `-`(接頭辞が二重になるため)。同じ `scope` が共有される Starlette の挙動に依存する(FastAPI 0.165.0・Starlette 1.10.0 で確認。`tests/server/test_mounts.py` が固定し、更新時に検知する)。`FastAPI(root_path=...)` をサブアプリに設定すると壊れうる(2026-11-23 の対応で、推測・未検証と整理した。BAPI-U-2)。サブアプリ内の `Mount` 配下と外側アプリの `root_path`(プロキシ配下)はテストで固定済み。サブアプリの中にサブアプリをマウントする入れ子は未検証。`create_app` は `redirect_slashes=False` をサブアプリにも強制する。サブアプリ側(admin の factory)では `install_common_http` を呼ばない(二重になる)。
 - **実装上の注意(admin 実装時)**
   - マウントしたサブアプリ自身の lifespan は実行されない(クライアントを閉じる処理は `create_app(lifespan=...)` に渡す)。
   - OpenAPI: 外側の `app.openapi()` にサブアプリのスキーマは集約されない。Admin API の OpenAPI は `create_admin_app(...).openapi()` で生成する(型生成の入力。BAPI-P-9・BAPI-P-10)。外側アプリは `openapi_url=None` のため、実行時に公開する場合はサブアプリ側(`create_admin_app`)の設定で行う。サブアプリを素の `FastAPI(...)` で作ると `/openapi.json` が既定で公開されるため、`docs_url`・`redoc_url`・`openapi_url` を明示すること(A 5.4)。
@@ -380,7 +382,7 @@ API の技術スタックは Indexer・Crawler に揃える(`apps/crawler/pyproj
   - 孤立サロゲートを含む JSON のキーは、pydantic が `loc=("body",)` の `format` にする。
   - ロガー制限の対象(opensearch・urllib3 など)と外部ライブラリの所有者(D R5)は、ライブラリの導入時に足す。
 - **基盤が未実装のもの(admin 実装時に追加)**: 本文上限 1 MiB(超過は 400 `invalid_request`・`details` なし。D 3章の `common/http/body.py`)、厳密 JSON(型変換なし・未知項目は 400。A 5.1)、422 の reason `exclusive` と Admin 固有の値(`config_invalid` など)、`BlockingRunner`(`anyio`)、`/admin/` の静的配信と `WEB_DIST_DIR`、OpenAPI の書き出しと実行時公開の有効化(`OPENAPI_ENABLED`)、`infrastructure`、OpenSearch・Crawler 関連の設定(`ADMITTING_LOCK_GRACE_SECONDS` を含む。A 4章の表のうち実装済みは `HOST`・`PORT`・`LOG_LEVEL` だけ)。
-- **他文書の表記**: B・D・`admin-api-architecture` の「HO-1〜HO-50」と、D 冒頭の「本書に関わるものは HO-39」は、D の追従改訂時に HO-51 を含めて更新する(本タスクは設計の本文を変更しない方針のため、そのままにした)。
+- **他文書の表記**: B・D・`admin-api-architecture` の「HO-1〜HO-50」と、D 冒頭の「本書に関わるものは HO-39」は、D の追従改訂時に HO-51 を含めて更新した(2026-11-23。B・C・D は「HO-1〜HO-51」、D の関連 HO は HO-39・HO-48・HO-49・HO-51)。
 
 ### 9.3 ゲート3の確認事項と回答(2026-11-23)
 
@@ -421,7 +423,7 @@ API の技術スタックは Indexer・Crawler に揃える(`apps/crawler/pyproj
 - `apps/crawler/pyproject.toml`・`apps/indexer/pyproject.toml`(Python・FastAPI・uvicorn・pydantic・opensearch-py・urllib3 の版)、`apps/crawler/tests/architecture/dependency_rules.py`(AST の依存検査)、`deploy/compose/compose.yaml`(ホストの publish は 127.0.0.1、Crawler は publish なし、Indexer 8000・Crawler 8001、索引名の同値定義)、`infra/opensearch/init-indices.sh`(既定の索引名・エイリアス)を確認した。`apps/api/`・`apps/web/` は存在しない(新規)。
 - 技術事実(FastAPI の `app.frontend()`、OpenAPI の無効化、Hey API、opensearch-py 3.2.0)は、フェーズ0の tech-advisor の報告(0004。調査日 2026-11-22)による。本書の作成者は再確認していない。
 
-確認していないこと: `app.frontend("/admin", …)` の細部(BAPI-U-1)、サブアプリのマウントでの OpenAPI の `servers`(BAPI-U-2)、Hey API の生成物と `app.openapi()` の組み合わせ、セキュリティ有効時の OpenSearch の最小権限(BAPI-U-7)。
+確認していないこと: `app.frontend("/admin", …)` の細部(BAPI-U-1)、サブアプリへの `FastAPI(root_path=…)`・入れ子のマウント・サブアプリのマウントでの OpenAPI の `servers`・`paths`(BAPI-U-2。外側アプリの `root_path`(プロキシ配下)・例外ハンドラ・アクセスログの適用範囲は確定済み。D の AAM-K-5)、Hey API の生成物と `app.openapi()` の組み合わせ、セキュリティ有効時の OpenSearch の最小権限(BAPI-U-7)。
 
 ### 10.2 確定(BAPI-K)
 
@@ -488,7 +490,7 @@ API の技術スタックは Indexer・Crawler に揃える(`apps/crawler/pyproj
 | ID | 内容 | 決める場所 |
 | --- | --- | --- |
 | BAPI-U-1 | `app.frontend("/admin", …)` の細部(`/admin` 末尾スラッシュなし、`/admin/` 配下の存在しないアセットの 404、`/api/` との優先)。0004 の未確認事項 | 実装時 |
-| BAPI-U-2 | サブアプリのマウント時の `root_path`・OpenAPI の `servers`・例外ハンドラの適用範囲 | 実装時 |
+| BAPI-U-2 | サブアプリへの `FastAPI(root_path=…)`・入れ子のマウント・サブアプリのマウント時の OpenAPI の `servers`・`paths`(外側アプリの `root_path`(プロキシ配下)・例外ハンドラ・アクセスログの適用範囲は、基盤の実装で確定した。D の AAM-K-5。D 4.2) | admin 実装時 |
 | BAPI-U-3 | Search API が同居・公開されたときの Admin API の扱い(認証の追加まで、破壊的操作が同じ公開範囲になる) | 別タスク(認証の設計) |
 | BAPI-U-4 | `/`(ルート)と Search View の配置、`/admin/` 以外のフォールバック | Search View の設計 |
 | BAPI-U-5 | Hey API 0.x の更新の影響、`throwOnError` と stale 表示の接続、生成コードのコミット方針 | E |
