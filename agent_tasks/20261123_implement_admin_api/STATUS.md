@@ -3,21 +3,22 @@
 ## 基本情報
 
 - 状態: in_progress
-- 現在工程: 実施(P5b 着手前)
+- 現在工程: 実施(P6 着手前)
 - 最終更新: 2026-11-24
 
-- 最新作業記録: 0012-p5a-crawler-client-and-mapping.md
+- 最新作業記録: 0013-p5b-write-eps.md
 
 ## 現在の状況
 
-プラン(0002)承認済み。P0〜P4 完了、レビュー R-A・R-B 完了(いずれも再レビューで指摘なし)。P5 は 2 段に分け、P5a(Crawler 実 API の突き合わせ・Crawler クライアント・写像・偽物・R8 (d))が完了。ブランチ `feature/implement-admin-api`(開始 SHA `cedcd5667638ec18eaf6ee501963ab356d33ed5f`)。pytest 2608 passed(P5a 検証再実行済み)、コミット済み。
-Crawler 実 API と B 9.2 の突き合わせは重大な差なし(0012)。AAPI-U-12・AAA-U-4 は実機で確認済み。
-読み取り系 EP-01・02・09・10・11・12・14 は実装済み。次は P5b(サービス・EP-03〜08 のルーター・DTO・配線)。データ削除を中継する高リスクの変更を含む。
+プラン(0002)承認済み。P0〜P4 完了、レビュー R-A・R-B 完了(いずれも再レビューで指摘なし)。P5(P5a: Crawler 実 API の突き合わせ・クライアント・写像、P5b: 書き込み系 EP-03〜08)が完了。ブランチ `feature/implement-admin-api`(開始 SHA `cedcd5667638ec18eaf6ee501963ab356d33ed5f`)。pytest 3032 passed(P5b 検証再実行済み)、コミット済み。
+Crawler 実 API と B 9.2 の突き合わせは重大な差なし(0012)。AAPI-U-12・AAA-U-4 は実機で確認済み。`SourceSettings` は厳格版(EP-03・04)と nullable 版 `StoredSourceSettings`(EP-01・02)に分けた(0013)。
+EP-01〜12・14 を実装済み。残りは EP-13(P6)と OpenAPI・README・スモーク(P7)。
 
 ## 次のアクション
 
-1. P5b を code-implementer に依頼(`SourceSettings` の共用の判断を含む)
-2. P5b 完了後に再検証・作業記録・コミット。P6(EP-13)→ P7(OpenAPI・README・スモーク)→ レビュー R-C → task-reviewer
+1. P6(EP-13・プローブ)を code-implementer に依頼
+2. P6 完了後にレビュー R-C(前半: P5a・P5b・P6。比較基準は R-B 完了コミット `5dc68c4`〜。データ削除の中継を含むため `code-reviewer` は必須)
+3. 指摘対応後、P7(OpenAPI の `requestBody` 宣言・422 除去・operationId・tags・README・手動スモーク)→ R-C(後半)→ task-reviewer → PR
 
 ## 未解決事項
 
@@ -26,7 +27,8 @@ Crawler 実 API と B 9.2 の突き合わせは重大な差なし(0012)。AAPI-U
 - `tzdata` の直接依存化(P7)、README の Docker 起動例更新(P7)
 - AAM-U-7、BAPI-U-2 の残りは実装時に確認
 - クエリの意味の実機確認(AAA-U-1〜3、AAPI-U-7)・`cat.*` の実際の列・`relocating` の `node` 表記は P7 スモーク
-- `SourceSettings` の共用(EP-03・04 の応答を厳格な型にするか、EP-02 用の nullable 版と分けるか)は P5b で判断
+- **P7 の要対応**: OpenAPI の `requestBody` が出ない(本文を `read_body_as` で読むため)、`PUT /sources/{id}` などに `422` が出る。`openapi_extra` で `requestBody` を宣言し 422 を除去する(0013)
+- 設計書追従改訂の申し送り(0013、7 件。B 2.11 の `SourceSettings`、`ttl_*` の `field` 名、違反の 2 段返却、`connector_config` の NaN・無限大、`%0A` の `job_id`、`lock_state` を読む時刻、巨大整数の `type`)
 - 設計書追従改訂の申し送り(0012): B 11 の AAPI-U-12・AAA-U-4 を「確認済み」に。`redirect=False` は urllib3 では冗長(害なし)
 - 設計書追従改訂の申し送り: 0004(4 件)・0005(5 件)・0006(ErrorCode の固定文 10 件)・0008(6 件)・0009(4 件)・0010(B 2.2 の列挙から EP-12・14 を外す、EP-09 のクエリ違反の返し方)
 - 据え置き: `test_secret_output.py` の DNS 依存、`job_queries.get_job` の失敗集約の整理、`brief_fields` の型付け、Protocol 整合テストの非公開 API 依存(Python 更新時)

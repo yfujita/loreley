@@ -1,10 +1,11 @@
-"""EP-09・10 の DTO(B 5.1・5.2)。"""
+"""EP-07・09・10 の DTO(B 4.2・5.1・5.2)。"""
 
 from typing import Any
 
 from loreley_api.admin.base.codes import (
     DeletionConfirmation,
     DeletionCurrentState,
+    JobStatus,
     RegistrationPhase,
     RerunBlockedReason,
 )
@@ -14,6 +15,15 @@ from loreley_api.admin.schemas.common import (
     ResponseModel,
     Unavailable,
 )
+
+
+class CancelJobResponse(ResponseModel):
+    """EP-07 の応答(B 4.2)。200 は `cancelled`(実行待ちを取り消した)、202 は `running`
+    (実行中への取消要求の受付だけ。完了は EP-10 の `status` で確認する)。
+    """
+
+    job_id: str
+    status: JobStatus
 
 
 class JobListItem(JobBrief):

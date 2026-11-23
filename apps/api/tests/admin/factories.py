@@ -11,8 +11,10 @@ from loreley_api.admin import (
     build_admin_dependencies,
 )
 from loreley_api.common.timestamps import format_instant
+from loreley_api.infrastructure.crawler_client import CrawlerClient
 from tests.api_config import make_admin_settings
 from tests.fakes.clock import DEFAULT_NOW, FixedClock
+from tests.fakes.fake_crawler_client import FakeCrawlerClient
 from tests.fakes.in_memory_readers import InMemoryReaders
 from tests.fakes.inline_runner import InlineRunner
 
@@ -68,7 +70,9 @@ def make_admin_dependencies(
     clock: FixedClock,
     runner: InlineRunner,
     settings: AdminSettings | None = None,
+    crawler: CrawlerClient | None = None,
 ) -> AdminDependencies:
+    """`crawler` を渡さなければ、台本のない `FakeCrawlerClient`(既定の成功を返す)にする。"""
     return build_admin_dependencies(
         settings=settings if settings is not None else make_admin_settings(),
         clock=clock,
@@ -82,4 +86,5 @@ def make_admin_dependencies(
             counts=readers.counts,
             cluster=readers.cluster,
         ),
+        crawler=crawler if crawler is not None else FakeCrawlerClient(),
     )

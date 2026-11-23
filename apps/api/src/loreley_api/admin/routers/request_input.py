@@ -15,19 +15,19 @@ from dataclasses import dataclass
 from typing import Annotated, Any, NoReturn
 
 from fastapi import Depends, Path, Query, Request
+from pydantic import BaseModel, ValidationError
 
 from loreley_api.admin.base.codes import Reason
 from loreley_api.admin.base.constants import (
     DEFAULT_ITEMS_PER_PAGE,
     ITEMS_PER_PAGE_CHOICES,
     PAGE_WINDOW_LIMIT,
+    SOURCE_ID_PATTERN,
 )
 from loreley_api.admin.base.errors import FieldViolation, invalid_request
 from loreley_api.common.http.body import read_limited_body
-from loreley_api.common.http.handlers import format_field_name_part
+from loreley_api.common.http.handlers import describe_validation_errors, format_field_name_part
 
-# 半角英数字で始まり、半角英数字・`.`・`_`・`-` だけの 256 文字以内。
-SOURCE_ID_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,255}")
 JOB_ID_MAX_BYTES = 256
 JSON_MEDIA_TYPE = "application/json"
 
@@ -171,3 +171,23 @@ async def read_json_object(request: Request) -> dict[str, Any]:
 
 
 JsonObjectBody = Annotated[dict[str, Any], Depends(read_json_object)]
+
+
+def read_body_as[ModelT: BaseModel](model: type[ModelT]) -> Callable[..., Awaitable[ModelT]]:
+    """本文を JSON のオブジェクトとして読み、`model`(型は厳密・未知の項目は拒否)で検証する依存関係。
+
+    違反は、すべて 400 `invalid_request`(`details.errors` の項目名と理由だけ。値は載せない)。
+    範囲・排他などの Admin API の値の検証は、型が通った後に `services` が行う(B 2.12 の順序)。
+    """
+
+    async def read_model(body: JsonObjectBody) -> ModelT:
+        try:
+            return model.model_validate(body)
+        except ValidationError as error:
+            violations = [
+                FieldViolation(item["field"], Reason(item["reason"]))
+                for item in describe_validation_errors(error.errors(include_input=False))
+            ]
+            raise invalid_request(violations) from None
+
+    return read_model

@@ -9,9 +9,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 
 from loreley_api.admin.base.codes import JobStatus, Reason
+from loreley_api.admin.base.constants import SOURCE_ID_PATTERN
 from loreley_api.admin.base.errors import FieldViolation, invalid_request
 from loreley_api.admin.routers.request_input import (
-    SOURCE_ID_PATTERN,
     JobIdPath,
     PageParams,
     read_paging,

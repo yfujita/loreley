@@ -7,28 +7,34 @@
 
 from fastapi import APIRouter
 
+from loreley_api.admin.routers.crawl_operations import create_crawl_operations_router
 from loreley_api.admin.routers.documents import create_documents_router
 from loreley_api.admin.routers.jobs import create_jobs_router
 from loreley_api.admin.routers.meta import create_meta_router
 from loreley_api.admin.routers.opensearch import create_opensearch_router
 from loreley_api.admin.routers.sources import create_sources_router
 from loreley_api.admin.services.cluster_overview import ClusterOverviewService
+from loreley_api.admin.services.crawl_commands import CrawlCommandService
 from loreley_api.admin.services.document_review import DocumentReviewService
 from loreley_api.admin.services.job_queries import JobQueryService
 from loreley_api.admin.services.meta import MetaService
 from loreley_api.admin.services.source_catalog import SourceCatalogService
+from loreley_api.admin.services.source_commands import SourceCommandService
 
 
 def create_admin_router(
     *,
     source_catalog: SourceCatalogService,
+    source_commands: SourceCommandService,
+    crawl_commands: CrawlCommandService,
     document_review: DocumentReviewService,
     job_queries: JobQueryService,
     cluster_overview: ClusterOverviewService,
     meta: MetaService,
 ) -> APIRouter:
     router = APIRouter()
-    router.include_router(create_sources_router(source_catalog))
+    router.include_router(create_sources_router(source_catalog, source_commands))
+    router.include_router(create_crawl_operations_router(crawl_commands))
     router.include_router(create_documents_router(document_review))
     router.include_router(create_jobs_router(job_queries))
     router.include_router(create_opensearch_router(cluster_overview))

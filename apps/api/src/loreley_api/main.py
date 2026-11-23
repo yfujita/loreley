@@ -22,6 +22,7 @@ from loreley_api.common.concurrency import BlockingRunner
 from loreley_api.common.logging_setup import configure_logging
 from loreley_api.config import ApiConfig, load_config
 from loreley_api.health import HEALTH_PATH, create_health_router
+from loreley_api.infrastructure.crawler_client import HttpCrawlerClient
 from loreley_api.infrastructure.opensearch import (
     OpenSearchClusterReader,
     OpenSearchCountsReader,
@@ -91,8 +92,14 @@ def build_app(config: ApiConfig) -> FastAPI:
         ),
         cluster=OpenSearchClusterReader(opensearch.client),
     )
+    crawler = HttpCrawlerClient(config.crawler_client)
+    closers.append(crawler.close)
     admin_dependencies = build_admin_dependencies(
-        settings=config.admin, clock=SystemClock(), runner=BlockingRunner(), readers=readers
+        settings=config.admin,
+        clock=SystemClock(),
+        runner=BlockingRunner(),
+        readers=readers,
+        crawler=crawler,
     )
     return create_app(
         routers=[create_health_router()],

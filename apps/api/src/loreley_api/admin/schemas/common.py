@@ -1,7 +1,4 @@
-"""EP をまたぐ共通の DTO(B 2.11)。
-
-`JobAccepted` は、それを返す EP(EP-05・06)を実装するときに足す。
-"""
+"""EP をまたぐ共通の DTO(B 2.11)。"""
 
 from typing import Any
 
@@ -24,6 +21,16 @@ class ResponseModel(BaseModel):
     """応答の DTO の基底。生成後は変更しない。"""
 
     model_config = ConfigDict(frozen=True)
+
+
+class RequestModel(BaseModel):
+    """リクエスト本文の DTO の基底。
+
+    型は厳密(文字列から数値・真偽値へ変換しない。`30.0` は整数でない)で、未知の項目は拒否する
+    (`unknown_field`。A 5.1・B 2.12)。
+    """
+
+    model_config = ConfigDict(strict=True, extra="forbid", frozen=True)
 
 
 class PagedResponse[ItemT](ResponseModel):
@@ -57,11 +64,12 @@ class JobBrief(ResponseModel):
     cancellable: bool
 
 
-class SourceSettings(ResponseModel):
-    """データソースの設定(EP-02〜04)。
+class StoredSourceSettings(ResponseModel):
+    """保存値を読んだデータソースの設定(EP-02 の応答の土台)。
 
-    EP-02 は保存値を読むので、読めない項目(欠落・型違い)は `null` で、`unavailable.<項目名>` に
+    保存値を読むので、読めない項目(欠落・型違い)は `null` で、`unavailable.<項目名>` に
     `malformed` が載る(B 2.2)。`ttl_days` は `ttl_seconds` が日で割り切れるときだけ。
+    EP-03・04 の応答は、Crawler が返した値を確かめて作るので、`null` を持たない `SourceSettings`。
     """
 
     source_id: str
@@ -76,6 +84,39 @@ class SourceSettings(ResponseModel):
     schedule_cron: str | None
     status: SourceStatus | None
     updated_at: str | None
+
+
+class SourceSettings(ResponseModel):
+    """登録・更新が返すデータソースの設定(EP-03・04。B 2.11)。
+
+    Crawler が返した保存内容を確かめてから作る(読めなければ 502 で、この型にならない)ので、
+    `null` を許すのは `ttl_days`(日で割り切れないとき)と `schedule_cron`(手動のみ)だけ。
+    """
+
+    source_id: str
+    connector_type: str
+    connector_config: dict[str, Any]
+    ttl_seconds: int
+    ttl_days: int | None
+    ratio_threshold_percent: int | float
+    min_delete_count: int
+    schedule_cron: str | None
+    status: SourceStatus
+    updated_at: str
+
+
+class JobAccepted(ResponseModel):
+    """受け付けたジョブ(EP-05・06 の 202)。"""
+
+    job_id: str
+    job_type: JobType
+    source_id: str
+    status: JobStatus
+    trigger: JobTrigger
+    # 記録した指定。`source_delete` は Crawler の応答に含まれないので `null`。
+    force_delete: bool | None
+    rewrite_mode: bool | None
+    queued_at: str
 
 
 class ExistingJob(ResponseModel):

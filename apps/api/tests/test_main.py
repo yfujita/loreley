@@ -1,3 +1,4 @@
+import json
 import logging
 import socket
 import subprocess
@@ -8,6 +9,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from loreley_api.infrastructure.crawler_client import CrawlerClientConfig, HttpCrawlerClient
 from loreley_api.infrastructure.opensearch import (
     IndexNames,
     ReadOnlyConnection,
@@ -16,6 +18,7 @@ from loreley_api.infrastructure.opensearch import (
 from loreley_api.main import ADMIN_API_PREFIX, build_app, build_lifespan, close_all, main
 from tests.api_config import SENTINEL_PASSWORD, make_api_config
 from tests.fakes.fake_opensearch_client import FakeOpenSearchClient
+from tests.fakes.local_http_server import StubReply, local_http_server
 from tests.infrastructure.opensearch.sample_responses import (
     hit,
     mget_doc,
@@ -293,6 +296,45 @@ def test_the_admin_api_reads_the_cluster_and_serves_the_meta_from_the_settings(
     assert cluster.status_code == 200
     assert cluster.json()["indices"] == [{"name": "a", "status": "green", "document_count": 3}]
     assert meta.json() == {"cron_timezone": "Asia/Tokyo", "dashboards_url": None}
+
+
+def test_the_admin_api_relays_to_the_configured_crawler_url_and_closes_the_client_on_stop(
+    fake_opensearch: FakeOpenSearchClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    close_count = 0
+    original_close = HttpCrawlerClient.close
+
+    def counting_close(self: HttpCrawlerClient) -> None:
+        nonlocal close_count
+        close_count += 1
+        original_close(self)
+
+    monkeypatch.setattr(HttpCrawlerClient, "close", counting_close)
+    accepted = {
+        "job_id": "job-1",
+        "job_type": "crawl",
+        "source_id": "docs",
+        "status": "queued",
+        "trigger": "manual",
+        "force_delete": False,
+        "rewrite_mode": True,
+        "queued_at": "2026-11-24T00:00:00.000Z",
+    }
+
+    with local_http_server() as crawler:
+        crawler.set_default_reply(StubReply(202, json.dumps(accepted).encode()))
+        config = make_api_config(crawler_client=CrawlerClientConfig(crawler.url, 3.0, 5.0))
+        with TestClient(build_app(config)) as client:
+            response = client.post(
+                f"{ADMIN_API_PREFIX}/sources/docs/crawl-jobs", json={"rewrite_mode": True}
+            )
+            assert close_count == 0
+
+        assert response.status_code == 202
+        assert [request.request_line for request in crawler.requests] == [
+            "POST /sources/docs/crawl-jobs HTTP/1.1"
+        ]
+    assert close_count == 1
 
 
 def test_the_opensearch_client_is_closed_when_the_app_stops(

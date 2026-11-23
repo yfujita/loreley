@@ -170,8 +170,10 @@ def test_the_source_list_takes_no_query(client: TestClient, query: str) -> None:
     assert error["reason"] == "unknown_field"
 
 
-def test_the_source_list_accepts_only_get(client: TestClient) -> None:
-    response = client.post(SOURCES)
+# POST は EP-03(登録)なので、ここには含めない。
+@pytest.mark.parametrize("method", ["put", "patch", "delete"])
+def test_the_source_list_accepts_get_and_post_only(client: TestClient, method: str) -> None:
+    response = getattr(client, method)(SOURCES)
 
     assert response.status_code == 405
     assert response.json()["error"]["code"] == "method_not_allowed"
@@ -328,9 +330,9 @@ def test_the_connector_config_is_returned_only_by_the_detail_and_not_logged(
     assert_secret_absent(SENTINEL, records=caplog.records)
 
 
-# POST・PUT・DELETE は後続のフェーズで足す(この時点では 405。足すときは、このリストから外す)。
-@pytest.mark.parametrize("method", ["post", "put", "delete"])
-def test_the_detail_accepts_only_get(client: TestClient, method: str) -> None:
+# PUT は EP-04(更新)なので、ここには含めない。`POST`・`DELETE` は、この形のパスでは未定義。
+@pytest.mark.parametrize("method", ["post", "patch", "delete"])
+def test_the_detail_accepts_only_get_and_put(client: TestClient, method: str) -> None:
     response = getattr(client, method)(f"{SOURCES}/docs")
 
     assert response.status_code == 405
