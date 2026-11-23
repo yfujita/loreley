@@ -73,11 +73,16 @@ def test_the_restricted_loggers_are_the_documented_ones() -> None:
 
 
 @pytest.mark.parametrize("name", RESTRICTED_LOGGER_NAMES)
-def test_every_restricted_logger_is_held_at_error_even_with_debug(name: str) -> None:
+def test_every_restricted_logger_is_held_at_error_even_with_debug(
+    name: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     stream = io.StringIO()
     configure_logging(level="DEBUG", stream=stream)
 
     logger = logging.getLogger(name)
+    # opensearch-py は、import した時点で `opensearchpy.trace` の `propagate` を False にする
+    # (トレース用のロガー)。import の順序でこのテストの結果が変わらないよう、そろえる。
+    monkeypatch.setattr(logger, "propagate", True)
     logger.debug("SENTINEL-DEBUG GET /SENTINEL-ID")
     logger.info("SENTINEL-INFO")
     logger.warning("SENTINEL-WARNING")
