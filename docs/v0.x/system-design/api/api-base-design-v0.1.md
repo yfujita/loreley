@@ -374,6 +374,8 @@ API の技術スタックは Indexer・Crawler に揃える(`apps/crawler/pyproj
 - **実装上の注意(admin 実装時)**
   - マウントしたサブアプリ自身の lifespan は実行されない(クライアントを閉じる処理は `create_app(lifespan=...)` に渡す)。
   - OpenAPI: 外側の `app.openapi()` にサブアプリのスキーマは集約されない。Admin API の OpenAPI は `create_admin_app(...).openapi()` で生成する(型生成の入力。BAPI-P-9・BAPI-P-10)。外側アプリは `openapi_url=None` のため、実行時に公開する場合はサブアプリ側(`create_admin_app`)の設定で行う。サブアプリを素の `FastAPI(...)` で作ると `/openapi.json` が既定で公開されるため、`docs_url`・`redoc_url`・`openapi_url` を明示すること(A 5.4)。
+  - **想定外の例外を 500 にして再送出しない保証(A 5.5)の範囲**: レスポンスの開始前(ハンドラの中)に起きた例外だけ。`StreamingResponse` の本文の生成中や `BackgroundTask` の中の例外は、middleware(`BaseHTTPMiddleware`)が `call_next` の後で起きるため捕捉できず、送信を始めた応答は 500 に差し替えられない(uvicorn がメッセージを含むトレースバックを出しうる)。Admin API・基盤は JSON の応答だけを返す前提で、これらを使い始めるときは、純粋な ASGI middleware への置き換えなどを再検討する。
+  - **OpenAPI の 422**: FastAPI は検証のある操作の OpenAPI に 422 の応答を既定で足す。基盤は `RequestValidationError` を 400 `invalid_request` に変えるため、Admin API の OpenAPI を生成するときは、400 の共通エラースキーマを宣言し、422 の宣言を除く(A 5.4。実際の応答と仕様を一致させる)。
   - `ClientDisconnect`(本文を読む POST・PUT で、クライアントが切断したとき)は、現状は想定外の例外として ERROR ログ・500 のアクセスログになる。admin 実装時に別扱い(ログ水準を下げるなど)を検討する。
   - 孤立サロゲートを含む JSON のキーは、pydantic が `loc=("body",)` の `format` にする。
   - ロガー制限の対象(opensearch・urllib3 など)と外部ライブラリの所有者(D R5)は、ライブラリの導入時に足す。

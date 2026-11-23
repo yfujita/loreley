@@ -12,6 +12,12 @@
 接頭辞(`root_path`)が見えるためである(`_route_template`)。サブアプリには、例外の吸収のため
 この middleware を `log_access=False` で別に設置する(サブアプリ自身の最外殻の Starlette が
 想定外の例外を text/plain の 500 にして再送出するため)。
+
+**保証の範囲**: 想定外の例外を 500 に変えて再送出しないのは、レスポンスの開始前(ハンドラの中)
+に起きた例外だけである。`StreamingResponse` の本文の生成中や `BackgroundTask` の中の例外は、
+`call_next` が返った後に起きるため、ここでは捕捉できない(送信を始めた応答は 500 に差し替えられ
+ない。uvicorn がメッセージを含むトレースバックを出しうる)。この API は JSON の応答だけを返す前提
+で、これらを使い始めるときは、純粋な ASGI middleware への置き換えなどを再検討する(HO-51)。
 """
 
 import logging
@@ -21,6 +27,7 @@ from collections.abc import Collection
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.routing import get_route_path
 from starlette.types import ASGIApp, Scope
 
 from loreley_api.common.http.errors import internal_error_response, log_unexpected_error
@@ -41,8 +48,12 @@ class CommonHttpMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         started_at = time.monotonic()
+        # `no-store` の判定は、`request.url.path`(プロキシの配下の `root_path` を含む)ではなく、
+        # アプリから見たパスで行う。サブアプリの処理で `scope["root_path"]` が変わるため、
+        # 処理の前に判定する。
+        is_api_path = get_route_path(request.scope).startswith(NO_STORE_PATH_PREFIX)
         response = await self._respond(request, call_next)
-        if request.url.path.startswith(NO_STORE_PATH_PREFIX):
+        if is_api_path:
             response.headers["Cache-Control"] = "no-store"
         if self._log_access:
             elapsed_ms = (time.monotonic() - started_at) * 1000

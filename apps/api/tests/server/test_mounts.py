@@ -208,6 +208,21 @@ def test_the_root_path_of_the_outer_app_is_not_part_of_the_logged_template(
     assert SENTINEL_ID not in server_side_text(logs.records)
 
 
+def test_no_store_is_set_by_the_path_seen_by_the_app_under_a_root_path() -> None:
+    """`root_path` の配下でも、`/api/` の応答には `no-store` が付き、それ以外には付かない。
+
+    `request.url.path` は `/proxy` を含むので、それで判定すると付かなくなる(レビュー指摘)。
+    """
+    client = TestClient(make_app(), root_path="/proxy")
+
+    api_response = client.get(f"/proxy{PREFIX_A}/items/{SENTINEL_ID}")
+    not_api_response = client.get("/proxy/nope")
+
+    assert api_response.headers["cache-control"] == "no-store"
+    assert not_api_response.status_code == 404
+    assert "cache-control" not in not_api_response.headers
+
+
 def test_a_mounted_route_is_logged_at_info_unless_it_is_a_debug_path(
     logs: pytest.LogCaptureFixture,
 ) -> None:
