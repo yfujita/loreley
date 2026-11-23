@@ -2,7 +2,7 @@
 
 `admin` が import するのは、`ports` の Protocol と型だけ(R6)。`main.py` は、接続の生成
 (`create_read_connection`・`create_probe_connection`)と Reader の組み立てだけを使う。
-`health_probe` は、EP-13 の実装時に足す。
+`health_probe` は、EP-13 の死活確認(`cluster.health` の応答の有無)。
 """
 
 from loreley_api.infrastructure.opensearch.cluster_reader import OpenSearchClusterReader
@@ -14,6 +14,10 @@ from loreley_api.infrastructure.opensearch.connection import (
 )
 from loreley_api.infrastructure.opensearch.counts_reader import OpenSearchCountsReader
 from loreley_api.infrastructure.opensearch.deletions_reader import OpenSearchDeletionsReader
+from loreley_api.infrastructure.opensearch.health_probe import (
+    OpenSearchHealthCheck,
+    OpenSearchHealthProbe,
+)
 from loreley_api.infrastructure.opensearch.jobs_reader import OpenSearchJobsReader
 from loreley_api.infrastructure.opensearch.ports import (
     ClusterReader,
@@ -49,6 +53,8 @@ __all__ = [
     "OpenSearchConnectionConfig",
     "OpenSearchCountsReader",
     "OpenSearchDeletionsReader",
+    "OpenSearchHealthCheck",
+    "OpenSearchHealthProbe",
     "OpenSearchJobsReader",
     "OpenSearchSearchIndexReader",
     "OpenSearchSourcesReader",

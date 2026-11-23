@@ -7,6 +7,7 @@
 from loreley_api.admin.app import create_admin_app
 from loreley_api.admin.dependencies import (
     AdminDependencies,
+    AdminProbes,
     AdminReaders,
     build_admin_dependencies,
 )
@@ -14,6 +15,7 @@ from loreley_api.admin.settings import AdminSettings
 
 __all__ = [
     "AdminDependencies",
+    "AdminProbes",
     "AdminReaders",
     "AdminSettings",
     "build_admin_dependencies",

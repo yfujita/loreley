@@ -3,10 +3,15 @@
 - CORS を許可しない: `fastapi.middleware.cors`・`starlette.middleware.cors` を import しない。
 - ルート関数と、`Depends` に渡す依存関係は `async def`(同期の関数は共通のスレッドプールで動き、
   並行の上限を迂回するため)。
+- ブロッキングの呼び出しは `BlockingRunner` 経由。**例外は `WebDistProbe`**(ローカルのファイルの
+  確認だけ。C 6.3)で、`services.dashboard` がメソッドの本体から直接呼ぶ。ほかのプローブの
+  `.check(...)` は、入れ子の関数・lambda(`runner.run_all` に渡す呼び出し)の中にだけ書く。
 - `FastAPI(...)` は、`docs_url=None`・`redoc_url=None`・`redirect_slashes=False` を明示する。
   `openapi_url` も明示する(値は問わない)。
 
-制約: import 文と、デコレーターが `<名前>.<HTTP メソッド>(...)` の形のルート関数だけが対象。
+制約: runner 経由の検査は、`<受け手>.check(...)` の呼び出しだけが対象(プローブの操作名は `check`)。
+どの `runner` の呼び出しに渡されるかまでは見ない(区分は `tests/admin/services/test_dashboard.py` が
+確かめる)。import 文と、デコレーターが `<名前>.<HTTP メソッド>(...)` の形のルート関数だけが対象。
 動的な import やデコレーターを変数に入れた登録は検出できない。`Depends` の検査は、引数の関数を
 **名前だけで**パッケージ内の定義に結び付ける(同名の別の関数は区別できない)。クラスを渡した
 依存関係・名前でない式(`Depends(factory()())` など)・別名での登録(`dep = Depends; dep(f)`)は
@@ -15,7 +20,7 @@
 """
 
 import ast
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -231,6 +236,60 @@ def find_fastapi_calls_missing_arguments(sources: Mapping[str, str]) -> list[str
     return problems
 
 
+# --- R9 の例外: ブロッキングの呼び出しは runner 経由(直接呼んでよいのは `WebDistProbe` だけ) ---
+
+PROBE_OPERATION = "check"
+# メソッドの本体から直接呼んでよい `.check(...)` の受け手(`WebDistProbe`)。
+DIRECT_CHECK_RECEIVERS = frozenset({"self._web_probe"})
+DASHBOARD_SERVICE_FILE = "admin/services/dashboard.py"
+PROBE_PROTOCOL_NAMES = frozenset({"HttpHealthCheck", "WebDistCheck", "OpenSearchHealthCheck"})
+
+
+def _names_in(source: str) -> set[str]:
+    return {node.id for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Name)}
+
+
+def _iter_without_nested_callables(node: ast.AST) -> Iterator[ast.AST]:
+    """入れ子の関数・lambda の中を除いて、`node` の下の全ノードをたどる。"""
+    for child in ast.iter_child_nodes(node):
+        if isinstance(child, ast.Lambda | ast.FunctionDef | ast.AsyncFunctionDef):
+            continue
+        yield child
+        yield from _iter_without_nested_callables(child)
+
+
+def find_direct_check_calls(source: str) -> list[str]:
+    """メソッドの本体で直接呼ばれる `<受け手>.check(...)` の受け手(`self._web_probe` など)。
+
+    入れ子の関数・lambda の中の呼び出しは、`runner` に渡す呼び出しなので数えない。
+    """
+    tree = ast.parse(source)
+    methods = [
+        member
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ClassDef)
+        for member in node.body
+        if isinstance(member, ast.FunctionDef | ast.AsyncFunctionDef)
+    ]
+    return [
+        ast.unparse(node.func.value)
+        for method in methods
+        for node in _iter_without_nested_callables(method)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == PROBE_OPERATION
+    ]
+
+
+def find_disallowed_direct_checks(sources: Mapping[str, str]) -> list[str]:
+    return [
+        f"{path} calls {receiver}.check(...) directly"
+        for path, source in sorted(sources.items())
+        for receiver in find_direct_check_calls(source)
+        if receiver not in DIRECT_CHECK_RECEIVERS
+    ]
+
+
 # --- 実際のソースツリー ---
 
 
@@ -252,6 +311,20 @@ def test_dependencies_passed_to_depends_are_all_async() -> None:  # R9
     used_in = {use.path for use in find_dependency_uses(sources)}
     assert "admin/routers/request_input.py" in used_in
     assert find_sync_dependencies(sources) == []
+
+
+def test_only_the_web_dist_probe_is_called_directly_and_the_others_go_through_the_runner() -> None:
+    # プローブ(の Protocol)を使う admin のファイルだけが対象(`StalledCheck.check` などは別物)。
+    sources = {
+        path: source
+        for path, source in load_package_sources().items()
+        if path.startswith("admin/") and PROBE_PROTOCOL_NAMES.intersection(_names_in(source))
+    }
+
+    # 空振りしていない: `services.dashboard` が `WebDistProbe` を直接呼んでいる。
+    assert DASHBOARD_SERVICE_FILE in sources
+    assert find_direct_check_calls(sources[DASHBOARD_SERVICE_FILE]) == ["self._web_probe"]
+    assert find_disallowed_direct_checks(sources) == []
 
 
 def test_every_fastapi_call_states_the_http_defaults_explicitly() -> None:
@@ -371,6 +444,64 @@ def test_a_bare_fastapi_call_reports_every_missing_argument() -> None:
 def test_a_qualified_fastapi_call_is_also_checked() -> None:
     sources = {"a.py": "fastapi.FastAPI()"}
     assert len(find_fastapi_calls_missing_arguments(sources)) == len(ALL_NAMES)
+
+
+# --- R9 の例外(自己テスト) ---
+
+
+def test_a_direct_call_of_another_probe_is_detected() -> None:
+    source = (
+        "class Service:\n"
+        "    async def check_components(self):\n"
+        "        self._web_probe.check(self._dir)\n"
+        "        return self._http_probe.check(self._url)\n"
+    )
+
+    assert find_disallowed_direct_checks({"admin/services/x.py": source}) == [
+        "admin/services/x.py calls self._http_probe.check(...) directly"
+    ]
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "self._opensearch_probe.check()",
+        "probe.check()",
+        "await self._probe.check()",
+        "result = self._probes['http'].check(url)",
+        "return [self._http_probe.check(url) for url in urls]",
+    ],
+)
+def test_a_direct_call_in_any_expression_form_is_detected(statement: str) -> None:
+    source = f"class Service:\n    async def run(self):\n        {statement}\n"
+
+    assert len(find_disallowed_direct_checks({"a.py": source})) == 1
+
+
+def test_calls_inside_a_lambda_or_a_nested_function_are_not_direct() -> None:
+    source = (
+        "class Service:\n"
+        "    def build(self, url):\n"
+        "        first = self._timed(lambda: self._http_probe.check(url))\n"
+        "        def run():\n"
+        "            return self._http_probe.check(url)\n"
+        "        return first, run, self._timed(self._opensearch_probe.check)\n"
+    )
+
+    assert find_direct_check_calls(source) == []
+
+
+def test_the_web_dist_probe_may_be_called_directly() -> None:
+    source = "class Service:\n    async def run(self):\n        self._web_probe.check(self._dir)\n"
+
+    assert find_direct_check_calls(source) == ["self._web_probe"]
+    assert find_disallowed_direct_checks({"a.py": source}) == []
+
+
+def test_other_method_names_are_not_probe_calls() -> None:
+    source = "class Service:\n    async def run(self):\n        self._reader.read()\n"
+
+    assert find_direct_check_calls(source) == []
 
 
 # --- R9: `Depends` の関数が `async def`(自己テスト) ---

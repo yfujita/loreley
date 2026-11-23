@@ -3,7 +3,7 @@
 `main.py` が、Reader・時計・`BlockingRunner`・設定から `build_admin_dependencies` で作り、
 `create_admin_app` に渡す。ルーターは、この入れ物を受け取らない。`app.py` が必要なサービスを
 個別にルーターへ渡す(D 4.3 の `create_admin_router(deps)` は、D 6章の許可表と循環するため。
-0004 申し送り 1)。Crawler クライアントと Reader は、`main.py` が作って渡す。
+0004 申し送り 1)。Crawler クライアント・Reader・プローブは、`main.py` が作って渡す。
 """
 
 from dataclasses import dataclass
@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from loreley_api.admin.services.cluster_overview import ClusterOverviewService
 from loreley_api.admin.services.crawl_commands import CrawlCommandService
 from loreley_api.admin.services.crawler_relay import CrawlerRelay
+from loreley_api.admin.services.dashboard import DashboardService
 from loreley_api.admin.services.document_review import DocumentReviewService
 from loreley_api.admin.services.job_queries import JobQueryService
 from loreley_api.admin.services.lock_view import LockViewService
@@ -27,9 +28,11 @@ from loreley_api.infrastructure.opensearch import (
     CountsReader,
     DeletionsReader,
     JobsReader,
+    OpenSearchHealthCheck,
     SearchIndexReader,
     SourcesReader,
 )
+from loreley_api.infrastructure.probes import HttpHealthCheck, WebDistCheck
 
 
 @dataclass(frozen=True)
@@ -45,6 +48,15 @@ class AdminReaders:
 
 
 @dataclass(frozen=True)
+class AdminProbes:
+    """`main.py` が作る死活確認のプローブ(Protocol。EP-13)。"""
+
+    http: HttpHealthCheck
+    opensearch: OpenSearchHealthCheck
+    web_dist: WebDistCheck
+
+
+@dataclass(frozen=True)
 class AdminDependencies:
     source_catalog: SourceCatalogService
     source_commands: SourceCommandService
@@ -52,6 +64,7 @@ class AdminDependencies:
     document_review: DocumentReviewService
     job_queries: JobQueryService
     cluster_overview: ClusterOverviewService
+    dashboard: DashboardService
     meta: MetaService
 
 
@@ -62,6 +75,7 @@ def build_admin_dependencies(
     runner: BlockingRunner,
     readers: AdminReaders,
     crawler: CrawlerClient,
+    probes: AdminProbes,
 ) -> AdminDependencies:
     stalled_check = StalledCheck(jobs=readers.jobs, runner=runner)
     lock_view = LockViewService(
@@ -100,6 +114,20 @@ def build_admin_dependencies(
         ),
         cluster_overview=ClusterOverviewService(
             cluster=readers.cluster, runner=runner, clock=clock
+        ),
+        dashboard=DashboardService(
+            http_probe=probes.http,
+            opensearch_probe=probes.opensearch,
+            web_probe=probes.web_dist,
+            runner=runner,
+            clock=clock,
+            crawler_url=settings.crawler_url,
+            indexer_url=settings.indexer_url,
+            dashboards_health_url=settings.dashboards_health_url,
+            embedding_health_url=settings.embedding_health_url,
+            llm_health_url=settings.llm_health_url,
+            web_dist_dir=settings.web_dist_dir,
+            probe_timeout_seconds=settings.probe_timeout_seconds,
         ),
         meta=MetaService(
             cron_timezone=settings.cron_timezone, dashboards_url=settings.dashboards_url

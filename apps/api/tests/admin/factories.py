@@ -6,15 +6,18 @@ from typing import Any
 
 from loreley_api.admin import (
     AdminDependencies,
+    AdminProbes,
     AdminReaders,
     AdminSettings,
     build_admin_dependencies,
 )
+from loreley_api.common.concurrency import BlockingRunner
 from loreley_api.common.timestamps import format_instant
 from loreley_api.infrastructure.crawler_client import CrawlerClient
 from tests.api_config import make_admin_settings
 from tests.fakes.clock import DEFAULT_NOW, FixedClock
 from tests.fakes.fake_crawler_client import FakeCrawlerClient
+from tests.fakes.fake_probes import FakeProbes
 from tests.fakes.in_memory_readers import InMemoryReaders
 from tests.fakes.inline_runner import InlineRunner
 
@@ -68,11 +71,12 @@ def on_nth_call(
 def make_admin_dependencies(
     readers: InMemoryReaders,
     clock: FixedClock,
-    runner: InlineRunner,
+    runner: InlineRunner | BlockingRunner,
     settings: AdminSettings | None = None,
     crawler: CrawlerClient | None = None,
+    probes: AdminProbes | None = None,
 ) -> AdminDependencies:
-    """`crawler` を渡さなければ、台本のない `FakeCrawlerClient`(既定の成功を返す)にする。"""
+    """`crawler`・`probes` を渡さなければ、台本のない偽物(既定の成功・`normal`)にする。"""
     return build_admin_dependencies(
         settings=settings if settings is not None else make_admin_settings(),
         clock=clock,
@@ -87,4 +91,5 @@ def make_admin_dependencies(
             cluster=readers.cluster,
         ),
         crawler=crawler if crawler is not None else FakeCrawlerClient(),
+        probes=probes if probes is not None else FakeProbes().as_admin_probes(),
     )

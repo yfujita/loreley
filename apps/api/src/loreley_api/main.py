@@ -16,7 +16,12 @@ import uvicorn
 from fastapi import FastAPI
 from starlette.types import Lifespan
 
-from loreley_api.admin import AdminReaders, build_admin_dependencies, create_admin_app
+from loreley_api.admin import (
+    AdminProbes,
+    AdminReaders,
+    build_admin_dependencies,
+    create_admin_app,
+)
 from loreley_api.common.clock import SystemClock
 from loreley_api.common.concurrency import BlockingRunner
 from loreley_api.common.logging_setup import configure_logging
@@ -27,11 +32,14 @@ from loreley_api.infrastructure.opensearch import (
     OpenSearchClusterReader,
     OpenSearchCountsReader,
     OpenSearchDeletionsReader,
+    OpenSearchHealthProbe,
     OpenSearchJobsReader,
     OpenSearchSearchIndexReader,
     OpenSearchSourcesReader,
+    create_probe_connection,
     create_read_connection,
 )
+from loreley_api.infrastructure.probes import HttpHealthProbe, WebDistProbe
 from loreley_api.server import SubAppMount, create_app
 
 ADMIN_API_PREFIX = "/api/admin/v1"
@@ -94,12 +102,23 @@ def build_app(config: ApiConfig) -> FastAPI:
     )
     crawler = HttpCrawlerClient(config.crawler_client)
     closers.append(crawler.close)
+    # 死活確認(EP-13)は、読み取りとは別のクライアント(短いタイムアウト・再試行なし)で行う。
+    opensearch_probe_connection = create_probe_connection(config.opensearch)
+    closers.append(opensearch_probe_connection.close)
+    http_probe = HttpHealthProbe(config.http_probe)
+    closers.append(http_probe.close)
+    probes = AdminProbes(
+        http=http_probe,
+        opensearch=OpenSearchHealthProbe(opensearch_probe_connection.client),
+        web_dist=WebDistProbe(),
+    )
     admin_dependencies = build_admin_dependencies(
         settings=config.admin,
         clock=SystemClock(),
         runner=BlockingRunner(),
         readers=readers,
         crawler=crawler,
+        probes=probes,
     )
     return create_app(
         routers=[create_health_router()],

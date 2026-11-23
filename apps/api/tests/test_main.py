@@ -15,8 +15,9 @@ from loreley_api.infrastructure.opensearch import (
     ReadOnlyConnection,
     ReadOnlyOpenSearch,
 )
+from loreley_api.infrastructure.probes import HttpHealthProbe
 from loreley_api.main import ADMIN_API_PREFIX, build_app, build_lifespan, close_all, main
-from tests.api_config import SENTINEL_PASSWORD, make_api_config
+from tests.api_config import SENTINEL_PASSWORD, make_admin_settings, make_api_config
 from tests.fakes.fake_opensearch_client import FakeOpenSearchClient
 from tests.fakes.local_http_server import StubReply, local_http_server
 from tests.infrastructure.opensearch.sample_responses import (
@@ -335,6 +336,60 @@ def test_the_admin_api_relays_to_the_configured_crawler_url_and_closes_the_clien
             "POST /sources/docs/crawl-jobs HTTP/1.1"
         ]
     assert close_count == 1
+
+
+def test_the_admin_api_serves_the_dashboard_with_the_configured_targets_and_closes_the_probes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """EP-13 の配線: 設定の確認先(Crawler・Indexer・`WEB_DIST_DIR`)と、プローブ用の接続。"""
+    (tmp_path / "index.html").write_text("<html></html>", encoding="utf-8")
+    probe_opensearch = FakeOpenSearchClient()
+    probe_opensearch.script("cluster.health", {"status": "green"})
+    monkeypatch.setattr(
+        "loreley_api.main.create_probe_connection",
+        lambda config: ReadOnlyConnection(
+            client=ReadOnlyOpenSearch(probe_opensearch), close=probe_opensearch.close
+        ),
+    )
+    http_probe_close_count = 0
+    original_close = HttpHealthProbe.close
+
+    def counting_close(self: HttpHealthProbe) -> None:
+        nonlocal http_probe_close_count
+        http_probe_close_count += 1
+        original_close(self)
+
+    monkeypatch.setattr(HttpHealthProbe, "close", counting_close)
+
+    with local_http_server() as crawler, local_http_server() as indexer:
+        indexer.set_default_reply(StubReply(503))
+        config = make_api_config(
+            admin=make_admin_settings(
+                crawler_url=crawler.url, indexer_url=indexer.url, web_dist_dir=str(tmp_path)
+            )
+        )
+        with TestClient(build_app(config)) as client:
+            response = client.get(f"{ADMIN_API_PREFIX}/dashboard")
+            assert probe_opensearch.close_count == 0
+            assert http_probe_close_count == 0
+
+        assert [request.request_line for request in crawler.requests] == ["GET /healthz HTTP/1.1"]
+        assert [request.request_line for request in indexer.requests] == ["GET /healthz HTTP/1.1"]
+
+    assert response.status_code == 200
+    states = {c["id"]: (c["state"], c["reason"]) for c in response.json()["components"]}
+    assert states == {
+        "crawler": ("normal", None),
+        "indexer": ("abnormal", "unexpected_status"),
+        "opensearch": ("normal", None),
+        "api": ("normal", None),
+        "web": ("normal", None),
+        "opensearch-dashboards": ("not_configured", None),
+        "embedding": ("not_configured", None),
+        "llm": ("not_configured", None),
+    }
+    assert probe_opensearch.close_count == 1
+    assert http_probe_close_count == 1
 
 
 def test_the_opensearch_client_is_closed_when_the_app_stops(

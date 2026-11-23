@@ -64,6 +64,22 @@ class LockState(StrEnum):
     UNKNOWN = "unknown"
 
 
+class ComponentId(StrEnum):
+    """EP-13 の `components[].id`。宣言の順が、応答の固定の順(B 8.1)。
+
+    `web` は compose のサービスではなく、`api` が配信する Web UI の表示名。
+    """
+
+    CRAWLER = "crawler"
+    INDEXER = "indexer"
+    OPENSEARCH = "opensearch"
+    API = "api"
+    WEB = "web"
+    OPENSEARCH_DASHBOARDS = "opensearch-dashboards"
+    EMBEDDING = "embedding"
+    LLM = "llm"
+
+
 class ComponentState(StrEnum):
     """EP-13 の `components[].state`(B 8.1)。`not_configured` は任意コンポーネントだけ。"""
 

@@ -1,6 +1,6 @@
 """読み取り専用の保証(D 6章 R8。C 2.3・11章 8)の AST 検査。
 
-OpenSearch 側(R8 (a)〜(c))と、Crawler クライアント(d)。プローブ(e)は、その実装時に足す。
+OpenSearch 側(R8 (a)〜(c))、Crawler クライアント(d)、死活確認のプローブ(e)。
 
 - (a) 生の OpenSearch クライアントを呼ぶ場所は `readonly_client.py` だけで、呼んでよい属性チェーンは
   **名前空間つきで** `search`・`msearch`・`mget`・`cluster.health`・`cat.indices`・`cat.shards`・
@@ -19,6 +19,11 @@ OpenSearch 側(R8 (a)〜(c))と、Crawler クライアント(d)。プローブ(e
 (`getattr(client, name)(...)`)、`client` を含まない名前へ代入し直したクライアント、
 `transport.perform_request(...)` のような低水準の呼び出しは検出できない。Reader は、ラッパーを
 `client` を含まない名前(`readonly`)で持つ。
+- (e) プローブの HTTP は `GET` だけ。送信の呼び出しは `infrastructure/probes/http_probe.py` の
+  1 か所で、メソッドは `"GET"` のリテラル、URL は引数 `url`(呼び出し側が設定から得た値)、
+  再送とリダイレクトの追従をしない指定にする。`infrastructure/probes` にはパスのリテラルがなく、
+  `services.dashboard` の `/healthz` だけが、確認に使う唯一のパス(C 11章 8 (c) の `GET /healthz`)。
+  `opensearch` のプローブは、ラッパー経由の `cluster.health` だけ((a)(b) が検査する)。
 (d) の限界: 文字列を連結して作ったパス(`"/" + name`)や、パスを別の定数に分けた書き方は検出できない
 (パスのリテラルは先頭が `/` の文字列だけを見る)。送信の呼び出しは、名前(`request`・`urlopen` など)で
 判定する。
@@ -964,3 +969,266 @@ def test_a_send_with_retries_and_redirect_disabled_is_accepted() -> None:
     call = "self._pool.request(route.method, route.path, retries=False, redirect=False)"
 
     assert find_send_without_safe_options(call) == []
+
+
+# --- (e) 死活確認のプローブ(HTTP は GET だけ) ---
+
+PROBES_DIRECTORY = "infrastructure/probes"
+PROBES_HTTP_FILE = f"{PROBES_DIRECTORY}/http_probe.py"
+PROBES_PORTS_FILE = f"{PROBES_DIRECTORY}/ports.py"
+HEALTH_PROBE_FILE = f"{OPENSEARCH_DIRECTORY}/health_probe.py"
+DASHBOARD_SERVICE_FILE = "admin/services/dashboard.py"
+HTTP_PROBE_CLASS = "HttpHealthProbe"
+HTTP_PROBE_PROTOCOL = "HttpHealthCheck"
+PROBE_SEND_METHOD = "GET"
+# 確認先の URL を受け取る引数の名前(`self._pool.request("GET", url, ...)`)。
+PROBE_URL_ARGUMENT = "url"
+# `crawler`・`indexer` の確認に使う、唯一のパス。
+HEALTH_PATH = "/healthz"
+
+
+def find_probe_sends_outside_http_probe(sources: Mapping[str, str]) -> list[str]:
+    """送信の呼び出しが、`http_probe.py` の中の 1 か所だけであること。"""
+    problems: list[str] = []
+    for path, source in sorted(sources.items()):
+        calls = find_send_calls(ast.parse(source))
+        if path != PROBES_HTTP_FILE:
+            problems += [
+                f"{path}:{call.lineno} sends a request outside http_probe.py" for call in calls
+            ]
+        elif len(calls) > 1:
+            problems.append(f"{path} sends a request in more than one place")
+    return problems
+
+
+def find_probe_sends_not_get_of_the_given_url(source: str) -> list[str]:
+    """送信のメソッドが `"GET"` のリテラルで、URL が引数 `url` そのものであること。"""
+    problems: list[str] = []
+    for call in find_send_calls(ast.parse(source)):
+        method_argument = call.args[0] if call.args else None
+        url_argument = ast.unparse(call.args[1]) if len(call.args) > 1 else ""
+        is_get = (
+            isinstance(method_argument, ast.Constant) and method_argument.value == PROBE_SEND_METHOD
+        )
+        if not is_get:
+            shown = ast.unparse(method_argument) if method_argument is not None else ""
+            problems.append(f"line {call.lineno}: the HTTP method is {shown!r}, not GET")
+        if url_argument != PROBE_URL_ARGUMENT:
+            problems.append(
+                f"line {call.lineno}: the URL is {url_argument!r}, not the url argument"
+            )
+        if _forwards_arbitrary_arguments(call):
+            problems.append(f"line {call.lineno}: forwards arbitrary arguments")
+    return problems
+
+
+def find_probe_sends_that_read_the_body(source: str) -> list[str]:
+    """本文を先読みしない指定(`preload_content=False`)であること(読むと応答の大きさに左右される)。"""
+    problems: list[str] = []
+    for call in find_send_calls(ast.parse(source)):
+        keywords = {keyword.arg: keyword.value for keyword in call.keywords}
+        value = keywords.get("preload_content")
+        if not (isinstance(value, ast.Constant) and value.value is False):
+            problems.append(f"line {call.lineno}: preload_content is not False")
+    return problems
+
+
+def accepts_only_the_url(operation: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """確認先の URL だけを受ける(メソッド・ヘッダ・`*args`・`**kwargs` を受け取れない)。"""
+    return (
+        parameter_names(operation) == {PROBE_URL_ARGUMENT}
+        and operation.args.vararg is None
+        and operation.args.kwarg is None
+    )
+
+
+def find_path_literals_in_probes(sources: Mapping[str, str]) -> list[str]:
+    return [
+        f"{path} has the path literal {literal!r}"
+        for path, source in sorted(sources.items())
+        for literal in find_path_literals(source)
+    ]
+
+
+# --- (e) 実際のソース ---
+
+
+def test_the_probe_sources_are_found() -> None:
+    sources = load_sources(PROBES_DIRECTORY)
+
+    assert {PROBES_HTTP_FILE, PROBES_PORTS_FILE} <= set(sources)
+    assert HEALTH_PROBE_FILE in load_sources(OPENSEARCH_DIRECTORY)
+
+
+def test_the_http_probe_sends_a_get_for_the_given_url_only_in_one_place() -> None:
+    sources = load_sources(PROBES_DIRECTORY)
+
+    assert find_probe_sends_outside_http_probe(sources) == []
+    assert len(find_send_calls(ast.parse(sources[PROBES_HTTP_FILE]))) == 1  # 空振りしていない
+    assert find_probe_sends_not_get_of_the_given_url(sources[PROBES_HTTP_FILE]) == []
+    # 再送もリダイレクトの追従もしない。本文は先読みしない。
+    assert find_send_without_safe_options(sources[PROBES_HTTP_FILE]) == []
+    assert find_probe_sends_that_read_the_body(sources[PROBES_HTTP_FILE]) == []
+
+
+def test_the_http_probe_has_no_other_way_to_choose_the_method_or_the_target() -> None:
+    sources = load_sources(PROBES_DIRECTORY)
+    protocol = crawler_class(sources, PROBES_PORTS_FILE, HTTP_PROBE_PROTOCOL)
+    http_probe = crawler_class(sources, PROBES_HTTP_FILE, HTTP_PROBE_CLASS)
+
+    assert public_method_names(protocol) == {"check"}
+    assert public_method_names(http_probe) == {"check", "close"}
+    for class_node in (protocol, http_probe):
+        check = next(method for method in methods_of(class_node) if method.name == "check")
+        assert accepts_only_the_url(check), class_node.name
+    assert find_variadic_parameters(ast.parse(sources[PROBES_HTTP_FILE])) == []
+
+
+def test_the_probes_have_no_path_literal_and_only_the_dashboard_adds_healthz() -> None:
+    probe_sources = load_sources(PROBES_DIRECTORY)
+    service_source = load_sources("admin/services")["admin/services/dashboard.py"]
+
+    assert find_path_literals_in_probes(probe_sources) == []
+    # 空振りしていない: 確認に使うパスは、`services.dashboard` の `/healthz` の 1 つだけ。
+    assert find_path_literals(service_source) == [HEALTH_PATH]
+    assert find_path_literals(load_sources("admin/routers")["admin/routers/dashboard.py"]) == [
+        "/dashboard"
+    ]
+
+
+def test_the_opensearch_probe_calls_only_cluster_health_through_the_wrapper() -> None:
+    source = load_sources(OPENSEARCH_DIRECTORY)[HEALTH_PROBE_FILE]
+    tree = ast.parse(source)
+
+    # 生のクライアントを直接呼ばない(`client` を含む名前の呼び出しがない。(a)(b) が見る)。
+    assert find_client_calls(tree) == []
+    called = {
+        node.func.attr
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and ast.unparse(node.func.value) == "self._readonly"
+    }
+    assert called == {"cluster_health"}
+
+
+# --- (e) 検出器の自己テスト(合成ソース。負例が空振りしない) ---
+
+OTHER_PROBES_FILE = f"{PROBES_DIRECTORY}/web_dist.py"
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "self._pool.request('GET', url)",
+        "self._pool.request('GET', url, retries=False, redirect=False, preload_content=False)",
+    ],
+)
+def test_a_get_for_the_given_url_is_accepted(call: str) -> None:
+    assert find_probe_sends_not_get_of_the_given_url(call) == []
+    assert find_probe_sends_outside_http_probe({PROBES_HTTP_FILE: call}) == []
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "self._pool.request('POST', url)",
+        "self._pool.request('PUT', url)",
+        "self._pool.request('DELETE', url)",
+        "self._pool.request('HEAD', url)",
+        "self._pool.request('get', url)",
+        "self._pool.request(method, url)",
+        "self._pool.request(self._method, url)",
+        "self._pool.urlopen('POST', url)",
+        "urllib3.request('POST', url)",
+        "self._pool.request_encode_body('POST', url)",
+    ],
+)
+def test_a_probe_send_that_is_not_a_get_is_detected(call: str) -> None:
+    assert len(find_probe_sends_not_get_of_the_given_url(call)) == 1
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "self._pool.request('GET', '/healthz')",
+        "self._pool.request('GET', f'{base}/healthz')",
+        "self._pool.request('GET', self._url)",
+        "self._pool.request('GET', url + '/x')",
+        "self._pool.request('GET', url, **options)",
+        "self._pool.request(*arguments)",
+    ],
+)
+def test_a_probe_send_that_is_not_for_the_given_url_alone_is_detected(call: str) -> None:
+    assert find_probe_sends_not_get_of_the_given_url(call) != []
+
+
+def test_a_probe_send_outside_http_probe_is_detected() -> None:
+    problems = find_probe_sends_outside_http_probe(
+        {OTHER_PROBES_FILE: "self._pool.request('GET', url)"}
+    )
+
+    assert len(problems) == 1
+    assert "outside http_probe.py" in problems[0]
+
+
+def test_two_probe_sends_in_http_probe_are_detected() -> None:
+    source = "self._pool.request('GET', url)\nself._pool.request('GET', url)"
+
+    [problem] = find_probe_sends_outside_http_probe({PROBES_HTTP_FILE: source})
+
+    assert "more than one place" in problem
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "self._pool.request('GET', url, preload_content=True)",
+        "self._pool.request('GET', url)",
+        "self._pool.request('GET', url, preload_content=preload)",
+    ],
+)
+def test_a_probe_send_that_preloads_the_body_is_detected(call: str) -> None:
+    assert len(find_probe_sends_that_read_the_body(call)) == 1
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "PATH = '/healthz'",
+        "url = f'{base}/healthz'",
+        "return '/api/status'",
+    ],
+)
+def test_a_path_literal_in_the_probes_is_detected(source: str) -> None:
+    assert find_path_literals_in_probes({OTHER_PROBES_FILE: source}) != []
+
+
+def test_a_probe_without_path_literals_is_accepted() -> None:
+    source = "INDEX_FILE_NAME = 'index.html'\nx = Path(directory) / INDEX_FILE_NAME"
+
+    assert find_path_literals_in_probes({OTHER_PROBES_FILE: source}) == []
+
+
+@pytest.mark.parametrize(
+    "signature",
+    [
+        "def check(self, url, method): ...",
+        "def check(self, url, *, headers=None): ...",
+        "def check(self, url, *args): ...",
+        "def check(self, **kwargs): ...",
+        "def check(self): ...",
+    ],
+)
+def test_a_probe_operation_that_does_not_accept_only_the_url_is_detected(signature: str) -> None:
+    operation = ast.parse(signature).body[0]
+    assert isinstance(operation, ast.FunctionDef)
+
+    assert not accepts_only_the_url(operation)
+
+
+def test_a_probe_operation_that_accepts_only_the_url_is_accepted() -> None:
+    operation = ast.parse("def check(self, url): ...").body[0]
+    assert isinstance(operation, ast.FunctionDef)
+
+    assert accepts_only_the_url(operation)
