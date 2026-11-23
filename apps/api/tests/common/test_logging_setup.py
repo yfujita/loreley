@@ -58,3 +58,42 @@ def test_uvicorn_access_is_held_at_error_even_with_debug() -> None:
     assert logger.level == RESTRICTED_LOG_LEVEL
     assert "SENTINEL" not in stream.getvalue()
     assert "POSITIVE-CONTROL" in stream.getvalue()
+
+
+def test_the_restricted_loggers_are_the_documented_ones() -> None:
+    """C 8.5: OpenSearch・urllib3 は、ID を含む URL・本文を出すので ERROR 以上に固定する。"""
+    assert set(RESTRICTED_LOGGER_NAMES) == {
+        "uvicorn.access",
+        "opensearch",
+        "opensearchpy",
+        "opensearchpy.trace",
+        "opensearchpy.helpers",
+        "urllib3",
+    }
+
+
+@pytest.mark.parametrize("name", RESTRICTED_LOGGER_NAMES)
+def test_every_restricted_logger_is_held_at_error_even_with_debug(name: str) -> None:
+    stream = io.StringIO()
+    configure_logging(level="DEBUG", stream=stream)
+
+    logger = logging.getLogger(name)
+    logger.debug("SENTINEL-DEBUG GET /SENTINEL-ID")
+    logger.info("SENTINEL-INFO")
+    logger.warning("SENTINEL-WARNING")
+    logger.error("POSITIVE-CONTROL")
+
+    assert logger.level == RESTRICTED_LOG_LEVEL
+    assert "SENTINEL" not in stream.getvalue()
+    assert "POSITIVE-CONTROL" in stream.getvalue()
+
+
+def test_a_child_of_a_restricted_logger_is_restricted_too() -> None:
+    """`urllib3.connectionpool` などの子のロガーは、親の水準を引き継ぐ。"""
+    stream = io.StringIO()
+    configure_logging(level="DEBUG", stream=stream)
+
+    logging.getLogger("urllib3.connectionpool").debug("SENTINEL-DEBUG")
+    logging.getLogger("opensearch.client").info("SENTINEL-INFO")
+
+    assert stream.getvalue() == ""

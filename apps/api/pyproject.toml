@@ -4,9 +4,12 @@ version = "0.1.0"
 description = "Loreley API: Admin API・将来の Search API・MCP Server の共通の土台"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "anyio>=4.16,<5",
     "fastapi>=0.143.2,<1",
+    "opensearch-py>=3.2,<4",
     "pydantic>=2.9,<3",
     "pydantic-settings>=2.6,<3",
+    "urllib3>=2.2,<3",
     "uvicorn>=0.32,<1",
 ]
 

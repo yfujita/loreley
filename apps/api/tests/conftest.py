@@ -4,6 +4,8 @@ from collections.abc import Iterator
 import pytest
 
 from loreley_api.common.logging_setup import RESTRICTED_LOGGER_NAMES
+from tests.fakes.clock import FixedClock
+from tests.fakes.inline_runner import InlineRunner
 
 
 @pytest.fixture
@@ -18,3 +20,13 @@ def restore_logging() -> Iterator[None]:
         logger = logging.getLogger(name)
         logger.handlers[:] = handlers
         logger.setLevel(level)
+
+
+@pytest.fixture
+def fixed_clock() -> FixedClock:
+    return FixedClock()
+
+
+@pytest.fixture
+def inline_runner() -> InlineRunner:
+    return InlineRunner()

@@ -1,15 +1,20 @@
-"""依存ルール(0002 3.2。module 6章 R1〜R5・R12 のうち基盤に当てはまるもの)の検査器。
+"""依存ルール(D 6章 R1〜R6・R12 の import で検査できるもの)の検査器。
 
 ファイルを「モジュール」に分類し、許可した import だけを通す。許可表(`build_allowed`)が
 ルールの実体。検査は AST で行い、import 文を実行しない。関数内・`TYPE_CHECKING` 内・`try` 内の
 import も検査する。
 
-機能パッケージ(`health`、将来の `admin`・`search`・`mcp`)は `FEATURE_PACKAGES` に足す。足すと
+モジュールの単位は、トップレベルのパッケージ(またはファイル)が基本。ただし `admin` は内部の
+サブパッケージ(`admin.routers` など。R4)、`infrastructure` は 3 つのモジュール
+(`infrastructure.opensearch` など。R6)が単位。`admin` 直下のファイル(`app.py` など)は `admin`。
+
+機能パッケージ(`health`・`admin`、将来の `search`・`mcp`)は `FEATURE_PACKAGES` に足す。足すと
 許可表に行ができ、`main` だけがその入口を import できる。機能パッケージどうしと `server` は、
 機能パッケージを import できない(R2・R3)。
 
 制約: import 文だけが対象で、動的な import(`importlib.import_module`、`__import__`、
-文字列から組み立てたモジュール名)は検出できない。
+文字列から組み立てたモジュール名)は検出できない。R6 の「`admin` が `infrastructure` から import
+するのは Protocol と型だけ」は機械検査できない(慣習)。
 """
 
 import ast
@@ -19,7 +24,7 @@ from pathlib import PurePosixPath
 
 PACKAGE = "loreley_api"
 
-FEATURE_PACKAGES: frozenset[str] = frozenset({"health"})
+FEATURE_PACKAGES: frozenset[str] = frozenset({"health", "admin"})
 
 # 常にどのモジュールからも import してよい(R12: 共通部品。`common` は葉で、誰にも依存しない)。
 COMMON = "common"
@@ -30,35 +35,127 @@ MAIN = "main"
 CONFIG = "config"
 NAMESPACE = "namespace"
 
-# 基盤は、外部システムへ接続するライブラリを使わない。所有者(import してよいモジュール)は
-# 空。admin を導入するときに、D の R5 のとおり所有者を割り当てる。
-# ただし、ここで検査するのは `src` 配下だけで、テストコードの httpx2(TestClient)は対象外。
-EXTERNAL_LIBRARY_OWNERS: dict[str, frozenset[str]] = {
-    name: frozenset()
-    for name in ("opensearchpy", "urllib3", "requests", "httpx", "httpx2", "aiohttp", "anyio")
+ADMIN = "admin"
+# `admin` の内部のサブパッケージ(R4)。`admin/` 直下のファイルは `admin` 自身。
+ADMIN_SUBMODULES: tuple[str, ...] = (
+    "routers",
+    "services",
+    "schemas",
+    "base",
+    "derivation",
+    "crawler_mapping",
+    "failures",
+)
+# `admin/` 直下に置いてよいファイル(入口。`admin/__init__.py` も含む)。
+ADMIN_DIRECT_FILES: frozenset[str] = frozenset(
+    {"app", "dependencies", "settings", "openapi_export"}
+)
+INFRASTRUCTURE = "infrastructure"
+OPENSEARCH = "infrastructure.opensearch"
+CRAWLER_CLIENT = "infrastructure.crawler_client"
+PROBES = "infrastructure.probes"
+INFRASTRUCTURE_MODULES: tuple[str, ...] = (OPENSEARCH, CRAWLER_CLIENT, PROBES)
+
+
+def admin_module(name: str) -> str:
+    return f"{ADMIN}.{name}"
+
+
+@dataclass(frozen=True)
+class LibraryOwners:
+    """外部ライブラリを import してよい場所。`modules` に加えて、個別のファイルも許す。"""
+
+    modules: frozenset[str] = frozenset()
+    # パッケージルートからの相対パス(`/` 区切り)。モジュール単位では広すぎる例外のため。
+    files: frozenset[str] = frozenset()
+
+    def describe(self) -> list[str]:
+        return sorted(self.modules | self.files)
+
+
+# R5: 外部システム用ライブラリの所有者。キーは import するドット名の接頭辞で、長く一致したものが
+# 使われる(`urllib3.exceptions` は、`urllib3` より優先される)。
+# - `urllib3.exceptions` の型だけは、OpenSearch の例外の分類(`ConnectionError.info` の型の判定)に
+#   使うので、`infrastructure.opensearch` の 2 ファイルにも許す。`PoolManager` などは許さない。
+# - `anyio` は `common/concurrency.py` だけ(`common` 全体には許さない)。
+# - 選ばなかった HTTP クライアントは、どこも import しない。`httpx2` は TestClient 用の dev 依存で、
+#   テストだけが使う(ここで検査するのは `src` 配下だけ)。
+EXTERNAL_LIBRARY_OWNERS: dict[str, LibraryOwners] = {
+    "opensearchpy": LibraryOwners(modules=frozenset({OPENSEARCH})),
+    "urllib3": LibraryOwners(modules=frozenset({CRAWLER_CLIENT, PROBES})),
+    "urllib3.exceptions": LibraryOwners(
+        modules=frozenset({CRAWLER_CLIENT, PROBES}),
+        files=frozenset(
+            {"infrastructure/opensearch/failure.py", "infrastructure/opensearch/health_probe.py"}
+        ),
+    ),
+    "anyio": LibraryOwners(files=frozenset({"common/concurrency.py"})),
+    "requests": LibraryOwners(),
+    "httpx": LibraryOwners(),
+    "httpx2": LibraryOwners(),
+    "aiohttp": LibraryOwners(),
 }
+
+# R5: `infrastructure` は HTTP の枠組み(`fastapi`・`starlette`)を import しない。
+# `common.http` 経由の間接 import も、`_check_internal_import` が禁じる(R12)。
+LIBRARIES_FORBIDDEN_IN_INFRASTRUCTURE: frozenset[str] = frozenset({"fastapi", "starlette"})
 
 
 def build_allowed(
     feature_packages: Collection[str] = FEATURE_PACKAGES,
 ) -> dict[str, frozenset[str]]:
     """モジュール → import してよいモジュール(自分自身と `common` は常に許可)。"""
+    infrastructure = frozenset(INFRASTRUCTURE_MODULES)
     allowed: dict[str, frozenset[str]] = {
-        # `main` は組み立てる側。設定・口(server)・すべての機能の入口を import してよい(R1)。
-        MAIN: frozenset({CONFIG, SERVER, *feature_packages}),
-        # config は値を持つだけで、他のモジュールの型を使わない。どのモジュールも config に
-        # 依存しない(main だけが config を使う)。
-        CONFIG: frozenset(),
+        # `main` は組み立てる側。設定・口(server)・すべての機能の入口・infrastructure の
+        # 生成の入口を import してよい(R1・R6)。
+        MAIN: frozenset({CONFIG, SERVER, *feature_packages, *infrastructure}),
+        # config は、値を各モジュールの設定 dataclass に詰めるため、設定型を持つモジュールの入口
+        # (`admin`・`infrastructure.*`)だけを import する。どのモジュールも config に依存しない
+        # (main だけが config を使う)ので、循環しない。
+        CONFIG: frozenset({ADMIN, *infrastructure}),
         # R3: server は汎用の口で、機能パッケージの入口を import しない(main が渡す)。
         SERVER: frozenset(),
         # 名前空間だけのパッケージ(`__init__.py`)。何も import しない。
         NAMESPACE: frozenset(),
         # R12: common は葉。
         COMMON: frozenset(),
+        # R4: admin の内部は一方向。routers は infrastructure・derivation を import しない。
+        # derivation・failures・schemas・crawler_mapping は base に、base は common だけに依存する。
+        # `admin`(直下)・services が infrastructure から import するのは Protocol と型だけ(慣習)。
+        ADMIN: frozenset(
+            {
+                admin_module("routers"),
+                admin_module("services"),
+                admin_module("schemas"),
+                admin_module("base"),
+                *infrastructure,
+            }
+        ),
+        admin_module("routers"): frozenset(
+            {admin_module("services"), admin_module("schemas"), admin_module("base")}
+        ),
+        admin_module("services"): frozenset(
+            {
+                admin_module("derivation"),
+                admin_module("crawler_mapping"),
+                admin_module("failures"),
+                admin_module("schemas"),
+                admin_module("base"),
+                *infrastructure,
+            }
+        ),
+        admin_module("crawler_mapping"): frozenset({admin_module("base"), CRAWLER_CLIENT}),
+        admin_module("failures"): frozenset({admin_module("base")}),
+        admin_module("derivation"): frozenset({admin_module("base")}),
+        admin_module("schemas"): frozenset({admin_module("base")}),
+        admin_module("base"): frozenset(),
+        # R6: infrastructure の 3 モジュールは互いに依存しない(共有する型は common)。
+        **{module: frozenset() for module in INFRASTRUCTURE_MODULES},
     }
-    # R2: 機能パッケージどうしは依存しない。
+    # R2: 機能パッケージどうしは依存しない(許可表に行がなければ、何も import できない)。
     for feature in feature_packages:
-        allowed[feature] = frozenset()
+        allowed.setdefault(feature, frozenset())
     return allowed
 
 
@@ -75,15 +172,38 @@ def module_of(dotted: str, feature_packages: Collection[str] = FEATURE_PACKAGES)
     """パッケージからの相対のドット名(例: `health.router`)を、モジュール名にする。
 
     各モジュールは、トップレベルのパッケージ(またはファイル)1つが単位。サブパッケージは
-    親のモジュールに含む。分類できなければ None(未知のディレクトリ・ファイルは、ルールの更新を
-    促すため違反にする)。
+    親のモジュールに含む。ただし `admin` の内部と `infrastructure` は、サブパッケージが単位
+    (`admin.routers`、`infrastructure.opensearch`)。分類できなければ None(未知のディレクトリ・
+    ファイルは、ルールの更新を促すため違反にする)。
     """
     parts = dotted.split(".") if dotted else []
     if not parts:
         return NAMESPACE
     top = parts[0]
+    if top == INFRASTRUCTURE:
+        return _infrastructure_module_of(parts)
+    if top == ADMIN and ADMIN in feature_packages:
+        return _admin_module_of(parts)
     if top in {MAIN, CONFIG, SERVER, COMMON, *feature_packages}:
         return top
+    return None
+
+
+def _infrastructure_module_of(parts: list[str]) -> str | None:
+    if len(parts) == 1:
+        return NAMESPACE
+    module = f"{INFRASTRUCTURE}.{parts[1]}"
+    return module if module in INFRASTRUCTURE_MODULES else None
+
+
+def _admin_module_of(parts: list[str]) -> str | None:
+    if len(parts) == 1:
+        return ADMIN
+    if parts[1] in ADMIN_SUBMODULES:
+        return admin_module(parts[1])
+    # 直下のファイルは、2 要素のドット名(`admin.app`)。ディレクトリ(`admin.unknown.x`)は分類しない。
+    if len(parts) == 2 and parts[1] in ADMIN_DIRECT_FILES:
+        return ADMIN
     return None
 
 
@@ -204,6 +324,16 @@ def _check_internal_import(
     target_module = module_of(imported, feature_packages)
     if target_module is None:
         return [Violation(path, f"imports unclassified module {imported!r}")]
+    # R12: infrastructure は `common.http` を import しない(`fastapi`・`starlette` を間接的に引く)。
+    # `common` の他の部品(`results`・`clock` など)は import してよい。
+    if own_module in INFRASTRUCTURE_MODULES and _is_common_http(imported):
+        return [
+            Violation(
+                path,
+                f"{own_module} must not import common.http (imports {imported!r}; "
+                "it pulls in fastapi and starlette)",
+            )
+        ]
     if target_module in {own_module, COMMON}:
         return []
     if target_module in allowed[own_module]:
@@ -217,25 +347,66 @@ def _check_internal_import(
     ]
 
 
+def _is_common_http(imported: str) -> bool:
+    return imported == f"{COMMON}.http" or imported.startswith(f"{COMMON}.http.")
+
+
 def _check_external_imports(path: str, own_module: str, source: str) -> list[Violation]:
     violations: list[Violation] = []
     for node in ast.walk(ast.parse(source)):
-        top_level_names: list[str] = []
-        if isinstance(node, ast.Import):
-            top_level_names = [alias.name.split(".")[0] for alias in node.names]
-        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-            top_level_names = [node.module.split(".")[0]]
-        for name in top_level_names:
-            owners = EXTERNAL_LIBRARY_OWNERS.get(name)
-            if owners is not None and own_module not in owners:
-                violations.append(
-                    Violation(
-                        path,
-                        f"{own_module} must not import {name} "
-                        f"(external access is limited to {sorted(owners) or 'no module'})",
-                    )
-                )
+        for name in _external_import_names(node):
+            violations += _check_external_name(path, own_module, name)
     return violations
+
+
+def _external_import_names(node: ast.AST) -> list[str]:
+    """import 文が取り込むもののドット名。`from a.b import c` は `a.b.c`(`*` は `a.b`)。
+
+    `from urllib3 import exceptions` が `urllib3.exceptions` として判定されるように、
+    `from` の名前は 1 つずつ結合する。
+    """
+    if isinstance(node, ast.Import):
+        return [alias.name for alias in node.names]
+    if isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+        return [
+            node.module if alias.name == "*" else f"{node.module}.{alias.name}"
+            for alias in node.names
+        ]
+    return []
+
+
+def _check_external_name(path: str, own_module: str, name: str) -> list[Violation]:
+    violations: list[Violation] = []
+    top_level_name = name.split(".")[0]
+    if own_module in INFRASTRUCTURE_MODULES and top_level_name in (
+        LIBRARIES_FORBIDDEN_IN_INFRASTRUCTURE
+    ):
+        violations.append(
+            Violation(path, f"{own_module} must not import {top_level_name} (HTTP framework)")
+        )
+    library = _matching_library(name)
+    if library is None:
+        return violations
+    owners = EXTERNAL_LIBRARY_OWNERS[library]
+    if own_module not in owners.modules and path not in owners.files:
+        violations.append(
+            Violation(
+                path,
+                f"{own_module} must not import {library} "
+                f"(external access is limited to {owners.describe() or 'no module'})",
+            )
+        )
+    return violations
+
+
+def _matching_library(name: str) -> str | None:
+    """`name`(ドット名)に、最も長く一致する `EXTERNAL_LIBRARY_OWNERS` のキー。"""
+    matches = [
+        library
+        for library in EXTERNAL_LIBRARY_OWNERS
+        if name == library or name.startswith(f"{library}.")
+    ]
+    return max(matches, key=len, default=None)
 
 
 def _cycles_in(graph: Mapping[str, set[str]]) -> list[list[str]]:

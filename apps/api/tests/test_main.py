@@ -8,10 +8,17 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from loreley_api.main import build_app, main
+from loreley_api.main import ADMIN_API_PREFIX, build_app, build_lifespan, close_all, main
+from tests.api_config import make_api_config
+from tests.log_records import server_side_text
 
 SOURCE_DIRECTORY = Path(__file__).resolve().parents[1] / "src"
 SENTINEL_PORT = "SENTINEL-PORT"
+REQUIRED_ENVIRONMENT = {
+    "opensearch_url": "http://opensearch.invalid:9200",
+    "crawler_url": "http://crawler.invalid:8001",
+    "indexer_url": "http://indexer.invalid:8000",
+}
 
 
 @pytest.fixture
@@ -28,25 +35,59 @@ def forbid_network_connections(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_the_built_app_serves_the_health_check() -> None:
-    response = TestClient(build_app()).get("/healthz")
+    response = TestClient(build_app(make_api_config())).get("/healthz")
 
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
 
 def test_the_built_app_answers_an_unknown_path_with_a_json_404() -> None:
-    response = TestClient(build_app()).get("/nope")
+    response = TestClient(build_app(make_api_config())).get("/nope")
 
     assert response.status_code == 404
     assert response.headers["content-type"] == "application/json"
     assert response.json()["error"]["code"] == "not_found"
 
 
+def test_the_admin_api_is_mounted_and_answers_an_unknown_path_with_a_json_404() -> None:
+    response = TestClient(build_app(make_api_config())).get(f"{ADMIN_API_PREFIX}/NO-SUCH-PATH")
+
+    assert response.status_code == 404
+    assert response.headers["content-type"] == "application/json"
+    assert response.headers["cache-control"] == "no-store"
+    assert response.json() == {
+        "error": {"code": "not_found", "message": "the path is not defined", "retryable": False}
+    }
+
+
+def test_the_admin_api_has_no_documentation_or_openapi_by_default() -> None:
+    client = TestClient(build_app(make_api_config()))
+
+    for path in ("/docs", "/redoc", "/openapi.json", "/docs/oauth2-redirect"):
+        for prefix in ("", ADMIN_API_PREFIX):
+            response = client.get(prefix + path)
+            assert response.status_code == 404
+            assert response.json()["error"]["code"] == "not_found"
+
+
+def test_the_access_log_of_the_admin_api_uses_the_dash_for_an_unknown_path(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level(logging.INFO)
+
+    TestClient(build_app(make_api_config())).get(f"{ADMIN_API_PREFIX}/SENTINEL-ID")
+
+    lines = [r.getMessage() for r in caplog.records if r.name == "loreley_api.access"]
+    assert len(lines) == 1
+    assert lines[0].startswith("GET - 404 ")
+    assert "SENTINEL" not in lines[0]
+
+
 def test_building_and_running_the_app_makes_no_network_access(
     forbid_network_connections: None,
 ) -> None:
     """組み立てと、lifespan(開始・終了)の実行まで、外部に接続しない。"""
-    with TestClient(build_app()) as client:
+    with TestClient(build_app(make_api_config())) as client:
         assert client.get("/healthz").status_code == 200
 
 
@@ -55,7 +96,7 @@ def test_the_health_check_is_logged_at_debug_and_other_paths_at_info(
 ) -> None:
     """`debug_access_log_paths` の配線(`/healthz` は数秒おきに呼ばれるので DEBUG)。"""
     caplog.set_level(logging.DEBUG)
-    client = TestClient(build_app())
+    client = TestClient(build_app(make_api_config()))
 
     client.get("/healthz")
     client.get("/nope")
@@ -74,6 +115,8 @@ def test_the_health_check_is_logged_at_debug_and_other_paths_at_info(
 def test_main_runs_uvicorn_once_with_the_settings_and_without_workers_or_reload(
     monkeypatch: pytest.MonkeyPatch, restore_logging: None
 ) -> None:
+    for name, value in REQUIRED_ENVIRONMENT.items():
+        monkeypatch.setenv(f"LORELEY_API_{name.upper()}", value)
     monkeypatch.setenv("LORELEY_API_HOST", "0.0.0.0")
     monkeypatch.setenv("LORELEY_API_PORT", "9090")
     monkeypatch.setenv("LORELEY_API_LOG_LEVEL", "DEBUG")
@@ -90,11 +133,65 @@ def test_main_runs_uvicorn_once_with_the_settings_and_without_workers_or_reload(
     assert logging.getLogger().level == logging.DEBUG  # `configure_logging` が呼ばれた
 
 
+def test_main_does_not_set_a_graceful_shutdown_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`timeout_graceful_shutdown` は指定しない(Indexer と同じ。AAM-P-28)。"""
+    for name, value in REQUIRED_ENVIRONMENT.items():
+        monkeypatch.setenv(f"LORELEY_API_{name.upper()}", value)
+    calls: list[dict[str, object]] = []
+    monkeypatch.setattr("uvicorn.run", lambda *args, **kwargs: calls.append(kwargs))
+
+    main()
+
+    assert "timeout_graceful_shutdown" not in calls[0]
+    assert "lifespan" not in calls[0]  # uvicorn の既定(auto)で、外側の lifespan が実行される
+
+
+# --- 停止時にクライアントを閉じる(外側の lifespan) ---
+
+
+def test_the_clients_are_closed_when_the_app_stops() -> None:
+    closed: list[str] = []
+    app = FastAPI(lifespan=build_lifespan([lambda: closed.append("a"), lambda: closed.append("b")]))
+
+    with TestClient(app):
+        assert closed == []
+
+    assert closed == ["a", "b"]
+
+
+def test_a_failing_close_does_not_stop_the_others_and_logs_only_the_class_name(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    closed: list[str] = []
+
+    def fail() -> None:
+        raise OSError("SENTINEL-CLOSE-MESSAGE")
+
+    close_all([lambda: closed.append("first"), fail, lambda: closed.append("last")])
+
+    assert closed == ["first", "last"]
+    [record] = caplog.records
+    assert record.levelno == logging.ERROR
+    assert "OSError" in record.getMessage()
+    assert "SENTINEL" not in server_side_text(caplog.records)
+
+
+def test_the_clients_are_closed_even_when_the_app_stops_after_a_failure() -> None:
+    closed: list[str] = []
+    app = FastAPI(lifespan=build_lifespan([lambda: closed.append("a")]))
+
+    with pytest.raises(RuntimeError), TestClient(app):
+        raise RuntimeError("stop")
+
+    assert closed == ["a"]
+
+
 # --- 実際のプロセス ---
 
 
 def run_api(**values: str) -> subprocess.CompletedProcess[str]:
-    environment = {f"LORELEY_API_{name.upper()}": value for name, value in values.items()}
+    all_values = {**REQUIRED_ENVIRONMENT, **values}
+    environment = {f"LORELEY_API_{name.upper()}": value for name, value in all_values.items()}
     environment["PYTHONPATH"] = str(SOURCE_DIRECTORY)  # インストールされていなくても import できる
     # `PATH` などは渡さない(実行環境の `LORELEY_API_*` が混ざらないようにするため)。
     # `timeout` を超えると `run` が子プロセスを kill する(ハングしても、テストは止まる)。
@@ -115,3 +212,20 @@ def test_the_process_with_an_invalid_port_fails_without_showing_the_value() -> N
     assert "invalid settings: port: int_parsing" in result.stderr
     assert SENTINEL_PORT not in result.stdout + result.stderr
     assert result.stderr.strip().splitlines()[-1].startswith("loreley_api.config.ConfigError")
+
+
+def test_the_process_without_the_required_settings_fails_without_showing_values() -> None:
+    environment = {"PYTHONPATH": str(SOURCE_DIRECTORY), "LORELEY_API_CRAWLER_URL": "ftp://SENTINEL"}
+    result = subprocess.run(
+        [sys.executable, "-m", "loreley_api.main"],
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    assert "opensearch_url: missing" in result.stderr
+    assert "crawler_url: url_scheme" in result.stderr
+    assert "SENTINEL" not in result.stdout + result.stderr
