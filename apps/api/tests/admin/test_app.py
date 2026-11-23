@@ -4,16 +4,15 @@ import pytest
 from fastapi.testclient import TestClient
 
 from loreley_api.admin import AdminDependencies, create_admin_app
-from loreley_api.common.concurrency import BlockingRunner
 from loreley_api.server import SubAppMount, create_app
-from tests.api_config import make_admin_settings
+from tests.admin.factories import make_admin_dependencies
 from tests.fakes.clock import FixedClock
+from tests.fakes.in_memory_readers import InMemoryReaders
+from tests.fakes.inline_runner import InlineRunner
 
 
 def make_dependencies() -> AdminDependencies:
-    return AdminDependencies(
-        settings=make_admin_settings(), clock=FixedClock(), runner=BlockingRunner()
-    )
+    return make_admin_dependencies(InMemoryReaders(), FixedClock(), InlineRunner())
 
 
 def test_the_admin_app_has_no_documentation_openapi_or_redirects() -> None:
@@ -51,4 +50,4 @@ def test_the_dependencies_are_a_frozen_bundle() -> None:
     dependencies = make_dependencies()
 
     with pytest.raises(dataclasses.FrozenInstanceError):
-        dependencies.clock = FixedClock()  # type: ignore[misc]
+        dependencies.meta = None  # type: ignore[misc,assignment]

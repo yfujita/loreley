@@ -8,8 +8,16 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from loreley_api.infrastructure.opensearch import ReadOnlyConnection, ReadOnlyOpenSearch
 from loreley_api.main import ADMIN_API_PREFIX, build_app, build_lifespan, close_all, main
 from tests.api_config import SENTINEL_PASSWORD, make_api_config
+from tests.fakes.fake_opensearch_client import FakeOpenSearchClient
+from tests.infrastructure.opensearch.sample_responses import (
+    hit,
+    mget_doc,
+    mget_response,
+    search_response,
+)
 from tests.log_records import server_side_text
 from tests.secret_assertions import assert_secret_absent
 
@@ -125,6 +133,74 @@ def test_the_health_check_is_logged_at_debug_and_other_paths_at_info(
         if record.name == "loreley_api.access"
     ]
     assert levels == [("/healthz", logging.DEBUG), ("-", logging.INFO)]
+
+
+# --- Admin API の配線(Reader・索引名・クライアントの停止) ---
+
+
+@pytest.fixture
+def fake_opensearch(monkeypatch: pytest.MonkeyPatch) -> FakeOpenSearchClient:
+    """OpenSearch の読み取り用クライアントを偽物に差し替える(組み立ては本物の Reader)。"""
+    fake = FakeOpenSearchClient()
+    connection = ReadOnlyConnection(client=ReadOnlyOpenSearch(fake), close=fake.close)
+    monkeypatch.setattr("loreley_api.main.create_read_connection", lambda config: connection)
+    return fake
+
+
+def test_the_admin_api_reads_the_job_through_the_configured_indices(
+    fake_opensearch: FakeOpenSearchClient,
+) -> None:
+    job = {"record_type": "job", "source_id": "docs", "job_type": "crawl", "status": "succeeded"}
+    fake_opensearch.script("mget", mget_response(mget_doc("job-1", job)))
+    fake_opensearch.script("search", search_response([hit("job-1")]))
+    fake_opensearch.script("mget", mget_response(mget_doc("deletion_result-job-1", found=False)))
+
+    response = TestClient(build_app(make_api_config())).get(f"{ADMIN_API_PREFIX}/jobs/job-1")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "succeeded"
+    assert [request.index for request in fake_opensearch.requests] == [
+        "loreley-jobs",
+        "loreley-jobs",
+        "loreley-deletions",
+    ]
+
+
+def test_the_admin_api_reads_the_cluster_and_serves_the_meta_from_the_settings(
+    fake_opensearch: FakeOpenSearchClient,
+) -> None:
+    fake_opensearch.script(
+        "cluster.health",
+        {
+            "cluster_name": "loreley",
+            "status": "green",
+            "number_of_nodes": 1,
+            "active_shards": 1,
+            "relocating_shards": 0,
+            "initializing_shards": 0,
+            "unassigned_shards": 0,
+        },
+    )
+    fake_opensearch.script("cat.indices", [{"index": "a", "health": "green", "docs.count": "3"}])
+    fake_opensearch.script("cat.shards", [])
+    fake_opensearch.script("cat.nodes", [{"name": "node-1"}])
+    client = TestClient(build_app(make_api_config()))
+
+    cluster = client.get(f"{ADMIN_API_PREFIX}/opensearch/cluster")
+    meta = client.get(f"{ADMIN_API_PREFIX}/meta")
+
+    assert cluster.status_code == 200
+    assert cluster.json()["indices"] == [{"name": "a", "status": "green", "document_count": 3}]
+    assert meta.json() == {"cron_timezone": "Asia/Tokyo", "dashboards_url": None}
+
+
+def test_the_opensearch_client_is_closed_when_the_app_stops(
+    fake_opensearch: FakeOpenSearchClient,
+) -> None:
+    with TestClient(build_app(make_api_config())):
+        assert fake_opensearch.close_count == 0
+
+    assert fake_opensearch.close_count == 1
 
 
 # --- main()(uvicorn を差し替える。実際には起動しない) ---

@@ -76,6 +76,7 @@ def parse_search(response: object) -> ParsedSearch:
 def parse_uncounted_search(response: object) -> ParsedSearch:
     """総件数を使わない問い合わせ(`track_total_hits: false`)の応答。
 
+    総件数を使わない本文(`track_total_hits: False`)専用。総件数を使う問い合わせには使わない。
     `hits.total` があっても読まない。頭打ち(`relation: gte`)の値で失敗にしないため。
     """
     return _parse_search(response, reads_total=False)

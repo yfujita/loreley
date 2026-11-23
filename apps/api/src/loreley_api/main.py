@@ -16,12 +16,19 @@ import uvicorn
 from fastapi import FastAPI
 from starlette.types import Lifespan
 
-from loreley_api.admin import AdminDependencies, create_admin_app
+from loreley_api.admin import AdminReaders, build_admin_dependencies, create_admin_app
 from loreley_api.common.clock import SystemClock
 from loreley_api.common.concurrency import BlockingRunner
 from loreley_api.common.logging_setup import configure_logging
 from loreley_api.config import ApiConfig, load_config
 from loreley_api.health import HEALTH_PATH, create_health_router
+from loreley_api.infrastructure.opensearch import (
+    OpenSearchClusterReader,
+    OpenSearchDeletionsReader,
+    OpenSearchJobsReader,
+    OpenSearchSourcesReader,
+    create_read_connection,
+)
 from loreley_api.server import SubAppMount, create_app
 
 ADMIN_API_PREFIX = "/api/admin/v1"
@@ -63,8 +70,19 @@ def build_app(config: ApiConfig) -> FastAPI:
     """
     # 生成したクライアントの `close` をここに足す(終了時に lifespan が閉じる)。
     closers: list[Callable[[], None]] = []
-    admin_dependencies = AdminDependencies(
-        settings=config.admin, clock=SystemClock(), runner=BlockingRunner()
+    opensearch = create_read_connection(config.opensearch)
+    closers.append(opensearch.close)
+    index_names = config.index_names
+    readers = AdminReaders(
+        sources=OpenSearchSourcesReader(opensearch.client, sources_index=index_names.sources),
+        jobs=OpenSearchJobsReader(opensearch.client, jobs_index=index_names.jobs),
+        deletions=OpenSearchDeletionsReader(
+            opensearch.client, deletions_index=index_names.deletions
+        ),
+        cluster=OpenSearchClusterReader(opensearch.client),
+    )
+    admin_dependencies = build_admin_dependencies(
+        settings=config.admin, clock=SystemClock(), runner=BlockingRunner(), readers=readers
     )
     return create_app(
         routers=[create_health_router()],

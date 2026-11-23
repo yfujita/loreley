@@ -71,3 +71,78 @@ class ComponentState(StrEnum):
     ABNORMAL = "abnormal"
     UNDETERMINED = "undetermined"
     NOT_CONFIGURED = "not_configured"
+
+
+class JobType(StrEnum):
+    """`JobBrief.job_type`(B 2.11)。この 2 値以外の保存値は読めない値(`null`。C 5.4)。"""
+
+    CRAWL = "crawl"
+    SOURCE_DELETE = "source_delete"
+
+
+class JobTrigger(StrEnum):
+    MANUAL = "manual"
+    SCHEDULE = "schedule"
+
+
+class JobStatus(StrEnum):
+    """保存上のジョブの状態(B 2.11)。リース切れの実行中も `running`(`stalled` は別の項目)。"""
+
+    QUEUED = "queued"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    PARTIALLY_SUCCEEDED = "partially_succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+TERMINAL_JOB_STATUSES: frozenset[JobStatus] = frozenset(
+    {
+        JobStatus.SUCCEEDED,
+        JobStatus.PARTIALLY_SUCCEEDED,
+        JobStatus.FAILED,
+        JobStatus.CANCELLED,
+    }
+)
+
+
+class SourceStatus(StrEnum):
+    """データソース設定の `status`(B 2.11)。"""
+
+    ACTIVE = "active"
+    DELETING = "deleting"
+
+
+class RerunBlockedReason(StrEnum):
+    """`rerun_blocked_reason`(B 2.9。`source_missing` は案 AAPI-P-41)。"""
+
+    NOT_CRAWL = "not_crawl"
+    NOT_FAILED = "not_failed"
+    STALLED = "stalled"
+    SUPERSEDED = "superseded"
+    SOURCE_DELETING = "source_deleting"
+    SOURCE_MISSING = "source_missing"
+
+
+class RegistrationPhase(StrEnum):
+    """`registration.phase`(B 5.2)。"""
+
+    FINAL = "final"
+    IN_PROGRESS = "in_progress"
+    INCOMPLETE = "incomplete"
+
+
+class DeletionConfirmation(StrEnum):
+    """`deletion.confirmation`(B 5.2)。確認に入っていないジョブは `null`。"""
+
+    CONFIRMED = "confirmed"
+    UNCONFIRMED = "unconfirmed"
+    UNKNOWN = "unknown"
+
+
+class DeletionCurrentState(StrEnum):
+    """`deletion.current_state`(B 5.2)。"""
+
+    AVAILABLE = "available"
+    NOT_FOUND = "not_found"
+    UNAVAILABLE = "unavailable"

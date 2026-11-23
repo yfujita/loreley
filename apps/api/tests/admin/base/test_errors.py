@@ -106,7 +106,20 @@ def test_every_error_code_has_a_fixed_english_message(code: ErrorCode) -> None:
     error = AdminApiError(code, 400)
 
     assert error.message.isascii()
-    assert error.message.strip() == error.message != ""
+    assert error.message != ""
+    assert error.message.strip() == error.message
+
+
+@pytest.mark.parametrize(
+    ("code", "message"),
+    [
+        # B 2.5・2.7 の例が出典の文言。残りは実装側で補った文(B に規定がない)。
+        (ErrorCode.CONFIG_INVALID, "connector_config is invalid"),
+        (ErrorCode.LOCK_HELD, "the source is locked by another job"),
+    ],
+)
+def test_the_messages_that_b_gives_as_examples_are_fixed(code: ErrorCode, message: str) -> None:
+    assert AdminApiError(code, 400).message == message
 
 
 def test_invalid_request_without_violations_has_no_details() -> None:

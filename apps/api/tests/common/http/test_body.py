@@ -64,8 +64,9 @@ def test_a_chunked_body_over_the_limit_is_a_400_without_details(client: TestClie
     """`Content-Length` がなくても(chunked)、読みながら数えて上限を超えたら 400 にする。"""
 
     def chunks() -> Iterator[bytes]:
-        for _ in range(1_000):
-            yield b"x" * 4
+        # 1 バイトずつ送り、上限(SMALL_LIMIT)を 1 バイトだけ超える。
+        for _ in range(SMALL_LIMIT + 1):
+            yield b"x"
 
     response = client.post("/small", content=chunks())
 

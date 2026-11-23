@@ -13,16 +13,18 @@ from loreley_api.admin.routers import create_admin_router
 
 
 def create_admin_app(deps: AdminDependencies) -> FastAPI:
-    """`deps` は、EP を足すとき、そのサービスからルーターを作るのに使う。
-
-    今は使わない(ルーターが空のため)。意図した未使用で、引数の形を `main.py` との契約として
-    先に固定している。
-    """
+    """`deps` のサービスを、ルーターに個別に渡して組み立てる。"""
     app = FastAPI(
         docs_url=None,
         redoc_url=None,
         openapi_url=None,
         redirect_slashes=False,
     )
-    app.include_router(create_admin_router())
+    app.include_router(
+        create_admin_router(
+            job_queries=deps.job_queries,
+            cluster_overview=deps.cluster_overview,
+            meta=deps.meta,
+        )
+    )
     return app
