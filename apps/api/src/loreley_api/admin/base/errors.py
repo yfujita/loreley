@@ -1,7 +1,8 @@
 """`AdminApiError` と、code ごとの生成関数(D 4.7)。
 
 `message` は code ごとの固定の英語文(診断用)で、入力値・ID・例外のメッセージを含めない(A 5.2)。
-Crawler 連携の code(`lock_held`・`crawler_*` など)の生成関数は、その EP を実装するときに足す。
+Crawler 連携の code のうち、形が固定のもの(`crawler_*`・`config_invalid`)だけ生成関数を持つ。
+`lock_held` など、Crawler の応答から `details` を作るものは `crawler_mapping` が組み立てる。
 """
 
 from collections.abc import Sequence
@@ -83,3 +84,31 @@ def source_config_not_found() -> AdminApiError:
 
 def job_not_found() -> AdminApiError:
     return AdminApiError(ErrorCode.JOB_NOT_FOUND, 404)
+
+
+def config_invalid(violations: Sequence[FieldViolation], crawler_message: str) -> AdminApiError:
+    """400 `config_invalid`(B 2.5)。`violations` が空なら、項目を分解できなかった(`errors` は空)。
+
+    `crawler_message` は、Crawler が入力値・errno・パスを含めない固定文として返したもの(B 2.5)。
+    """
+    errors = [_error_entry(violation) for violation in violations]
+    return AdminApiError(
+        ErrorCode.CONFIG_INVALID,
+        400,
+        details={"errors": errors, "crawler_message": crawler_message},
+    )
+
+
+def crawler_error() -> AdminApiError:
+    """502: Crawler の想定外・契約外の応答(B 2.6)。"""
+    return AdminApiError(ErrorCode.CRAWLER_ERROR, 502)
+
+
+def crawler_unreachable() -> AdminApiError:
+    """503: Crawler に届かなかった(送る前の失敗。再試行してよい)。"""
+    return AdminApiError(ErrorCode.CRAWLER_UNREACHABLE, 503, retryable=True)
+
+
+def crawler_response_lost() -> AdminApiError:
+    """504: 送った後に応答が来なかった。操作の結果は不明(B 2.3)。"""
+    return AdminApiError(ErrorCode.CRAWLER_RESPONSE_LOST, 504, details={"outcome_unknown": True})

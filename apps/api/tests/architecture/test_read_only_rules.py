@@ -1,6 +1,6 @@
 """読み取り専用の保証(D 6章 R8。C 2.3・11章 8)の AST 検査。
 
-OpenSearch 側(R8 (a)〜(c))。Crawler クライアント(d)とプローブ(e)は、その実装時に足す。
+OpenSearch 側(R8 (a)〜(c))と、Crawler クライアント(d)。プローブ(e)は、その実装時に足す。
 
 - (a) 生の OpenSearch クライアントを呼ぶ場所は `readonly_client.py` だけで、呼んでよい属性チェーンは
   **名前空間つきで** `search`・`msearch`・`mget`・`cluster.health`・`cat.indices`・`cat.shards`・
@@ -8,11 +8,20 @@ OpenSearch 側(R8 (a)〜(c))。Crawler クライアント(d)とプローブ(e)�
 - (b) ラッパーの公開メソッドの集合が固定(7 つ)で、引数は明示のものだけ(`**kwargs`・`**params` の
   素通しを書かない)。
 - (c) Reader の Protocol と実装に、書き込みを表すメソッド名がない。
+- (d) Crawler クライアントの公開操作は 6 つだけ(`CrawlerClient` と `HttpCrawlerClient`)で、任意の
+  メソッド・パスを受け取る引数や `**kwargs` を持たない。パスのリテラル(`/sources`・`/jobs`)は
+  `routes.py` だけにあり、経路は 6 つだけ。HTTP の送信は `http_client.py` の 1 か所で、メソッドと
+  パスは `routes.py` の組み立て結果だけを使い、再送とリダイレクトの追従をしない指定
+  (`retries=False`・`redirect=False`)にする。
 
-検査の対象は、名前に `client` を含む属性チェーンの呼び出し(`client`・`self._raw_client.cat` など。
-Indexer の `test_write_rules.py` と同じ流儀)。限界: 動的な呼び出し(`getattr(client, name)(...)`)、
-`client` を含まない名前へ代入し直したクライアント、`transport.perform_request(...)` のような
-低水準の呼び出しは検出できない。Reader は、ラッパーを `client` を含まない名前(`readonly`)で持つ。
+(a)〜(c) の検査の対象は、名前に `client` を含む属性チェーンの呼び出し(`client`・
+`self._raw_client.cat` など。Indexer の `test_write_rules.py` と同じ流儀)。限界: 動的な呼び出し
+(`getattr(client, name)(...)`)、`client` を含まない名前へ代入し直したクライアント、
+`transport.perform_request(...)` のような低水準の呼び出しは検出できない。Reader は、ラッパーを
+`client` を含まない名前(`readonly`)で持つ。
+(d) の限界: 文字列を連結して作ったパス(`"/" + name`)や、パスを別の定数に分けた書き方は検出できない
+(パスのリテラルは先頭が `/` の文字列だけを見る)。送信の呼び出しは、名前(`request`・`urlopen` など)で
+判定する。
 """
 
 import ast
@@ -529,3 +538,429 @@ def test_calls_by_method_attributes_each_call_to_its_method() -> None:
         "cluster_health": {"cluster.health"},
         "search": {"cat.indices", "search"},
     }
+
+
+# --- (d) Crawler クライアント ---
+
+CRAWLER_CLIENT_DIRECTORY = "infrastructure/crawler_client"
+CRAWLER_CLIENT_FILE = f"{CRAWLER_CLIENT_DIRECTORY}/client.py"
+CRAWLER_HTTP_CLIENT_FILE = f"{CRAWLER_CLIENT_DIRECTORY}/http_client.py"
+CRAWLER_ROUTES_FILE = f"{CRAWLER_CLIENT_DIRECTORY}/routes.py"
+
+# Crawler の 6 API に 1 対 1 の操作(B 9.2。C 4.8)。
+CRAWLER_OPERATIONS = frozenset(
+    {
+        "register_source",
+        "update_source",
+        "start_delete_job",
+        "start_crawl",
+        "cancel_job",
+        "release_lock",
+    }
+)
+# Crawler に送る経路(メソッド, パスのテンプレート)のすべて(C 4.8)。
+CRAWLER_ROUTES = frozenset(
+    {
+        ("POST", "/sources"),
+        ("PUT", "/sources/{source_id}"),
+        ("POST", "/sources/{source_id}/delete-jobs"),
+        ("POST", "/sources/{source_id}/crawl-jobs"),
+        ("POST", "/jobs/{job_id}/cancel"),
+        ("DELETE", "/sources/{source_id}/lock"),
+    }
+)
+HTTP_CLIENT_CLASS = "HttpCrawlerClient"
+PROTOCOL_CLASS = "CrawlerClient"
+# 公開の操作は、任意のメソッド・パス・URL・ヘッダを受け取る引数を持たない。
+FORBIDDEN_PARAMETER_NAMES = frozenset(
+    {"method", "path", "url", "uri", "route", "endpoint", "headers", "target"}
+)
+# urllib3 の送信を行うメソッド名(`PoolManager`・モジュールの `urllib3.request`)。
+SEND_METHOD_NAMES = frozenset({"request", "urlopen", "request_encode_body", "request_encode_url"})
+EXCHANGE_METHOD = "_send_once"
+
+
+def find_path_literals(source: str) -> list[str]:
+    """先頭が `/` の文字列(`/` だけは除く)。f 文字列の固定部分も含む。"""
+    return [
+        node.value
+        for node in ast.walk(ast.parse(source))
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and node.value.startswith("/")
+        and len(node.value) > 1
+    ]
+
+
+def find_path_literals_outside_routes(sources: Mapping[str, str]) -> list[str]:
+    return [
+        f"{path} has the path literal {literal!r}"
+        for path, source in sorted(sources.items())
+        if path != CRAWLER_ROUTES_FILE
+        for literal in find_path_literals(source)
+    ]
+
+
+def find_route_templates(source: str) -> set[tuple[str, str]]:
+    """`_Template("POST", "/sources")` の呼び出しから、(メソッド, パス)を集める。"""
+    routes: set[tuple[str, str]] = set()
+    for node in ast.walk(ast.parse(source)):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Name)):
+            continue
+        if node.func.id != "_Template":
+            continue
+        arguments = [argument.value for argument in node.args if isinstance(argument, ast.Constant)]
+        assert len(arguments) == 2, ast.unparse(node)
+        routes.add((arguments[0], arguments[1]))
+    return routes
+
+
+def find_send_calls(tree: ast.AST) -> list[ast.Call]:
+    """属性呼び出しで、メソッド名が urllib3 の送信を行うもの。"""
+    return [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr in SEND_METHOD_NAMES
+    ]
+
+
+def function_names_of_send_calls(tree: ast.AST) -> list[str | None]:
+    """送信の呼び出しごとの、それを含む関数名(関数の外なら `None`)。"""
+    in_function = {
+        id(call): function.name
+        for function in ast.walk(tree)
+        if isinstance(function, ast.FunctionDef | ast.AsyncFunctionDef)
+        for call in find_send_calls(function)
+    }
+    return [in_function.get(id(call)) for call in find_send_calls(tree)]
+
+
+def find_send_outside_the_exchange(sources: Mapping[str, str]) -> list[str]:
+    """送信の呼び出しが、`http_client.py` の `_send_once` の 1 か所だけであること。"""
+    problems: list[str] = []
+    for path, source in sorted(sources.items()):
+        tree = ast.parse(source)
+        calls = find_send_calls(tree)
+        if path != CRAWLER_HTTP_CLIENT_FILE:
+            problems += [
+                f"{path}:{call.lineno} sends a request outside http_client.py" for call in calls
+            ]
+            continue
+        problems += [
+            f"{path} sends a request outside {EXCHANGE_METHOD}"
+            for function_name in function_names_of_send_calls(tree)
+            if function_name != EXCHANGE_METHOD
+        ]
+        if len(calls) > 1:
+            problems.append(f"{path} sends a request in more than one place")
+    return problems
+
+
+def find_send_not_from_route(source: str) -> list[str]:
+    """送信のメソッドとパスが、`route.method`・`route.path`(`routes.py` の結果)であること。"""
+    problems: list[str] = []
+    for call in find_send_calls(ast.parse(source)):
+        method_argument = ast.unparse(call.args[0]) if call.args else ""
+        url_argument = ast.unparse(call.args[1]) if len(call.args) > 1 else ""
+        if method_argument != "route.method":
+            problems.append(f"line {call.lineno}: the HTTP method is {method_argument!r}")
+        if "route.path" not in url_argument:
+            problems.append(f"line {call.lineno}: the URL does not use route.path")
+        if _forwards_arbitrary_arguments(call):
+            problems.append(f"line {call.lineno}: forwards arbitrary arguments")
+    return problems
+
+
+def find_send_without_safe_options(source: str) -> list[str]:
+    """送信が、再送もリダイレクトの追従もしない指定(`retries=False`・`redirect=False`)であること。"""
+    problems: list[str] = []
+    for call in find_send_calls(ast.parse(source)):
+        keywords = {keyword.arg: keyword.value for keyword in call.keywords}
+        for option in ("retries", "redirect"):
+            value = keywords.get(option)
+            if not (isinstance(value, ast.Constant) and value.value is False):
+                problems.append(f"line {call.lineno}: {option} is not False")
+    return problems
+
+
+def parameter_names(function: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    arguments = function.args
+    names = [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs]
+    return {argument.arg for argument in names} - {"self"}
+
+
+def find_open_ended_operations(class_node: ast.ClassDef) -> list[str]:
+    """公開メソッドのうち、任意のメソッド・パスを受けうるもの(禁止の引数名・`*args`・`**kwargs`)。"""
+    problems: list[str] = []
+    for method in methods_of(class_node):
+        if method.name.startswith("_"):
+            continue
+        forbidden = parameter_names(method) & FORBIDDEN_PARAMETER_NAMES
+        if forbidden:
+            problems.append(f"{method.name} accepts {sorted(forbidden)}")
+        if method.args.vararg is not None or method.args.kwarg is not None:
+            problems.append(f"{method.name} accepts variadic arguments")
+    return problems
+
+
+def route_calls_by_method(class_node: ast.ClassDef) -> dict[str, set[str]]:
+    """公開メソッドごとの、`routes.<関数>(...)` の呼び先。"""
+    return {
+        method.name: {
+            node.func.attr
+            for node in ast.walk(method)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "routes"
+        }
+        for method in methods_of(class_node)
+        if not method.name.startswith("_")
+    }
+
+
+def crawler_class(sources: Mapping[str, str], file: str, name: str) -> ast.ClassDef:
+    class_node = find_class(ast.parse(sources[file]), name)
+    assert class_node is not None, name
+    return class_node
+
+
+# --- (d) 実際のソース ---
+
+
+def test_the_crawler_client_sources_are_found() -> None:
+    sources = load_sources(CRAWLER_CLIENT_DIRECTORY)
+
+    assert {CRAWLER_CLIENT_FILE, CRAWLER_HTTP_CLIENT_FILE, CRAWLER_ROUTES_FILE} <= set(sources)
+
+
+def test_the_crawler_client_protocol_has_exactly_the_six_operations() -> None:
+    protocol = crawler_class(
+        load_sources(CRAWLER_CLIENT_DIRECTORY), CRAWLER_CLIENT_FILE, PROTOCOL_CLASS
+    )
+
+    assert public_method_names(protocol) == CRAWLER_OPERATIONS
+
+
+def test_the_http_crawler_client_has_the_six_operations_and_close_only() -> None:
+    http_client = crawler_class(
+        load_sources(CRAWLER_CLIENT_DIRECTORY), CRAWLER_HTTP_CLIENT_FILE, HTTP_CLIENT_CLASS
+    )
+
+    assert public_method_names(http_client) == CRAWLER_OPERATIONS | {"close"}
+
+
+def test_no_operation_of_the_crawler_client_accepts_an_arbitrary_method_or_path() -> None:
+    sources = load_sources(CRAWLER_CLIENT_DIRECTORY)
+
+    for file, name in [
+        (CRAWLER_CLIENT_FILE, PROTOCOL_CLASS),
+        (CRAWLER_HTTP_CLIENT_FILE, HTTP_CLIENT_CLASS),
+    ]:
+        assert find_open_ended_operations(crawler_class(sources, file, name)) == [], name
+
+
+def test_each_operation_builds_its_own_fixed_route_and_nothing_else() -> None:
+    http_client = crawler_class(
+        load_sources(CRAWLER_CLIENT_DIRECTORY), CRAWLER_HTTP_CLIENT_FILE, HTTP_CLIENT_CLASS
+    )
+
+    calls = route_calls_by_method(http_client)
+
+    assert calls.pop("close") == set()
+    # 操作 `x` は `routes.x(...)` だけを呼ぶ(別の操作の経路を使い回さない)。
+    assert calls == {operation: {operation} for operation in CRAWLER_OPERATIONS}
+
+
+def test_the_path_literals_are_only_in_routes_py_and_are_the_six_routes() -> None:
+    sources = load_sources(CRAWLER_CLIENT_DIRECTORY)
+
+    assert find_path_literals_outside_routes(sources) == []
+    assert find_route_templates(sources[CRAWLER_ROUTES_FILE]) == CRAWLER_ROUTES
+    # 空振りしていない: routes.py のパスのリテラルは、6 経路のテンプレートだけ。
+    assert set(find_path_literals(sources[CRAWLER_ROUTES_FILE])) == {
+        path for _, path in CRAWLER_ROUTES
+    }
+
+
+def test_the_http_request_is_sent_in_one_place_with_the_method_and_path_of_a_route() -> None:
+    sources = load_sources(CRAWLER_CLIENT_DIRECTORY)
+
+    assert find_send_outside_the_exchange(sources) == []
+    assert (
+        len(find_send_calls(ast.parse(sources[CRAWLER_HTTP_CLIENT_FILE]))) == 1
+    )  # 空振りしていない
+    assert find_send_not_from_route(sources[CRAWLER_HTTP_CLIENT_FILE]) == []
+    assert find_send_without_safe_options(sources[CRAWLER_HTTP_CLIENT_FILE]) == []
+
+
+# --- (d) 検出器の自己テスト(合成ソース。負例が空振りしない) ---
+
+OTHER_CRAWLER_FILE = f"{CRAWLER_CLIENT_DIRECTORY}/parsing.py"
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        'PATH = "/sources"',
+        'PATH = "/jobs/x/cancel"',
+        'url = f"{base}/sources/{source_id}/lock"',
+        'send("/anything")',
+        "return '/healthz'",
+    ],
+)
+def test_a_path_literal_outside_routes_py_is_detected(source: str) -> None:
+    problems = find_path_literals_outside_routes({OTHER_CRAWLER_FILE: source})
+
+    # f 文字列は、固定部分ごとに 1 件になる。
+    assert problems
+    assert all("path literal" in problem for problem in problems)
+
+
+def test_a_path_literal_in_routes_py_is_accepted() -> None:
+    assert find_path_literals_outside_routes({CRAWLER_ROUTES_FILE: 'PATH = "/sources"'}) == []
+
+
+def test_a_slash_alone_and_non_path_text_are_not_path_literals() -> None:
+    source = 'base_url.rstrip("/")\nx = "sources"\ny = "a/b"\nz = "Crawler /sources"'
+
+    assert find_path_literals_outside_routes({OTHER_CRAWLER_FILE: source}) == []
+
+
+def test_a_seventh_route_is_visible_to_the_route_check() -> None:
+    source = '_A = _Template("POST", "/sources")\n_B = _Template("PATCH", "/admin/reset")'
+
+    assert find_route_templates(source) == {("POST", "/sources"), ("PATCH", "/admin/reset")}
+    assert find_route_templates(source) != CRAWLER_ROUTES
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "self._pool.request('GET', url)",
+        "self._pool.urlopen('GET', url)",
+        "urllib3.request('GET', url)",
+        "http.request_encode_body('POST', url)",
+    ],
+)
+def test_a_send_outside_http_client_is_detected(call: str) -> None:
+    [problem] = find_send_outside_the_exchange({OTHER_CRAWLER_FILE: call})
+
+    assert "outside http_client.py" in problem
+
+
+def test_a_send_outside_the_exchange_function_is_detected() -> None:
+    source = (
+        "class HttpCrawlerClient:\n"
+        "    def _send_once(self, route):\n"
+        "        return self._pool.request(route.method, route.path)\n"
+        "    def raw(self, route):\n"
+        "        return self._pool.request(route.method, route.path)\n"
+    )
+
+    problems = find_send_outside_the_exchange({CRAWLER_HTTP_CLIENT_FILE: source})
+
+    assert any("outside _send_once" in problem for problem in problems)
+    assert any("more than one place" in problem for problem in problems)
+
+
+def test_the_send_of_a_single_exchange_function_is_accepted() -> None:
+    source = (
+        "class HttpCrawlerClient:\n"
+        "    def _send_once(self, route):\n"
+        "        return self._pool.request(route.method, f'{self._base_url}{route.path}')\n"
+    )
+
+    assert find_send_outside_the_exchange({CRAWLER_HTTP_CLIENT_FILE: source}) == []
+    assert find_send_not_from_route(source) == []
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "self._pool.request('POST', route.path)",  # メソッドが固定のリテラル
+        "self._pool.request(method, route.path)",
+        "self._pool.request(route.method, path)",
+        "self._pool.request(route.method, '/sources')",
+        "self._pool.request(route.method, route.path, **options)",
+        "self._pool.request(*arguments)",
+    ],
+)
+def test_a_send_that_does_not_use_the_method_and_path_of_a_route_is_detected(call: str) -> None:
+    assert find_send_not_from_route(call) != []
+
+
+@pytest.mark.parametrize(
+    "signature",
+    [
+        "def call(self, method, path): ...",
+        "def fetch(self, source_id, *, url): ...",
+        "def start_crawl(self, source_id, route): ...",
+        "def release_lock(self, source_id, **kwargs): ...",
+        "def cancel_job(self, *args): ...",
+        "def cancel_job(self, job_id, *, headers=None): ...",
+    ],
+)
+def test_an_open_ended_operation_is_detected(signature: str) -> None:
+    class_node = ast.parse(f"class Target:\n    {signature}\n").body[0]
+    assert isinstance(class_node, ast.ClassDef)
+
+    assert find_open_ended_operations(class_node) != []
+
+
+def test_explicit_operations_and_private_helpers_are_not_open_ended() -> None:
+    source = (
+        "class Target:\n"
+        "    def start_crawl(self, source_id, *, force_delete, rewrite_mode): ...\n"
+        "    def _exchange(self, route, payload): ...\n"
+    )
+    class_node = ast.parse(source).body[0]
+    assert isinstance(class_node, ast.ClassDef)
+
+    assert find_open_ended_operations(class_node) == []
+
+
+def test_an_extra_public_operation_is_visible_to_the_surface_check() -> None:
+    source = "class Target:\n    def start_crawl(self): ...\n    def get(self, path): ...\n"
+
+    assert public_method_names(class_of(source)) != CRAWLER_OPERATIONS
+
+
+def test_route_calls_by_method_attributes_each_route_to_its_operation() -> None:
+    source = (
+        "class Target:\n"
+        "    def cancel_job(self, job_id):\n"
+        "        return self._exchange(routes.cancel_job(job_id))\n"
+        "    def release_lock(self, source_id):\n"
+        "        return self._exchange(routes.cancel_job(source_id))\n"
+        "    def close(self): ...\n"
+    )
+
+    assert route_calls_by_method(class_of(source)) == {
+        "cancel_job": {"cancel_job"},
+        "release_lock": {"cancel_job"},  # 別の操作の経路を使う誤りが見える
+        "close": set(),
+    }
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        "self._pool.request(route.method, route.path, retries=True, redirect=False)",
+        "self._pool.request(route.method, route.path, retries=False, redirect=True)",
+        "self._pool.request(route.method, route.path, retries=False)",
+        "self._pool.request(route.method, route.path, redirect=False)",
+        "self._pool.request(route.method, route.path, retries=0, redirect=False)",
+        "self._pool.request(route.method, route.path, retries=retries, redirect=False)",
+    ],
+)
+def test_a_send_that_may_retry_or_follow_a_redirect_is_detected(call: str) -> None:
+    assert len(find_send_without_safe_options(call)) == 1
+
+
+def test_a_send_with_retries_and_redirect_disabled_is_accepted() -> None:
+    call = "self._pool.request(route.method, route.path, retries=False, redirect=False)"
+
+    assert find_send_without_safe_options(call) == []

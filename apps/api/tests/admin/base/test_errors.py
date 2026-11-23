@@ -12,6 +12,10 @@ from loreley_api.admin.base.codes import (
 from loreley_api.admin.base.errors import (
     AdminApiError,
     FieldViolation,
+    config_invalid,
+    crawler_error,
+    crawler_response_lost,
+    crawler_unreachable,
     invalid_request,
     job_not_found,
     source_config_not_found,
@@ -95,7 +99,16 @@ def test_an_admin_api_error_is_an_api_error_with_a_fixed_message() -> None:
 
 
 def test_every_error_code_used_by_a_generator_has_a_message() -> None:
-    for error in (invalid_request(), unavailable(), source_config_not_found(), job_not_found()):
+    for error in (
+        invalid_request(),
+        unavailable(),
+        source_config_not_found(),
+        job_not_found(),
+        config_invalid([], "message"),
+        crawler_error(),
+        crawler_unreachable(),
+        crawler_response_lost(),
+    ):
         assert error.message
         assert error.code in {code.value for code in ErrorCode}
 
@@ -185,3 +198,52 @@ def test_the_error_response_has_the_unified_shape() -> None:
             "retryable": True,
         }
     }
+
+
+def test_config_invalid_lists_the_decomposed_violation_and_the_crawler_message() -> None:
+    error = config_invalid(
+        [FieldViolation("connector_config.root", Reason.CONFIG_INVALID, "must be absolute")],
+        "root: must be absolute",
+    )
+
+    assert (error.status_code, error.code, error.retryable) == (400, "config_invalid", False)
+    assert error.details == {
+        "errors": [
+            {
+                "field": "connector_config.root",
+                "reason": "config_invalid",
+                "detail": "must be absolute",
+            }
+        ],
+        "crawler_message": "root: must be absolute",
+    }
+
+
+def test_config_invalid_without_a_decomposition_has_empty_errors() -> None:
+    error = config_invalid([], "something unexpected")
+
+    assert error.details == {"errors": [], "crawler_message": "something unexpected"}
+
+
+@pytest.mark.parametrize(
+    ("error", "status_code", "code", "retryable", "details"),
+    [
+        (crawler_error(), 502, "crawler_error", False, None),
+        (crawler_unreachable(), 503, "crawler_unreachable", True, None),
+        (crawler_response_lost(), 504, "crawler_response_lost", False, {"outcome_unknown": True}),
+    ],
+)
+def test_the_crawler_failures_have_the_status_retryability_and_details_of_the_specification(
+    error: AdminApiError,
+    status_code: int,
+    code: str,
+    retryable: bool,
+    details: dict[str, object] | None,
+) -> None:
+    """B 2.3: 届かなかった(503)は再試行してよく、応答が来なかった(504)は結果が不明。"""
+    assert (error.status_code, error.code, error.retryable, error.details) == (
+        status_code,
+        code,
+        retryable,
+        details,
+    )
