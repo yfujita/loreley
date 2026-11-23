@@ -3,20 +3,19 @@
 ## 基本情報
 
 - 状態: in_progress
-- 現在工程: レビュー R-A 再レビュー(指摘対応後)
+- 現在工程: 実施(P3 着手)
 - 最終更新: 2026-11-24
-- 最新作業記録: 0006-review-a-and-fixes.md
+- 最新作業記録: 0007-review-a-rereview.md
 
 ## 現在の状況
 
-プラン(0002)承認済み。P0〜P2 完了。R-A の Important 5 件(code 1・test 4)と Suggestion/Nitpick の一部を修正済み・検証再実行済み(pytest 1150 passed、ruff・format・lock OK)。コミット済み。
-ブランチ `feature/implement-admin-api`(開始 SHA `cedcd5667638ec18eaf6ee501963ab356d33ed5f`)。
-修正差分(`2c29b7e` 以降)を `code-reviewer`・`test-reviewer` で再レビュー中。
+プラン(0002)承認済み。P0〜P2 完了、レビュー R-A 完了(再レビューで code・test とも指摘なし)。ブランチ `feature/implement-admin-api`(開始 SHA `cedcd5667638ec18eaf6ee501963ab356d33ed5f`、HEAD `aa88b9b`)。pytest 1150 passed。
+次は P3(読み取り系 EP その 1: EP-09・10・12・14 と導出)。
 
 ## 次のアクション
 
-1. 再レビューの結果を受け、Critical/Important が残れば修正 → 再再レビュー
-2. 解消後、P3(EP-09・10・12・14 と導出)へ
+1. P3 を code-implementer に依頼(R-A の小さな取り込み分を含む)
+2. P3・P4 完了後、レビュー R-B(比較基準は R-A 完了コミット `aa88b9b`)
 
 ## 未解決事項
 
@@ -26,6 +25,7 @@
 - AAM-U-7、BAPI-U-2 の残りは実装時に確認
 - クエリの意味の実機確認(AAA-U-1〜3)は P7 スモーク
 - 設計書追従改訂の申し送り: 0004(4 件)・0005(5 件)・0006(ErrorCode の固定文 10 件)
+- 据え置き: `search_index_reader` の `parse_uncounted_search` 切り替え、`test_secret_output.py` の DNS 依存(0007)
 
 ## ユーザー判断待ち
 
