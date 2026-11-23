@@ -628,3 +628,33 @@ def test_ids_and_input_values_are_in_neither_the_responses_nor_the_logs(
         response_text="".join(response.text for response in responses),
         records=caplog.records,
     )
+
+
+# --- 許可していない HTTP メソッド(EP-05・06・07・08 は、決まった 1 つのメソッドだけ) ---
+
+HTTP_METHODS = ["get", "post", "put", "patch", "delete"]
+ALLOWED_METHOD_BY_PATH = {
+    f"{SOURCES}/docs/delete-jobs": "post",  # EP-05
+    f"{SOURCES}/docs/crawl-jobs": "post",  # EP-06
+    f"{JOBS}/job-1/cancel": "post",  # EP-07
+    f"{SOURCES}/docs/lock": "delete",  # EP-08
+}
+
+
+DISALLOWED_METHODS = [
+    (path, method)
+    for path, allowed_method in ALLOWED_METHOD_BY_PATH.items()
+    for method in HTTP_METHODS
+    if method != allowed_method
+]
+
+
+@pytest.mark.parametrize(("path", "method"), DISALLOWED_METHODS)
+def test_a_method_other_than_the_allowed_one_is_a_405_and_never_reaches_the_crawler(
+    client: TestClient, crawler: FakeCrawlerClient, path: str, method: str
+) -> None:
+    response = getattr(client, method)(path)
+
+    assert response.status_code == 405
+    assert response.json()["error"]["code"] == "method_not_allowed"
+    assert crawler.requests == []

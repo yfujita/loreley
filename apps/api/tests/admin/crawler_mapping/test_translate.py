@@ -121,8 +121,19 @@ UNKNOWN_RESPONSES: list[tuple[int, str]] = [
 ]
 
 
-@pytest.mark.parametrize("operation", list(CrawlerOperation))
-@pytest.mark.parametrize(("status", "code"), KNOWN_CRAWLER_RESPONSES + UNKNOWN_RESPONSES)
+NOT_IN_TABLE: list[tuple[CrawlerOperation, int, str]] = [
+    (operation, status, code)
+    for operation in CrawlerOperation
+    for status, code in KNOWN_CRAWLER_RESPONSES + UNKNOWN_RESPONSES
+    if (operation, status, code) not in TABLE
+]
+
+
+@pytest.mark.parametrize(
+    ("operation", "status", "code"),
+    NOT_IN_TABLE,
+    ids=[f"{operation.value}-{status}-{code}" for operation, status, code in NOT_IN_TABLE],
+)
 def test_a_combination_that_is_not_in_the_table_is_a_crawler_error(
     operation: CrawlerOperation, status: int, code: str
 ) -> None:
@@ -132,13 +143,11 @@ def test_a_combination_that_is_not_in_the_table_is_a_crawler_error(
         {"existing_job": EXISTING_JOB, "status": "active", "errors": []},
         ConfigInvalidMessage("root: x", ConfigViolation("connector_config.root", "x")),
     )
-    in_table = (operation, status, code) in TABLE
 
     translated = translate(operation, result, lock_state=LockState.NONE, requested=REQUESTED)
 
     assert isinstance(translated, AdminApiError)
-    if not in_table:
-        assert describe(translated) == CRAWLER_ERROR
+    assert describe(translated) == CRAWLER_ERROR
 
 
 def test_the_table_has_exactly_the_rows_of_the_specification() -> None:
@@ -363,6 +372,9 @@ def test_a_cancel_rejection_caused_by_the_job_id_is_a_job_not_found(
         {},
         None,
         {"errors": 1},
+        # 項目名が文字列でない(list・dict)ものは、読めないので数えない(unhashable にならない)。
+        {"errors": [{"field": ["job_id"], "reason": "format"}]},
+        {"errors": [{"field": {"name": "job_id"}, "reason": "format"}]},
     ],
 )
 def test_a_cancel_rejection_not_caused_by_the_job_id_is_a_crawler_error(

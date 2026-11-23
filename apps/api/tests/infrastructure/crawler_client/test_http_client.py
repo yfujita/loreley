@@ -1,7 +1,8 @@
 """`HttpCrawlerClient` を、ローカル HTTP スタブで確かめる(C 4.1〜4.3・4.8。C 11章 1〜3)。
 
 実 HTTP のため、受けた**生のリクエスト行**・回数・接続の数・ヘッダ・本文を確かめられる。
-接続拒否は閉じたポート、名前解決の失敗は `.invalid` のホストで再現する。
+接続拒否は閉じたポート、名前解決の失敗は `.invalid` のホストで再現する(実 DNS に問い合わせるのは、
+名前解決の分類を確かめる 1 件だけ。ほかのテストは `unresolvable_invalid_hosts` を使う)。
 """
 
 import json
@@ -364,6 +365,7 @@ def test_a_refused_connection_is_before_send() -> None:
 
 
 def test_an_unresolvable_host_is_before_send() -> None:
+    # 実 DNS に問い合わせる唯一のテスト。DNS が応答しない環境では、失敗するまで遅くなりうる。
     client = make_client("http://crawler.invalid:8001")
 
     result = client.release_lock("docs")

@@ -1,7 +1,8 @@
 """`HttpHealthProbe` を、ローカル HTTP スタブで確かめる(C 6.1・6.2・6.4。C 11章 8(e)・10)。
 
 実 HTTP のため、受けたメソッド・パス・回数・ヘッダ(リダイレクト先に届かないこと)を確かめられる。
-接続拒否は閉じたポート、名前解決の失敗は `.invalid` のホストで再現する。
+接続拒否は閉じたポート、名前解決の失敗は `.invalid` のホストの名前解決を失敗させて再現する
+(実 DNS には問い合わせない。実 DNS での分類は `HttpCrawlerClient` のテストで 1 件だけ確かめる)。
 """
 
 import io
@@ -21,6 +22,7 @@ from tests.fakes.local_http_server import (
     local_http_server,
 )
 from tests.secret_assertions import assert_secret_absent
+from tests.timing import TIMING_SLACK_SECONDS
 
 TIMEOUT_SECONDS = 0.4
 # 待たされた確認が、確認自身のタイムアウトで戻ることの確認に使う、スタブの遅延。
@@ -118,6 +120,7 @@ def test_a_refused_connection_is_abnormal_connection_refused(probe: HttpHealthPr
     )
 
 
+@pytest.mark.usefixtures("unresolvable_invalid_hosts")
 def test_an_unresolvable_host_is_abnormal_name_not_resolved(probe: HttpHealthProbe) -> None:
     assert probe.check("http://indexer.invalid:8000/healthz") == ProbeOutcome(
         "abnormal", "name_not_resolved"
@@ -135,7 +138,7 @@ def test_no_response_within_the_timeout_is_undetermined_timeout_and_returns_in_t
 
     assert outcome == ProbeOutcome("undetermined", "timeout")
     # 接続と読み取りの合計(`Timeout(total=…)`)に収まる。再送もしない。
-    assert elapsed_seconds < TIMEOUT_SECONDS + 1.0
+    assert elapsed_seconds < TIMEOUT_SECONDS + TIMING_SLACK_SECONDS
     assert len(server.requests) == 1
 
 
@@ -156,7 +159,7 @@ def test_a_malformed_url_is_undetermined_connection_error_not_an_exception(
     assert probe.check("http://") == ProbeOutcome("undetermined", "connection_error")
 
 
-@pytest.mark.usefixtures("restore_logging")
+@pytest.mark.usefixtures("restore_logging", "unresolvable_invalid_hosts")
 def test_the_url_is_not_written_to_the_logs_even_at_debug(server: LocalHttpServer) -> None:
     """本番と同じログ設定(urllib3 のロガーは ERROR 以上)で、DEBUG でも URL を出さない(R11)。"""
     stream = io.StringIO()

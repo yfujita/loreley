@@ -23,6 +23,7 @@ from tests.fakes.fake_probes import FakeProbes
 from tests.fakes.in_memory_readers import InMemoryReaders
 from tests.fakes.inline_runner import InlineRunner
 from tests.secret_assertions import assert_secret_absent
+from tests.timing import TIMING_SLACK_SECONDS
 
 pytestmark = pytest.mark.anyio
 
@@ -340,7 +341,9 @@ async def test_a_component_that_passed_the_deadline_is_stamped_when_the_response
     assert response.checked_at >= max(component.checked_at for component in response.components)
 
 
-async def test_the_top_level_checked_at_is_not_earlier_than_any_component() -> None:
+async def test_with_a_fixed_clock_the_top_level_and_every_component_checked_at_are_the_same() -> (
+    None
+):
     service = make_service(FakeProbes(), InlineRunner())
 
     response = await service.check_components()
@@ -362,7 +365,7 @@ async def test_a_not_configured_component_is_not_probed_and_has_no_reason() -> N
 
 PROBE_TIMEOUT_SECONDS = 0.2
 # 期限(確認 + 1 秒)に、スレッドの起動・イベントループの揺れの余裕を足した、応答の所要時間の上限。
-RESPONSE_LIMIT_SECONDS = PROBE_TIMEOUT_SECONDS + DEADLINE_MARGIN_SECONDS + 1.0
+RESPONSE_LIMIT_SECONDS = PROBE_TIMEOUT_SECONDS + DEADLINE_MARGIN_SECONDS + TIMING_SLACK_SECONDS
 # 期限より前に戻ることの確認に使う、遅くない確認の所要時間の上限。
 PROMPT_SECONDS = 0.5
 
@@ -416,8 +419,8 @@ async def test_one_slow_probe_does_not_delay_the_others_and_the_response_is_with
     assert len(response.components) == 8
 
 
-async def test_the_fast_probes_finish_before_the_deadline_even_when_one_is_slow() -> None:
-    """遅い確認がなければ、期限を待たずに応答する(速い確認が遅い確認に待たされない)。"""
+async def test_without_a_slow_probe_the_response_does_not_wait_for_the_deadline() -> None:
+    """遅い確認がなければ、(長い)期限を待たずに応答する。遅い確認があるときは、次のテスト。"""
     probes = FakeProbes()
     service = make_service(probes, BlockingRunner(), probe_timeout_seconds=30.0)
 

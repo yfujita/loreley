@@ -25,8 +25,11 @@ OpenSearch 側(R8 (a)〜(c))、Crawler クライアント(d)、死活確認の�
   `services.dashboard` の `/healthz` だけが、確認に使う唯一のパス(C 11章 8 (c) の `GET /healthz`)。
   `opensearch` のプローブは、ラッパー経由の `cluster.health` だけ((a)(b) が検査する)。
 (d) の限界: 文字列を連結して作ったパス(`"/" + name`)や、パスを別の定数に分けた書き方は検出できない
-(パスのリテラルは先頭が `/` の文字列だけを見る)。送信の呼び出しは、名前(`request`・`urlopen` など)で
-判定する。
+(パスのリテラルは先頭が `/` の文字列だけを見る)。送信の呼び出しは、名前(`request`・`urlopen` など。
+`SEND_METHOD_NAMES`)で判定する。
+(e) にも同じ限界がある: 送信の呼び出しを `SEND_METHOD_NAMES` の名前で検出するので、文字列の連結で
+作ったパス、送信の関数に別名をつけた呼び出し(`send = pool.request`)、`request` などでない名前の
+送信は検出できない。
 """
 
 import ast

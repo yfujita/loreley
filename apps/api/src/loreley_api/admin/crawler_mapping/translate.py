@@ -190,8 +190,10 @@ def _error_entries(rejected: CrawlerRejected) -> list[Mapping[str, Any]]:
     return [entry for entry in errors if isinstance(entry, dict)]
 
 
-def _error_fields(rejected: CrawlerRejected) -> set[object]:
-    return {entry.get("field") for entry in _error_entries(rejected)}
+def _error_fields(rejected: CrawlerRejected) -> set[str]:
+    # 文字列でない `field`(list・dict など)は、項目名として読めないので数えない。
+    fields = (entry.get("field") for entry in _error_entries(rejected))
+    return {field for field in fields if isinstance(field, str)}
 
 
 def _rename_invalid_fields(

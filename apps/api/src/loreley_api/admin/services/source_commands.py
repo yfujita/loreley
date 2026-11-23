@@ -97,7 +97,10 @@ def _validate_settings(body: UpdateSourceBody) -> _ValidSettings:
     if violations:
         raise invalid_request(violations)
 
-    # 違反がなければ、換算の結果はすべて値がある。
+    # 違反を足した検証は必ず `None` を返す。違反がなければ、換算の結果はすべて値がある。
+    assert ttl_seconds is not None
+    assert ratio_threshold is not None
+    assert min_delete_count is not None
     return _ValidSettings(
         settings=CrawlerSourceSettings(
             connector_config=body.connector_config,
