@@ -1,7 +1,9 @@
 """EP をまたぐ共通の DTO(B 2.11)。
 
-`SourceSettings`・`JobAccepted`・`ExistingJob` は、それを返す EP(EP-02〜08)を実装するときに足す。
+`JobAccepted` は、それを返す EP(EP-05・06)を実装するときに足す。
 """
+
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -9,6 +11,7 @@ from loreley_api.admin.base.codes import (
     JobStatus,
     JobTrigger,
     JobType,
+    SourceStatus,
     UnavailableReason,
 )
 
@@ -52,3 +55,38 @@ class JobBrief(ResponseModel):
     # `status=running` 以外は `false`。ロック文書を読めず判定できないときだけ `null`。
     stalled: bool | None
     cancellable: bool
+
+
+class SourceSettings(ResponseModel):
+    """データソースの設定(EP-02〜04)。
+
+    EP-02 は保存値を読むので、読めない項目(欠落・型違い)は `null` で、`unavailable.<項目名>` に
+    `malformed` が載る(B 2.2)。`ttl_days` は `ttl_seconds` が日で割り切れるときだけ。
+    """
+
+    source_id: str
+    connector_type: str | None
+    # 保存済みの値をそのまま返す(補完・加工しない)。
+    connector_config: dict[str, Any] | None
+    ttl_seconds: int | None
+    ttl_days: int | None
+    ratio_threshold_percent: int | float | None
+    min_delete_count: int | None
+    # `null` は手動のみ。
+    schedule_cron: str | None
+    status: SourceStatus | None
+    updated_at: str | None
+
+
+class ExistingJob(ResponseModel):
+    """ロック文書が指すジョブ(`lock.job`、409 の `details.existing_job`)。
+
+    ジョブ記録がない(孤児ロック)・値が読めないときは `null`。
+    """
+
+    job_id: str
+    job_type: JobType | None
+    status: JobStatus | None
+    trigger: JobTrigger | None
+    # ロック文書のリース期限。実行待ちや読めない値は `null`。
+    lease_expires_at: str | None

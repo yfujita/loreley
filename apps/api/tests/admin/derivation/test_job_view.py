@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 
 from loreley_api.admin.base.codes import (
+    DocumentExistence,
     JobStatus,
     JobTrigger,
     JobType,
@@ -13,6 +14,7 @@ from loreley_api.admin.base.codes import (
 from loreley_api.admin.derivation.job_view import (
     JobBriefView,
     derive_phase,
+    existence_of,
     read_failure_detail,
     read_job_brief,
     read_registration,
@@ -226,3 +228,25 @@ def test_the_registration_phase_table(
     partial: bool | None, status: JobStatus | None, phase: RegistrationPhase | None
 ) -> None:
     assert derive_phase(partial, status) is phase
+
+
+# --- existence(C 5.6) ---
+
+
+@pytest.mark.parametrize(
+    ("document_id", "existing_ids", "expected"),
+    [
+        ("doc-1", frozenset({"doc-1", "doc-2"}), DocumentExistence.EXISTING),
+        ("doc-3", frozenset({"doc-1", "doc-2"}), DocumentExistence.NEW),
+        ("doc-1", frozenset(), DocumentExistence.NEW),
+        # `document_id` が読めない行は、検索の結果によらず `unknown`。
+        (None, frozenset({"doc-1"}), DocumentExistence.UNKNOWN),
+        # 一括検索が失敗して分からないときは `unknown`。
+        ("doc-1", None, DocumentExistence.UNKNOWN),
+        (None, None, DocumentExistence.UNKNOWN),
+    ],
+)
+def test_existence_is_decided_by_the_set_of_ids_found_in_the_search_index(
+    document_id: str | None, existing_ids: frozenset[str] | None, expected: DocumentExistence
+) -> None:
+    assert existence_of(document_id, existing_ids) is expected

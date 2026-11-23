@@ -486,6 +486,13 @@ def test_an_unknown_query_of_the_detail_is_a_400(client: TestClient) -> None:
     ]
 
 
+def test_the_detail_validates_the_path_before_the_query(client: TestClient) -> None:
+    """検証の順序は パス → クエリ(A 5.3)。両方が違反なら、`job_id` の違反だけを返す。"""
+    response = client.get(f"{ADMIN_PREFIX}/jobs/a%00b?verbose=1")
+
+    assert errors_of(response) == [{"field": "job_id", "reason": "format"}]
+
+
 def test_a_body_on_the_detail_is_ignored(readers: InMemoryReaders, client: TestClient) -> None:
     seed_failed_crawl(readers)
 

@@ -5,10 +5,8 @@
 `null` にして `unavailable` に理由を載せる。
 """
 
-import dataclasses
 from collections.abc import Sequence
 from datetime import datetime
-from typing import Any
 
 from loreley_api.admin.base.codes import DeletionCurrentState, JobStatus, JobType
 from loreley_api.admin.base.constants import PAGE_WINDOW_LIMIT
@@ -16,7 +14,6 @@ from loreley_api.admin.base.errors import job_not_found, unavailable
 from loreley_api.admin.derivation import deletion_view, job_view, rerun
 from loreley_api.admin.derivation.job_view import JobBriefView, read_job_brief
 from loreley_api.admin.derivation.rerun import RerunDecision, SourceCondition, UndecidedBecause
-from loreley_api.admin.derivation.stalled import is_cancellable
 from loreley_api.admin.failures import reason_of, row_unavailable, top_level_unavailable
 from loreley_api.admin.schemas.jobs import (
     Deletion,
@@ -28,6 +25,7 @@ from loreley_api.admin.schemas.jobs import (
     JobListResponse,
     Registration,
 )
+from loreley_api.admin.services.job_brief import brief_fields
 from loreley_api.admin.services.stalled_check import RunningJob, StalledCheck, StalledOutcome
 from loreley_api.common.clock import Clock
 from loreley_api.common.concurrency import CATEGORY_OPENSEARCH, BlockingRunner
@@ -88,36 +86,26 @@ class JobQueryService:
         if isinstance(listed, Failed):
             raise unavailable()
 
-        fallback_source_id = source_id or ""
         briefs = [
-            read_job_brief(record.record_id, record.source, fallback_source_id=fallback_source_id)
+            read_job_brief(record.record_id, record.source, fallback_source_id=source_id or "")
             for record in listed.value.items
         ]
-        running_jobs = [
-            RunningJob(brief.job_id, brief.source_id)
-            for brief in briefs
-            if brief.status is JobStatus.RUNNING
-        ]
-        outcomes = await self._stalled_check.check(
-            running_jobs, job_fields=JOB_BRIEF_FIELDS, now=now
-        )
-
-        rows = [_row_of(brief, outcomes.get(brief.job_id), fallback_source_id) for brief in briefs]
+        judged_jobs = await self._stalled_check.judge(briefs, job_fields=JOB_BRIEF_FIELDS, now=now)
         row_reasons = row_unavailable(
-            [row.brief.job_id for row in rows],
+            [judged.brief.job_id for judged in judged_jobs],
             {
-                row.brief.job_id: {"stalled": reason_of(row.failure)}
-                for row in rows
-                if row.failure is not None
+                judged.brief.job_id: {"stalled": reason_of(judged.failure)}
+                for judged in judged_jobs
+                if judged.failure is not None
             },
         )
         return JobListResponse(
             items=[
                 JobListItem(
-                    **_brief_fields(row.brief, row.stalled),
-                    unavailable=row_reasons[row.brief.job_id],
+                    **brief_fields(judged.brief, judged.stalled),
+                    unavailable=row_reasons[judged.brief.job_id],
                 )
-                for row in rows
+                for judged in judged_jobs
             ],
             total=listed.value.total,
             page=page,
@@ -168,7 +156,7 @@ class JobQueryService:
         deletion = await self._read_deletion(brief, record, now, failures)
 
         return JobDetailResponse(
-            **_brief_fields(brief, is_stalled),
+            **brief_fields(brief, is_stalled),
             failure_detail=job_view.read_failure_detail(record.source, brief.status),
             lease_expires_at=outcome.lease_expires_at if outcome is not None else None,
             latest_for_source=latest_for_source,
@@ -263,37 +251,6 @@ class JobQueryService:
             if settings is not None
             else None,
         )
-
-
-@dataclasses.dataclass(frozen=True)
-class _Row:
-    """EP-09 の 1 行。`stalled` は判定できなければ `None`(`failure` がその原因)。"""
-
-    brief: JobBriefView
-    stalled: bool | None
-    failure: Failed | None
-
-
-def _row_of(brief: JobBriefView, outcome: StalledOutcome | None, fallback_source_id: str) -> _Row:
-    if outcome is None:
-        return _Row(brief, stalled=False, failure=None)
-    # 確認読みで読み直したジョブがあれば、行もその値にそろえる(終わったジョブを `running` の
-    # まま見せない)。
-    refreshed = outcome.refreshed_job
-    if refreshed is not None:
-        brief = read_job_brief(
-            refreshed.record_id, refreshed.source, fallback_source_id=fallback_source_id
-        )
-    return _Row(brief, outcome.stalled, outcome.failure)
-
-
-def _brief_fields(brief: JobBriefView, stalled: bool | None) -> dict[str, Any]:
-    """`JobBrief` の項目(`stalled` が `null` のとき `cancellable` は `false`)。"""
-    return {
-        **dataclasses.asdict(brief),
-        "stalled": stalled,
-        "cancellable": is_cancellable(brief.job_type, brief.status, stalled),
-    }
 
 
 def _cause_of(

@@ -78,8 +78,12 @@ def create_jobs_router(job_queries: JobQueryService) -> APIRouter:
             descending=paging.descending,
         )
 
-    @router.get("/jobs/{job_id}", dependencies=[Depends(reject_unknown_query(NO_QUERY_NAMES))])
-    async def get_job(job_id: JobIdPath) -> JobDetailResponse:
+    @router.get("/jobs/{job_id}")
+    async def get_job(
+        job_id: JobIdPath,
+        # 検証の順序は パス → クエリ(A 5.3)。引数の順で実行される。
+        _query: Annotated[None, Depends(reject_unknown_query(NO_QUERY_NAMES))],
+    ) -> JobDetailResponse:
         return await job_queries.get_job(job_id)
 
     return router

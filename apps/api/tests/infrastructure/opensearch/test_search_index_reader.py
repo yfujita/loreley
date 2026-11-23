@@ -16,7 +16,11 @@ from loreley_api.infrastructure.opensearch import (
 )
 from tests.fakes.fake_opensearch_client import FakeOpenSearchClient
 from tests.infrastructure.opensearch.conftest import INDEX_NAMES
-from tests.infrastructure.opensearch.sample_responses import hit, search_response
+from tests.infrastructure.opensearch.sample_responses import (
+    hit,
+    search_response,
+    with_capped_total,
+)
 
 PAGE = PageRequest(page=1, items_per_page=50, descending=False)
 FAILED_TARGET = "search_index"
@@ -130,6 +134,16 @@ def test_existing_ids_returns_the_ids_found_in_the_index(
     [request] = fake_client.requests
     assert request.index == INDEX_NAMES.search
     assert request.body == queries.existing_ids_body(["d1", "d2", "d3"])
+
+
+def test_existing_ids_does_not_depend_on_the_total_of_the_response(
+    reader: OpenSearchSearchIndexReader, fake_client: FakeOpenSearchClient
+) -> None:
+    """本文は `track_total_hits: false`(総件数を使わない)。頭打ちの `total` があっても読める。"""
+    assert queries.existing_ids_body(["d1"])["track_total_hits"] is False
+    fake_client.script("search", with_capped_total(search_response([hit("d1")])))
+
+    assert reader.existing_ids(["d1"]) == Ok(frozenset({"d1"}))
 
 
 def test_existing_ids_without_ids_does_not_query(

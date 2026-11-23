@@ -17,6 +17,7 @@ from loreley_api.infrastructure.opensearch.responses import (
     as_mapping,
     as_str,
     parse_search,
+    parse_uncounted_search,
 )
 
 
@@ -78,4 +79,5 @@ class OpenSearchSearchIndexReader:
         response = self._readonly.search(
             index=self._search_index_alias, body=queries.existing_ids_body(document_ids)
         )
-        return frozenset(hit.record_id for hit in parse_search(response).hits)
+        # 本文は `track_total_hits: false`(総件数を使わない)なので、それに合う読み方にする。
+        return frozenset(hit.record_id for hit in parse_uncounted_search(response).hits)

@@ -29,6 +29,8 @@ def make_admin_dependencies(
             sources=readers.sources,
             jobs=readers.jobs,
             deletions=readers.deletions,
+            search_index=readers.search_index,
+            counts=readers.counts,
             cluster=readers.cluster,
         ),
     )

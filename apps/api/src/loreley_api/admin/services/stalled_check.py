@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 from loreley_api.admin.base.codes import JobStatus
+from loreley_api.admin.derivation.job_view import JobBriefView, read_job_brief
 from loreley_api.admin.derivation.stalled import judge_by_lock
 from loreley_api.admin.derivation.values import read_choice
 from loreley_api.common.concurrency import CATEGORY_OPENSEARCH, BlockingRunner
@@ -38,6 +39,29 @@ class StalledOutcome:
     # 確認読みで読み直したジョブ記録。ジョブが終わっていたときに、行の `status` などを読み直した値
     # にそろえるために、呼び出し側が使う。確認読みをしなかったときは `None`。
     refreshed_job: StoredRecord | None = None
+
+
+@dataclass(frozen=True)
+class JudgedJob:
+    """`stalled` の判定を終えたジョブ。判定できなければ `stalled` は `None`、`failure` が原因。"""
+
+    brief: JobBriefView
+    stalled: bool | None
+    failure: Failed | None
+
+
+def apply_outcome(brief: JobBriefView, outcome: StalledOutcome | None) -> JudgedJob:
+    """`outcome` が `None` のジョブは `running` でないので、`stalled=false`(読んでいない)。"""
+    if outcome is None:
+        return JudgedJob(brief, stalled=False, failure=None)
+    # 確認読みで読み直したジョブがあれば、`status` などもその値にそろえる(終わったジョブを
+    # `running` のまま見せない)。
+    refreshed = outcome.refreshed_job
+    if refreshed is not None:
+        brief = read_job_brief(
+            refreshed.record_id, refreshed.source, fallback_source_id=brief.source_id
+        )
+    return JudgedJob(brief, outcome.stalled, outcome.failure)
 
 
 class StalledCheck:
@@ -76,6 +100,18 @@ class StalledCheck:
         if unconfirmed_jobs:
             outcomes.update(await self._confirm(unconfirmed_jobs, job_fields, now))
         return outcomes
+
+    async def judge(
+        self, briefs: Sequence[JobBriefView], *, job_fields: Sequence[str], now: datetime
+    ) -> list[JudgedJob]:
+        """`briefs` のうち `running` のものだけ `check` で判定する。結果は入力と同じ順。"""
+        running_jobs = [
+            RunningJob(brief.job_id, brief.source_id)
+            for brief in briefs
+            if brief.status is JobStatus.RUNNING
+        ]
+        outcomes = await self.check(running_jobs, job_fields=job_fields, now=now)
+        return [apply_outcome(brief, outcomes.get(brief.job_id)) for brief in briefs]
 
     async def _confirm(
         self, jobs: Sequence[RunningJob], job_fields: Sequence[str], now: datetime

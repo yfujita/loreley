@@ -5,7 +5,11 @@ from typing import Any
 import pytest
 
 from loreley_api.admin.base.codes import SourceStatus
-from loreley_api.admin.derivation.settings_view import read_source_settings
+from loreley_api.admin.derivation.settings_view import (
+    SourceRowView,
+    read_source_row,
+    read_source_settings,
+)
 
 VALID: dict[str, Any] = {
     "connector_type": "file_system",
@@ -124,3 +128,29 @@ def test_the_source_id_is_the_document_id_whatever_the_source_says() -> None:
         read_source_settings("document-id", {**VALID, "source_id": "other"}).source_id
         == "document-id"
     )
+
+
+# --- EP-01 の行(`connector_config` を読まない) ---
+
+
+def test_a_source_row_takes_only_the_list_fields_and_the_id_from_the_document() -> None:
+    row = read_source_row("docs", {"source_id": "ignored", **VALID})
+
+    assert row == SourceRowView("docs", "file_system", "0 3 * * *", SourceStatus.ACTIVE)
+
+
+def test_a_source_row_without_connector_config_is_complete() -> None:
+    """R-1 は `connector_config` を除く。その欠落は行の読みには影響しない。"""
+    source = {key: value for key, value in VALID.items() if key != "connector_config"}
+
+    assert read_source_row("docs", source) == SourceRowView(
+        "docs", "file_system", "0 3 * * *", SourceStatus.ACTIVE
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [{}, {"connector_type": 1, "schedule_cron": 5, "status": "paused"}],
+)
+def test_unreadable_values_of_a_source_row_are_none(source: dict[str, Any]) -> None:
+    assert read_source_row("docs", source) == SourceRowView("docs", None, None, None)

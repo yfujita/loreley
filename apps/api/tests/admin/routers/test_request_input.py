@@ -9,7 +9,8 @@ import pytest
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.testclient import TestClient
 
-from loreley_api.admin.base.errors import AdminApiError
+from loreley_api.admin.base.codes import Reason
+from loreley_api.admin.base.errors import AdminApiError, FieldViolation
 from loreley_api.admin.routers.request_input import (
     JobIdPath,
     JsonObjectBody,
@@ -18,6 +19,7 @@ from loreley_api.admin.routers.request_input import (
     read_job_id,
     read_paging,
     reject_unknown_query,
+    resolve_paging,
 )
 from loreley_api.common.http import install_common_http
 from loreley_api.common.http.body import MAX_REQUEST_BODY_BYTES
@@ -298,6 +300,27 @@ def test_a_window_over_10000_is_a_range_error_on_page(
     response = client.get("/jobs", params={"page": page, "items_per_page": items_per_page})
 
     assert errors_of(response) == [{"field": "page", "reason": "range"}]
+
+
+def test_resolve_paging_returns_the_params_for_a_valid_request() -> None:
+    resolved = resolve_paging(3, 50, "-indexed_at", sortable_fields={"indexed_at"})
+
+    assert resolved == PageParams(3, 50, "indexed_at", descending=True)
+
+
+def test_resolve_paging_returns_every_violation_in_a_stable_order() -> None:
+    resolved = resolve_paging(1, 7, "bogus", sortable_fields={"indexed_at"})
+
+    assert resolved == [
+        FieldViolation("items_per_page", Reason.UNSUPPORTED),
+        FieldViolation("sort", Reason.UNSUPPORTED),
+    ]
+
+
+def test_resolve_paging_does_not_judge_the_window_when_the_page_size_is_unsupported() -> None:
+    resolved = resolve_paging(10**9, 7, "x", sortable_fields={"x"})
+
+    assert resolved == [FieldViolation("items_per_page", Reason.UNSUPPORTED)]
 
 
 def test_several_paging_violations_are_all_reported(client: TestClient) -> None:

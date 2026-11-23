@@ -24,8 +24,10 @@ from loreley_api.config import ApiConfig, load_config
 from loreley_api.health import HEALTH_PATH, create_health_router
 from loreley_api.infrastructure.opensearch import (
     OpenSearchClusterReader,
+    OpenSearchCountsReader,
     OpenSearchDeletionsReader,
     OpenSearchJobsReader,
+    OpenSearchSearchIndexReader,
     OpenSearchSourcesReader,
     create_read_connection,
 )
@@ -78,6 +80,14 @@ def build_app(config: ApiConfig) -> FastAPI:
         jobs=OpenSearchJobsReader(opensearch.client, jobs_index=index_names.jobs),
         deletions=OpenSearchDeletionsReader(
             opensearch.client, deletions_index=index_names.deletions
+        ),
+        search_index=OpenSearchSearchIndexReader(
+            opensearch.client, search_index_alias=index_names.search
+        ),
+        counts=OpenSearchCountsReader(
+            opensearch.client,
+            jobs_index=index_names.jobs,
+            search_index_alias=index_names.search,
         ),
         cluster=OpenSearchClusterReader(opensearch.client),
     )

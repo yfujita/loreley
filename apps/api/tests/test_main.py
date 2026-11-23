@@ -16,6 +16,7 @@ from tests.infrastructure.opensearch.sample_responses import (
     hit,
     mget_doc,
     mget_response,
+    msearch_response,
     search_response,
 )
 from tests.log_records import server_side_text
@@ -163,6 +164,89 @@ def test_the_admin_api_reads_the_job_through_the_configured_indices(
         "loreley-jobs",
         "loreley-jobs",
         "loreley-deletions",
+    ]
+
+
+def test_the_admin_api_lists_the_sources_through_the_configured_indices(
+    fake_opensearch: FakeOpenSearchClient,
+) -> None:
+    fake_opensearch.script(
+        "search",
+        search_response(
+            [hit("docs", {"connector_type": "file_system", "status": "active"})], total=1
+        ),
+    )
+    fake_opensearch.script("search", search_response(aggregations={"by_source": {"buckets": []}}))
+    fake_opensearch.script(
+        "search",
+        search_response(
+            total=2, aggregations={"by_source": {"buckets": [{"key": "docs", "doc_count": 2}]}}
+        ),
+    )
+
+    response = TestClient(build_app(make_api_config())).get(f"{ADMIN_API_PREFIX}/sources")
+
+    assert response.status_code == 200
+    [item] = response.json()["items"]
+    assert (item["source_id"], item["document_count"], item["last_crawl"]) == ("docs", 2, None)
+    # 設定・ジョブは `loreley-*`、登録文書数は検索インデックスのエイリアスを読む。
+    assert [request.index for request in fake_opensearch.requests] == [
+        "loreley-sources",
+        "loreley-jobs",
+        "loreley-documents",
+    ]
+
+
+def test_the_admin_api_reads_the_documents_of_a_source_through_the_configured_indices(
+    fake_opensearch: FakeOpenSearchClient,
+) -> None:
+    fake_opensearch.script("mget", mget_response(mget_doc("docs", {})))
+    fake_opensearch.script(
+        "search",
+        search_response(
+            [hit("skip-docs-doc-1", {"document_id": "doc-1", "stage": "fetch"})], total=1
+        ),
+    )
+    # 件数の対象の順: `document_count`、`extract_failed`、`oversize`、`summary_pending`。
+    fake_opensearch.script(
+        "msearch",
+        msearch_response(
+            search_response(total=5),
+            search_response(total=2),
+            search_response(total=1),
+            search_response(total=0),
+        ),
+    )
+    fake_opensearch.script("search", search_response([hit("doc-1")]))
+
+    response = TestClient(build_app(make_api_config())).get(
+        f"{ADMIN_API_PREFIX}/sources/docs/documents", params={"tab": "skipped"}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [(row["document_id"], row["existence"]) for row in body["items"]] == [
+        ("doc-1", "existing")
+    ]
+    assert body["tab_counts"] == {
+        "skipped": 1,
+        "extract_failed": 2,
+        "oversize": 1,
+        "summary_pending": 0,
+    }
+    assert body["document_count"] == 5
+    assert [request.index for request in fake_opensearch.requests] == [
+        "loreley-sources",
+        "loreley-jobs",
+        None,  # msearch は、サブ要求ごとに索引を指定する
+        "loreley-documents",
+    ]
+    [msearch] = fake_opensearch.requests_of("msearch")
+    assert [header["index"] for header in msearch.body[::2]] == [  # type: ignore[index]
+        "loreley-documents",
+        "loreley-documents",
+        "loreley-jobs",
+        "loreley-documents",
     ]
 
 

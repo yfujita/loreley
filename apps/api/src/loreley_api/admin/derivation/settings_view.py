@@ -73,3 +73,23 @@ def read_source_settings(record_id: str, source: Document) -> SourceSettingsView
         updated_at=updated_at,
         malformed=tuple(name for name, is_readable in checks if not is_readable),
     )
+
+
+@dataclass(frozen=True)
+class SourceRowView:
+    """EP-01 の行のうち、設定に由来する項目。読めない値は `None`(`unavailable` には載せない)。"""
+
+    source_id: str
+    connector_type: str | None
+    schedule_cron: str | None
+    status: SourceStatus | None
+
+
+def read_source_row(record_id: str, source: Document) -> SourceRowView:
+    """`connector_config` を読まない一覧用(R-1 は `connector_config` を除く)。"""
+    return SourceRowView(
+        source_id=record_id,
+        connector_type=read_str(source.get("connector_type")),
+        schedule_cron=read_str(source.get("schedule_cron")),
+        status=read_choice(source.get("status"), SourceStatus),
+    )

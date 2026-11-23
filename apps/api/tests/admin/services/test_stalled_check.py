@@ -5,9 +5,17 @@ from datetime import timedelta
 
 import pytest
 
-from loreley_api.admin.services.stalled_check import RunningJob, StalledCheck, StalledOutcome
+from loreley_api.admin.base.codes import JobStatus
+from loreley_api.admin.derivation.job_view import JobBriefView, read_job_brief
+from loreley_api.admin.services.stalled_check import (
+    RunningJob,
+    StalledCheck,
+    StalledOutcome,
+    apply_outcome,
+)
 from loreley_api.common.results import Failed
 from loreley_api.common.timestamps import format_instant
+from loreley_api.infrastructure.opensearch import StoredRecord
 from loreley_api.infrastructure.opensearch.ports import JOB_BRIEF_FIELDS
 from tests.fakes.clock import DEFAULT_NOW as NOW
 from tests.fakes.in_memory_readers import STORE_TIMEOUT, STORE_UNAVAILABLE, InMemoryReaders
@@ -292,3 +300,70 @@ async def test_a_failure_for_one_confirmed_job_does_not_spoil_the_other(
     assert outcomes["job-a"].stalled is True
     assert outcomes["job-b"].stalled is None
     assert isinstance(outcomes["job-b"].failure, Failed)
+
+
+# --- judge: 一覧の行(`JobBriefView`)をまとめて判定する ---
+
+
+def brief_of(job_id: str, status: str, source_id: str = "docs") -> JobBriefView:
+    return read_job_brief(job_id, {"source_id": source_id, "status": status})
+
+
+async def test_judge_checks_only_the_running_rows_and_keeps_the_order(
+    readers: InMemoryReaders, check: StalledCheck
+) -> None:
+    put_running(readers, "job-run", "a")
+    readers.put_lock("a", job_id="job-run", lease_expires_at=at(-5))
+    briefs = [brief_of("job-done", "succeeded", "b"), brief_of("job-run", "running", "a")]
+
+    judged = await check.judge(briefs, job_fields=JOB_BRIEF_FIELDS, now=NOW)
+
+    assert [(job.brief.job_id, job.stalled, job.failure) for job in judged] == [
+        ("job-done", False, None),
+        ("job-run", True, None),
+    ]
+    # 終了済みの行のためには、ロックを読まない。
+    assert [call.key for call in readers.behavior.calls_of("jobs.get_locks")] == ["a"]
+
+
+async def test_judge_without_running_rows_reads_nothing(
+    readers: InMemoryReaders, check: StalledCheck
+) -> None:
+    judged = await check.judge([brief_of("job-1", "failed")], job_fields=JOB_BRIEF_FIELDS, now=NOW)
+
+    assert [job.stalled for job in judged] == [False]
+    assert readers.behavior.calls == []
+
+
+async def test_judge_gives_a_failed_row_a_null_stalled_with_its_failure(
+    readers: InMemoryReaders, check: StalledCheck
+) -> None:
+    put_running(readers, "job-1")
+    readers.put_lock("docs", job_id="job-1", lease_expires_at=at(30))
+    readers.fail_document("jobs.get_locks", "docs", STORE_TIMEOUT)
+
+    [judged] = await check.judge(
+        [brief_of("job-1", "running")], job_fields=JOB_BRIEF_FIELDS, now=NOW
+    )
+
+    assert (judged.stalled, judged.failure) == (None, STORE_TIMEOUT)
+
+
+def test_a_reread_job_replaces_the_row_and_keeps_the_source_id() -> None:
+    reread = StoredRecord("job-1", {"status": "succeeded", "finished_at": at(-1)})
+
+    judged = apply_outcome(
+        brief_of("job-1", "running"),
+        StalledOutcome(stalled=False, refreshed_job=reread),
+    )
+
+    assert judged.brief.status is JobStatus.SUCCEEDED
+    # 読み直した記録に `source_id` がなくても、行の ID を失わない。
+    assert judged.brief.source_id == "docs"
+    assert judged.stalled is False
+
+
+def test_an_outcome_of_none_means_the_job_was_not_running_and_is_not_stalled() -> None:
+    judged = apply_outcome(brief_of("job-1", "failed"), None)
+
+    assert (judged.stalled, judged.failure) == (False, None)

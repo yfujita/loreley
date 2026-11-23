@@ -146,3 +146,34 @@ class DeletionCurrentState(StrEnum):
     AVAILABLE = "available"
     NOT_FOUND = "not_found"
     UNAVAILABLE = "unavailable"
+
+
+class DocumentTab(StrEnum):
+    """EP-11 の `tab`(B 6.1)。値は、件数の対象(`CountTarget`)の名前と同じ。"""
+
+    SKIPPED = "skipped"
+    EXTRACT_FAILED = "extract_failed"
+    OVERSIZE = "oversize"
+    SUMMARY_PENDING = "summary_pending"
+
+
+class DocumentExistence(StrEnum):
+    """`skipped` タブの行の `existence`(B 6.1)。検索インデックスにあるかどうか。"""
+
+    EXISTING = "existing"
+    NEW = "new"
+    UNKNOWN = "unknown"
+
+
+class SkipStage(StrEnum):
+    """スキップ記録の `stage`(B 6.1)。この 2 値以外の保存値は読めない値(`null`)。"""
+
+    FETCH = "fetch"
+    INDEX = "index"
+
+
+class OversizeDetector(StrEnum):
+    """原本サイズ超過の記録の `detected_by`(B 6.1)。"""
+
+    CRAWLER = "crawler"
+    INDEXER = "indexer"

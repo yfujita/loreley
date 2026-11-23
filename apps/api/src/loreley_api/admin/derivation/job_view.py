@@ -7,7 +7,13 @@
 
 from dataclasses import dataclass
 
-from loreley_api.admin.base.codes import JobStatus, JobTrigger, JobType, RegistrationPhase
+from loreley_api.admin.base.codes import (
+    DocumentExistence,
+    JobStatus,
+    JobTrigger,
+    JobType,
+    RegistrationPhase,
+)
 from loreley_api.admin.derivation.values import (
     Document,
     read_bool,
@@ -132,3 +138,16 @@ def derive_phase(partial: bool | None, status: JobStatus | None) -> Registration
     if status in (JobStatus.QUEUED, JobStatus.RUNNING):
         return RegistrationPhase.IN_PROGRESS
     return RegistrationPhase.INCOMPLETE
+
+
+def existence_of(document_id: str | None, existing_ids: frozenset[str] | None) -> DocumentExistence:
+    """`skipped` タブの行の `existence`(C 5.6)。
+
+    `existing_ids` は、そのページの `document_id` のうち検索インデックスにあるもの。一括検索が
+    失敗して分からないとき(`None`)と、`document_id` が読めないときは `unknown`。
+    """
+    if document_id is None or existing_ids is None:
+        return DocumentExistence.UNKNOWN
+    if document_id in existing_ids:
+        return DocumentExistence.EXISTING
+    return DocumentExistence.NEW

@@ -22,6 +22,8 @@ def create_admin_app(deps: AdminDependencies) -> FastAPI:
     )
     app.include_router(
         create_admin_router(
+            source_catalog=deps.source_catalog,
+            document_review=deps.document_review,
             job_queries=deps.job_queries,
             cluster_overview=deps.cluster_overview,
             meta=deps.meta,

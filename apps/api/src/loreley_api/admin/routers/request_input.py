@@ -89,13 +89,34 @@ class PageParams:
     descending: bool
 
 
+def resolve_paging(
+    page: int, items_per_page: int, sort: str, *, sortable_fields: Collection[str]
+) -> PageParams | list[FieldViolation]:
+    """`page`・`items_per_page`・`sort` の値を検証する(B 2.1)。違反があれば、すべて返す。
+
+    `sort` は単一の項目で、先頭の `-` が降順。`page * items_per_page` が窓(10,000)を超えると、
+    `page` の `range`(`items_per_page` が不正なら窓は判定できないので、そちらだけ返す)。
+    """
+    violations: list[FieldViolation] = []
+    if items_per_page not in ITEMS_PER_PAGE_CHOICES:
+        violations.append(FieldViolation("items_per_page", Reason.UNSUPPORTED))
+    elif page * items_per_page > PAGE_WINDOW_LIMIT:
+        violations.append(FieldViolation("page", Reason.RANGE))
+    sort_field = sort.removeprefix("-")
+    if sort_field not in sortable_fields:
+        violations.append(FieldViolation("sort", Reason.UNSUPPORTED))
+    if violations:
+        return violations
+    return PageParams(page, items_per_page, sort_field, descending=sort.startswith("-"))
+
+
 def read_paging(
     *, sortable_fields: Collection[str], default_sort: str
 ) -> Callable[..., Awaitable[PageParams]]:
     """`page`・`items_per_page`・`sort` の依存関係を作る(B 2.1)。
 
-    `sort` は単一の項目で、先頭の `-` が降順。`default_sort` は `-queued_at` のように書く。
-    `page * items_per_page` が窓(10,000)を超えると、`page` の `range`。
+    `default_sort` は `-queued_at` のように書く。並べ替えの項目が実行時の値で決まる EP は、
+    `resolve_paging` を直接呼ぶ。
     """
 
     async def read_page_request(
@@ -103,17 +124,10 @@ def read_paging(
         items_per_page: Annotated[int, Query()] = DEFAULT_ITEMS_PER_PAGE,
         sort: Annotated[str, Query()] = default_sort,
     ) -> PageParams:
-        violations: list[FieldViolation] = []
-        if items_per_page not in ITEMS_PER_PAGE_CHOICES:
-            violations.append(FieldViolation("items_per_page", Reason.UNSUPPORTED))
-        elif page * items_per_page > PAGE_WINDOW_LIMIT:
-            violations.append(FieldViolation("page", Reason.RANGE))
-        sort_field = sort.removeprefix("-")
-        if sort_field not in sortable_fields:
-            violations.append(FieldViolation("sort", Reason.UNSUPPORTED))
-        if violations:
-            raise invalid_request(violations)
-        return PageParams(page, items_per_page, sort_field, descending=sort.startswith("-"))
+        resolved = resolve_paging(page, items_per_page, sort, sortable_fields=sortable_fields)
+        if isinstance(resolved, list):
+            raise invalid_request(resolved)
+        return resolved
 
     return read_page_request
 
