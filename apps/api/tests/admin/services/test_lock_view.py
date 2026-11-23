@@ -1,13 +1,11 @@
 """ロック文書 → ジョブ記録 → `lock_state`(C 5.1)。読む順序・失敗の扱いを確かめる。"""
 
-from datetime import timedelta
-
 import pytest
 
 from loreley_api.admin.base.codes import JobStatus, JobTrigger, JobType, LockState
 from loreley_api.admin.derivation.lock_state import ExistingJobView
 from loreley_api.admin.services.lock_view import LockViewService
-from loreley_api.common.timestamps import format_instant
+from tests.admin.factories import at
 from tests.fakes.clock import DEFAULT_NOW as NOW
 from tests.fakes.in_memory_readers import STORE_TIMEOUT, STORE_UNAVAILABLE, InMemoryReaders
 from tests.fakes.inline_runner import InlineRunner
@@ -15,10 +13,6 @@ from tests.fakes.inline_runner import InlineRunner
 pytestmark = pytest.mark.anyio
 
 GRACE_SECONDS = 60.0
-
-
-def at(seconds_from_now: float) -> str:
-    return format_instant(NOW + timedelta(seconds=seconds_from_now))
 
 
 @pytest.fixture

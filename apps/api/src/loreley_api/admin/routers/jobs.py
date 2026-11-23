@@ -15,6 +15,7 @@ from loreley_api.admin.routers.request_input import (
     JobIdPath,
     PageParams,
     read_paging,
+    reject_any_query,
     reject_unknown_query,
 )
 from loreley_api.admin.schemas.jobs import JobDetailResponse, JobListResponse
@@ -28,7 +29,6 @@ ACTIVE_STATUSES = (JobStatus.QUEUED, JobStatus.RUNNING)
 DEFAULT_SORT = "-queued_at"
 
 LIST_QUERY_NAMES = frozenset({"source_id", "status", "page", "items_per_page", "sort"})
-NO_QUERY_NAMES: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
@@ -82,7 +82,7 @@ def create_jobs_router(job_queries: JobQueryService) -> APIRouter:
     async def get_job(
         job_id: JobIdPath,
         # 検証の順序は パス → クエリ(A 5.3)。引数の順で実行される。
-        _query: Annotated[None, Depends(reject_unknown_query(NO_QUERY_NAMES))],
+        _query: Annotated[None, Depends(reject_any_query)],
     ) -> JobDetailResponse:
         return await job_queries.get_job(job_id)
 

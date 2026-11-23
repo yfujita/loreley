@@ -81,6 +81,10 @@ def reject_unknown_query(allowed_names: Collection[str]) -> Callable[[Request], 
     return check_query_names
 
 
+# クエリを 1 つも受け付けない EP(クエリがあれば 400 `unknown_field`)で共有する。
+reject_any_query = reject_unknown_query(frozenset())
+
+
 @dataclass(frozen=True)
 class PageParams:
     page: int

@@ -23,6 +23,12 @@
   `readers.fail_document("counts.count_for_source", "summary_pending", failed)`。
 - 読みと読みの間の書き込み: `readers.behavior.before("jobs.get_locks", callback)`。
 - 読んだ呼び出しは `readers.behavior.calls_of(...)` に残る(`key` は ID、複数ならカンマ区切り)。
+  操作名は `OPERATIONS` にあるものだけで、それ以外(打ち間違い)は `ValueError`。
+
+並べ替えの注意: 一覧の並べ替え・絞り込み・ページの切り出しは、この偽物が自前で実装している。
+`services`・`routers` のテストで確かめられるのは、その結果を取りこぼさず・並べ直さずに通すことまで。
+実クエリの `sort`(同順位の決め方を含む)が意図どおりかは、この偽物では確かめられない。
+`infrastructure/opensearch/test_queries.py`(クエリの組み立て)と、P7 の実機のスモークで確かめる。
 """
 
 import copy
@@ -57,6 +63,10 @@ from tests.fakes.behavior import FakeBehavior
 
 STORE_UNAVAILABLE = Failed(kind="unavailable", target="store", error_class_name="ConnectionError")
 STORE_TIMEOUT = Failed(kind="timeout", target="store", error_class_name="ConnectionTimeout")
+SEARCH_UNAVAILABLE = Failed(
+    kind="unavailable", target="search_index", error_class_name="ConnectionError"
+)
+SEARCH_TIMEOUT = Failed(kind="timeout", target="search_index", error_class_name="ConnectionTimeout")
 
 DELETION_RESULT_FIELDS = (
     "record_type",
@@ -68,6 +78,29 @@ DELETION_RESULT_FIELDS = (
     "denominator",
     "deleted_count",
     "ended_at",
+)
+
+# `behavior` の操作名(`{Reader の属性名}.{メソッド名}`)。打ち間違いを `ValueError` にするための
+# 一覧で、Protocol のメソッドと過不足がないことは `test_in_memory_readers_protocols.py` で確かめる。
+OPERATIONS = frozenset(
+    {
+        "sources.list_all",
+        "sources.get",
+        "jobs.latest_by_source",
+        "jobs.get_locks",
+        "jobs.get_jobs",
+        "jobs.list_jobs",
+        "jobs.latest_crawl_id",
+        "jobs.list_skipped",
+        "jobs.list_oversize",
+        "deletions.get_result",
+        "search_index.count_by_source",
+        "search_index.list_extract_failed",
+        "search_index.list_summary_pending",
+        "search_index.existing_ids",
+        "counts.count_for_source",
+        "cluster.read",
+    }
 )
 
 type Document = dict[str, Any]
@@ -119,7 +152,7 @@ class _Store:
     """Reader の偽物と `InMemoryReaders` が共有する状態。"""
 
     def __init__(self) -> None:
-        self.behavior = FakeBehavior()
+        self.behavior = FakeBehavior(OPERATIONS)
         self.cluster_snapshot: ClusterSnapshot | None = None
         # `mget` が読む(リアルタイム)。
         self.live = _Documents()

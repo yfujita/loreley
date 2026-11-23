@@ -46,9 +46,13 @@ class FakeBehavior:
 
     複数スレッドから `enter` を呼んでも、フックと差し替えを二重に消費しない。
     フックは内部のロックの外で呼ぶ(フックの中でブロックしても、他スレッドを止めないため)。
+
+    `known_operations` を渡すと、それ以外の操作名を `ValueError` にする。操作名の打ち間違いで、
+    注入したフック・差し替えが一度も使われないまま、テストが通ってしまうのを防ぐ。
     """
 
-    def __init__(self) -> None:
+    def __init__(self, known_operations: frozenset[str] | None = None) -> None:
+        self._known_operations = known_operations
         self._lock = threading.Lock()
         self._calls: list[Call] = []
         self._hooks: dict[str, list[_Hook]] = defaultdict(list)
@@ -68,6 +72,7 @@ class FakeBehavior:
         `key`(ID など)を指定すると、そのキーの呼び出しだけが対象になる。別のキーの呼び出しでは
         消費されず、一致するまで残る。1 回の呼び出しで消費するフックは 1 つで、登録順に使う。
         """
+        self._check_known(operation)
         with self._lock:
             self._hooks[operation].append(_Hook(callback, key))
 
@@ -79,6 +84,7 @@ class FakeBehavior:
         `outcome` が例外なら送出する(呼び出しごとに複製する。同じインスタンスだと traceback が
         累積するため)。`times` は 1 以上か None。`key` は `before` と同じ。
         """
+        self._check_known(operation)
         if times is not None and times < 1:
             raise ValueError(f"times must be None or >= 1: {times}")
         with self._lock:
@@ -89,6 +95,7 @@ class FakeBehavior:
 
         フック、差し替えの順に処理する(フックが差し込んだ状態を、差し替えの前に反映するため)。
         """
+        self._check_known(operation)
         with self._lock:
             self._calls.append(Call(operation, key))
             hook = self._take_hook(operation, key)
@@ -103,7 +110,13 @@ class FakeBehavior:
         return Intercepted(copy.deepcopy(injection.outcome))
 
     def calls_of(self, *operations: str) -> list[Call]:
+        for operation in operations:
+            self._check_known(operation)
         return [call for call in self.calls if call.operation in operations]
+
+    def _check_known(self, operation: str) -> None:
+        if self._known_operations is not None and operation not in self._known_operations:
+            raise ValueError(f"unknown operation: {operation}")
 
     def _take_hook(self, operation: str, key: str | None) -> _Hook | None:
         hooks = self._hooks[operation]

@@ -8,7 +8,11 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from loreley_api.infrastructure.opensearch import ReadOnlyConnection, ReadOnlyOpenSearch
+from loreley_api.infrastructure.opensearch import (
+    IndexNames,
+    ReadOnlyConnection,
+    ReadOnlyOpenSearch,
+)
 from loreley_api.main import ADMIN_API_PREFIX, build_app, build_lifespan, close_all, main
 from tests.api_config import SENTINEL_PASSWORD, make_api_config
 from tests.fakes.fake_opensearch_client import FakeOpenSearchClient
@@ -29,6 +33,15 @@ REQUIRED_ENVIRONMENT = {
     "crawler_url": "http://crawler.invalid:8001",
     "indexer_url": "http://indexer.invalid:8000",
 }
+
+
+# 既定の索引名(`loreley-*`)とは別の名前。配線が既定値の埋め込みでなく、設定を使うことの確認用。
+CONFIGURED_INDEX_NAMES = IndexNames(
+    sources="configured-sources",
+    jobs="configured-jobs",
+    deletions="configured-deletions",
+    search="configured-documents",
+)
 
 
 @pytest.fixture
@@ -156,14 +169,16 @@ def test_the_admin_api_reads_the_job_through_the_configured_indices(
     fake_opensearch.script("search", search_response([hit("job-1")]))
     fake_opensearch.script("mget", mget_response(mget_doc("deletion_result-job-1", found=False)))
 
-    response = TestClient(build_app(make_api_config())).get(f"{ADMIN_API_PREFIX}/jobs/job-1")
+    response = TestClient(build_app(make_api_config(index_names=CONFIGURED_INDEX_NAMES))).get(
+        f"{ADMIN_API_PREFIX}/jobs/job-1"
+    )
 
     assert response.status_code == 200
     assert response.json()["status"] == "succeeded"
     assert [request.index for request in fake_opensearch.requests] == [
-        "loreley-jobs",
-        "loreley-jobs",
-        "loreley-deletions",
+        "configured-jobs",
+        "configured-jobs",
+        "configured-deletions",
     ]
 
 
@@ -184,16 +199,18 @@ def test_the_admin_api_lists_the_sources_through_the_configured_indices(
         ),
     )
 
-    response = TestClient(build_app(make_api_config())).get(f"{ADMIN_API_PREFIX}/sources")
+    response = TestClient(build_app(make_api_config(index_names=CONFIGURED_INDEX_NAMES))).get(
+        f"{ADMIN_API_PREFIX}/sources"
+    )
 
     assert response.status_code == 200
     [item] = response.json()["items"]
     assert (item["source_id"], item["document_count"], item["last_crawl"]) == ("docs", 2, None)
-    # 設定・ジョブは `loreley-*`、登録文書数は検索インデックスのエイリアスを読む。
+    # 設定・ジョブはそれぞれの索引、登録文書数は検索インデックスのエイリアスを読む。
     assert [request.index for request in fake_opensearch.requests] == [
-        "loreley-sources",
-        "loreley-jobs",
-        "loreley-documents",
+        "configured-sources",
+        "configured-jobs",
+        "configured-documents",
     ]
 
 
@@ -219,7 +236,7 @@ def test_the_admin_api_reads_the_documents_of_a_source_through_the_configured_in
     )
     fake_opensearch.script("search", search_response([hit("doc-1")]))
 
-    response = TestClient(build_app(make_api_config())).get(
+    response = TestClient(build_app(make_api_config(index_names=CONFIGURED_INDEX_NAMES))).get(
         f"{ADMIN_API_PREFIX}/sources/docs/documents", params={"tab": "skipped"}
     )
 
@@ -236,17 +253,17 @@ def test_the_admin_api_reads_the_documents_of_a_source_through_the_configured_in
     }
     assert body["document_count"] == 5
     assert [request.index for request in fake_opensearch.requests] == [
-        "loreley-sources",
-        "loreley-jobs",
+        "configured-sources",
+        "configured-jobs",
         None,  # msearch は、サブ要求ごとに索引を指定する
-        "loreley-documents",
+        "configured-documents",
     ]
     [msearch] = fake_opensearch.requests_of("msearch")
     assert [header["index"] for header in msearch.body[::2]] == [  # type: ignore[index]
-        "loreley-documents",
-        "loreley-documents",
-        "loreley-jobs",
-        "loreley-documents",
+        "configured-documents",
+        "configured-documents",
+        "configured-jobs",
+        "configured-documents",
     ]
 
 

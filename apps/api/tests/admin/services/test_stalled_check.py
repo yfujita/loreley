@@ -1,8 +1,5 @@
 """`stalled` の確認読み(C 5.2。C 11章 5・6・16)。読む順序と回数は、呼び出しの記録で確かめる。"""
 
-from collections.abc import Callable
-from datetime import timedelta
-
 import pytest
 
 from loreley_api.admin.base.codes import JobStatus
@@ -14,17 +11,12 @@ from loreley_api.admin.services.stalled_check import (
     apply_outcome,
 )
 from loreley_api.common.results import Failed
-from loreley_api.common.timestamps import format_instant
 from loreley_api.infrastructure.opensearch import StoredRecord
 from loreley_api.infrastructure.opensearch.ports import JOB_BRIEF_FIELDS
+from tests.admin.factories import at, on_nth_call
 from tests.fakes.clock import DEFAULT_NOW as NOW
 from tests.fakes.in_memory_readers import STORE_TIMEOUT, STORE_UNAVAILABLE, InMemoryReaders
 from tests.fakes.inline_runner import InlineRunner
-
-
-def at(seconds_from_now: float) -> str:
-    return format_instant(NOW + timedelta(seconds=seconds_from_now))
-
 
 pytestmark = pytest.mark.anyio
 
@@ -45,15 +37,6 @@ async def run_check(check: StalledCheck, *jobs: RunningJob) -> dict[str, Stalled
 
 def read_operations(readers: InMemoryReaders) -> list[str]:
     return [call.operation for call in readers.behavior.calls]
-
-
-def on_nth_call(
-    readers: InMemoryReaders, operation: str, n: int, action: Callable[[], None]
-) -> None:
-    """`operation` の n 回目(1 起点)の呼び出しの直前に `action` を実行する。"""
-    for _ in range(n - 1):
-        readers.behavior.before(operation, lambda: None)
-    readers.behavior.before(operation, action)
 
 
 # --- ロックが一致する(確認読みなし) ---
@@ -162,6 +145,25 @@ async def test_a_job_that_finished_after_it_was_listed_is_not_stalled_and_is_ref
     assert outcome.refreshed_job is not None
     assert outcome.refreshed_job.source["status"] == "succeeded"
     assert outcome.refreshed_job.source["finished_at"] == at(-1)
+
+
+async def test_a_job_that_finished_while_another_job_holds_the_lock_is_not_stalled(
+    readers: InMemoryReaders, check: StalledCheck
+) -> None:
+    """ロックは別のジョブ(次のクロール)のものだが、読み直したジョブが終端なら `false`。
+
+    ロックの不一致だけで `stalled` にしない(C 5.2 の (a) が、ロックの有無に依らず先に決める)。
+    """
+    readers.put_job("job-1", source_id="docs", status="succeeded", finished_at=at(-5))
+    readers.put_lock("docs", job_id="job-2", lease_expires_at=at(300))
+
+    outcomes = await run_check(check, RunningJob("job-1", "docs"))
+
+    outcome = outcomes["job-1"]
+    assert outcome.stalled is False
+    assert outcome.refreshed_job is not None
+    assert outcome.refreshed_job.source["status"] == "succeeded"
+    assert read_operations(readers) == ["jobs.get_locks", "jobs.get_locks", "jobs.get_jobs"]
 
 
 async def test_a_lock_that_appears_by_the_confirmation_decides_by_its_lease(

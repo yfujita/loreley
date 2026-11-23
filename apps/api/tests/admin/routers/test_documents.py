@@ -1,40 +1,20 @@
 """EP-11 `GET /sources/{source_id}/documents`(アプリ全体。C 11章 6・7・12)。"""
 
 import logging
-from datetime import timedelta
-from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
-from loreley_api.common.results import Failed
-from loreley_api.common.timestamps import format_instant
-from tests.admin.factories import ADMIN_PREFIX
-from tests.fakes.clock import DEFAULT_NOW as NOW
-from tests.fakes.in_memory_readers import STORE_UNAVAILABLE, InMemoryReaders
+from tests.admin.factories import ADMIN_PREFIX, SENTINEL, at, errors_of
+from tests.fakes.in_memory_readers import SEARCH_UNAVAILABLE, STORE_UNAVAILABLE, InMemoryReaders
 from tests.secret_assertions import assert_secret_absent
 
 DOCUMENTS = f"{ADMIN_PREFIX}/sources/docs/documents"
-SENTINEL = "SENTINEL-INPUT-VALUE"
-SEARCH_UNAVAILABLE = Failed(
-    kind="unavailable", target="search_index", error_class_name="ConnectionError"
-)
-
-
-def at(seconds_from_now: float) -> str:
-    return format_instant(NOW + timedelta(seconds=seconds_from_now))
 
 
 @pytest.fixture(autouse=True)
 def source(readers: InMemoryReaders) -> None:
     readers.put_source("docs")
-
-
-def errors_of(response: Any) -> list[dict[str, str]]:
-    assert response.status_code == 400
-    error = response.json()["error"]
-    assert error["code"] == "invalid_request"
-    return error["details"]["errors"]
 
 
 def seed_skips(readers: InMemoryReaders, count: int) -> None:

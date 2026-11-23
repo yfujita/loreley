@@ -3,10 +3,11 @@
 時計・I/O・乱数・環境変数・pydantic を使わない。時刻は引数 `now` で受ける。実ソースの検査と、
 検査器自体が違反を検出できることの合成ソースでの確認(正例・負例。ルールが空振りしていないこと)。
 
-検査は import 文と、呼び出しの名前(`now()`・`open()` など)の AST。`schemas`・`services`・
-`infrastructure` を import しないことは、依存ルール(R4)のテストが検査する。限界: 動的な import
-(`importlib`・`__import__` の文字列)と、別名を経由した呼び出し(`clock = datetime.now; clock()`)は
-検出できない。時刻を引数で受けることは、各導出の単体テスト(固定時刻)が確かめる。
+検査は import 文(相対 import は絶対名に直す)と、呼び出しの名前(`now()`・`open()` など)の AST。
+`schemas`・`services`・`infrastructure` を import しないことは、依存ルール(R4)のテストが検査する。
+限界: 動的な import(`importlib`・`__import__` の文字列)と、別名を経由した呼び出し
+(`clock = datetime.now; clock()`)は検出できない。時刻を引数で受けることは、各導出の単体テスト
+(固定時刻)が確かめる。
 """
 
 import ast
@@ -14,8 +15,12 @@ from pathlib import Path
 
 import pytest
 
+from tests.architecture.dependency_rules import absolute_base_of_from_import
+
 PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "src" / "loreley_api"
 DERIVATION_DIRECTORY = PACKAGE_ROOT / "admin" / "derivation"
+# 合成ソースの、置かれている場所(相対 import の解決に使う)。
+SYNTHETIC_PATH = "admin/derivation/synthetic.py"
 
 # import してはいけないモジュール(ドット名の接頭辞で一致させる)。
 FORBIDDEN_MODULES: dict[str, str] = {
@@ -62,15 +67,18 @@ FORBIDDEN_FUNCTION_CALLS = frozenset(
 FORBIDDEN_METHOD_CALLS = frozenset({"now", "utcnow", "today"})
 
 
-def imported_names(tree: ast.AST) -> list[str]:
+def imported_names(tree: ast.AST, relative_path: str) -> list[str]:
     """import 文が取り込むものの絶対のドット名。`from a.b import c` は `a.b` と `a.b.c`。"""
     names: list[str] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             names.extend(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-            names.append(node.module)
-            names.extend(f"{node.module}.{alias.name}" for alias in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            base = absolute_base_of_from_import(node, relative_path)
+            if not base:
+                continue
+            names.append(base)
+            names.extend(f"{base}.{alias.name}" for alias in node.names)
     return names
 
 
@@ -81,11 +89,11 @@ def forbidden_reason(imported: str) -> str | None:
     return None
 
 
-def purity_violations(source: str) -> list[str]:
+def purity_violations(source: str, relative_path: str = SYNTHETIC_PATH) -> list[str]:
     tree = ast.parse(source)
     violations = [
         f"imports {name} ({reason})"
-        for name in imported_names(tree)
+        for name in imported_names(tree, relative_path)
         if (reason := forbidden_reason(name)) is not None
     ]
     for node in ast.walk(tree):
@@ -129,7 +137,7 @@ def test_actual_derivation_sources_are_pure() -> None:
     violations = {
         name: found
         for name, source in derivation_sources().items()
-        if (found := purity_violations(source))
+        if (found := purity_violations(source, f"admin/derivation/{name}"))
     }
 
     assert violations == {}
@@ -170,6 +178,11 @@ def test_actual_derivation_sources_are_pure() -> None:
         "import loreley_api.common.concurrency",
         "from loreley_api.common.http import errors",
         "from loreley_api.config import load_config",
+        # 相対 import は、置かれている場所から絶対名に直して検査する。
+        "from ...common.clock import Clock",
+        "from ...common import clock",
+        "from ... import config",
+        "from ...config import load_config",
     ],
 )
 def test_a_forbidden_import_is_detected(statement: str) -> None:
@@ -190,6 +203,9 @@ def test_a_forbidden_import_is_detected(statement: str) -> None:
         "from loreley_api.common.timestamps import format_instant",
         "from loreley_api.common.results import Failed",
         "from loreley_api.admin.base.codes import JobStatus",
+        "from ...common.timestamps import format_instant",
+        "from ..base.codes import JobStatus",
+        "from . import values",
         # 名前が似ているだけのモジュールは対象ではない。
         "import timeit_helpers",
         "import osmosis",

@@ -219,6 +219,19 @@ def dotted_name_of_file(relative_path: str) -> str:
     return ".".join(parts)
 
 
+def absolute_base_of_from_import(node: ast.ImportFrom, relative_path: str) -> str:
+    """`from X import ...` の `X` を、`loreley_api` から始まる絶対のドット名で返す。
+
+    相対 import(`from ...common import clock`)は、import したファイルの位置
+    (`relative_path`。パッケージからの相対)から解決する。
+    """
+    if node.level == 0:
+        return node.module or ""
+    is_package = PurePosixPath(relative_path).name == "__init__.py"
+    base = _resolve_from_base(node, dotted_name_of_file(relative_path), is_package)
+    return f"{PACKAGE}.{base}" if base else PACKAGE
+
+
 def find_violations(
     sources: Mapping[str, str], feature_packages: Collection[str] = FEATURE_PACKAGES
 ) -> list[Violation]:

@@ -1,6 +1,5 @@
 """`lock_state` の導出(C 5.1 の表。C 11章 5)。猶予の境界は固定時刻で確かめる。"""
 
-from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -15,14 +14,10 @@ from loreley_api.admin.derivation.lock_state import (
     LockDerivation,
     derive_lock,
 )
-from loreley_api.common.timestamps import format_instant
+from tests.admin.factories import at
 from tests.fakes.clock import DEFAULT_NOW as NOW
 
 GRACE_SECONDS = 60.0
-
-
-def at(seconds_from_now: float) -> str:
-    return format_instant(NOW + timedelta(seconds=seconds_from_now))
 
 
 def lock(job_id: Any = "job-1", **fields: Any) -> dict[str, Any]:

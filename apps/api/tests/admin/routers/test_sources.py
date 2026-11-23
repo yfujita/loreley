@@ -1,24 +1,16 @@
 """EP-01 `GET /sources`・EP-02 `GET /sources/{source_id}`(アプリ全体。C 11章 6・12)。"""
 
 import logging
-from datetime import timedelta
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
-from loreley_api.common.timestamps import format_instant
-from tests.admin.factories import ADMIN_PREFIX
-from tests.fakes.clock import DEFAULT_NOW as NOW
+from tests.admin.factories import ADMIN_PREFIX, SENTINEL, at, errors_of, seed_job
 from tests.fakes.in_memory_readers import STORE_TIMEOUT, STORE_UNAVAILABLE, InMemoryReaders
 from tests.secret_assertions import assert_secret_absent
 
 SOURCES = f"{ADMIN_PREFIX}/sources"
-SENTINEL = "SENTINEL-INPUT-VALUE"
-
-
-def at(seconds_from_now: float) -> str:
-    return format_instant(NOW + timedelta(seconds=seconds_from_now))
 
 
 def seed_source(readers: InMemoryReaders, source_id: str, **fields: Any) -> None:
@@ -33,27 +25,6 @@ def seed_source(readers: InMemoryReaders, source_id: str, **fields: Any) -> None
         "updated_at": "2026-11-20T02:00:00.000Z",
     }
     readers.put_source(source_id, **{**defaults, **fields})
-
-
-def seed_job(
-    readers: InMemoryReaders, job_id: str, source_id: str, *, queued_at: float = 0, **fields: Any
-) -> None:
-    status = fields.pop("status", "succeeded")
-    defaults = {"trigger": "manual", "force_delete": False, "rewrite_mode": False}
-    readers.put_job(
-        job_id,
-        source_id=source_id,
-        status=status,
-        queued_at=at(queued_at),
-        **{**defaults, **fields},
-    )
-
-
-def errors_of(response: Any) -> list[dict[str, str]]:
-    assert response.status_code == 400
-    error = response.json()["error"]
-    assert error["code"] == "invalid_request"
-    return error["details"]["errors"]
 
 
 # --- EP-01 ---
@@ -357,9 +328,9 @@ def test_the_connector_config_is_returned_only_by_the_detail_and_not_logged(
     assert_secret_absent(SENTINEL, records=caplog.records)
 
 
-def test_the_detail_accepts_only_get(client: TestClient) -> None:
-    for method in (client.post, client.put, client.delete):
-        response = method(f"{SOURCES}/docs")
+# POST・PUT・DELETE は後続のフェーズで足す(この時点では 405。足すときは、このリストから外す)。
+@pytest.mark.parametrize("method", ["post", "put", "delete"])
+def test_the_detail_accepts_only_get(client: TestClient, method: str) -> None:
+    response = getattr(client, method)(f"{SOURCES}/docs")
 
-        # POST・PUT・DELETE は後続のフェーズで足す(この時点では 405)。
-        assert response.status_code == 405
+    assert response.status_code == 405

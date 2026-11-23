@@ -203,9 +203,7 @@ def _complete_indices(indices: Sequence[IndexInfo], shards: Sequence[ShardInfo])
 
 
 def _index_order(index: IndexInfo) -> tuple[int, str]:
-    rank = (
-        _STATUS_RANK.get(index.status, _OTHER_STATUS_RANK) if index.status else _OTHER_STATUS_RANK
-    )
+    rank = _STATUS_RANK.get(index.status or "", _OTHER_STATUS_RANK)
     return (rank, index.name)
 
 

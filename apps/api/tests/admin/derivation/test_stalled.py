@@ -1,18 +1,13 @@
 """`stalled`・`cancellable` の判定(C 5.2)。読み取りの流れは `services/test_stalled_check.py`。"""
 
-from datetime import timedelta
 from typing import Any
 
 import pytest
 
 from loreley_api.admin.base.codes import JobStatus, JobType
 from loreley_api.admin.derivation.stalled import StalledJudgement, is_cancellable, judge_by_lock
-from loreley_api.common.timestamps import format_instant
+from tests.admin.factories import at
 from tests.fakes.clock import DEFAULT_NOW as NOW
-
-
-def at(seconds_from_now: float) -> str:
-    return format_instant(NOW + timedelta(seconds=seconds_from_now))
 
 
 def test_a_matching_lock_within_its_lease_is_not_stalled_and_shows_the_lease() -> None:

@@ -4,7 +4,6 @@
 行ごとの成否(`existence` は全行、`tab_counts.<タブ>`・`document_count` は最上位)の帰属が中心。
 """
 
-from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -14,28 +13,23 @@ from loreley_api.admin.base.errors import AdminApiError
 from loreley_api.admin.schemas.documents import DocumentListResponse
 from loreley_api.admin.services.document_review import DocumentReviewService
 from loreley_api.common.results import Failed
-from loreley_api.common.timestamps import format_instant
-from tests.admin.factories import make_admin_dependencies
-from tests.fakes.clock import DEFAULT_NOW as NOW
+from tests.admin.factories import at, make_admin_dependencies
 from tests.fakes.clock import FixedClock
-from tests.fakes.in_memory_readers import STORE_TIMEOUT, STORE_UNAVAILABLE, InMemoryReaders
+from tests.fakes.in_memory_readers import (
+    SEARCH_TIMEOUT,
+    SEARCH_UNAVAILABLE,
+    STORE_TIMEOUT,
+    STORE_UNAVAILABLE,
+    InMemoryReaders,
+)
 from tests.fakes.inline_runner import InlineRunner
 
 pytestmark = pytest.mark.anyio
-
-SEARCH_UNAVAILABLE = Failed(
-    kind="unavailable", target="search_index", error_class_name="ConnectionError"
-)
-SEARCH_TIMEOUT = Failed(kind="timeout", target="search_index", error_class_name="ConnectionTimeout")
 
 SKIPPED = DocumentTab.SKIPPED
 EXTRACT_FAILED = DocumentTab.EXTRACT_FAILED
 OVERSIZE = DocumentTab.OVERSIZE
 SUMMARY_PENDING = DocumentTab.SUMMARY_PENDING
-
-
-def at(seconds_from_now: float) -> str:
-    return format_instant(NOW + timedelta(seconds=seconds_from_now))
 
 
 @pytest.fixture

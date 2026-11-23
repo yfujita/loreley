@@ -4,21 +4,20 @@
 障害を注入して確かめる。EP-01 は、**行ごとの成否の区別**(C 11章 6)が中心。
 """
 
-from datetime import timedelta
 from typing import Any
 
 import pytest
 
-from loreley_api.admin.base.codes import JobStatus, LockState, SourceStatus
+from loreley_api.admin.base.codes import JobStatus, JobTrigger, LockState, SourceStatus
 from loreley_api.admin.base.errors import AdminApiError
 from loreley_api.admin.schemas.sources import SourceListItem
 from loreley_api.admin.services.source_catalog import SourceCatalogService
 from loreley_api.common.results import Failed
-from loreley_api.common.timestamps import format_instant
-from tests.admin.factories import make_admin_dependencies
-from tests.fakes.clock import DEFAULT_NOW as NOW
+from tests.admin.factories import at, make_admin_dependencies, seed_job
 from tests.fakes.clock import FixedClock
 from tests.fakes.in_memory_readers import (
+    SEARCH_TIMEOUT,
+    SEARCH_UNAVAILABLE,
     STORE_TIMEOUT,
     STORE_UNAVAILABLE,
     InMemoryReaders,
@@ -26,15 +25,6 @@ from tests.fakes.in_memory_readers import (
 from tests.fakes.inline_runner import InlineRunner
 
 pytestmark = pytest.mark.anyio
-
-SEARCH_UNAVAILABLE = Failed(
-    kind="unavailable", target="search_index", error_class_name="ConnectionError"
-)
-SEARCH_TIMEOUT = Failed(kind="timeout", target="search_index", error_class_name="ConnectionTimeout")
-
-
-def at(seconds_from_now: float) -> str:
-    return format_instant(NOW + timedelta(seconds=seconds_from_now))
 
 
 @pytest.fixture
@@ -56,25 +46,6 @@ def seed_source(readers: InMemoryReaders, source_id: str, **fields: Any) -> None
         "updated_at": at(-3600),
     }
     readers.put_source(source_id, **{**defaults, **fields})
-
-
-def seed_job(
-    readers: InMemoryReaders,
-    job_id: str,
-    source_id: str,
-    *,
-    status: str = "succeeded",
-    queued_at: float = 0,
-    **fields: Any,
-) -> None:
-    defaults = {"trigger": "manual", "force_delete": False, "rewrite_mode": False}
-    readers.put_job(
-        job_id,
-        source_id=source_id,
-        status=status,
-        queued_at=at(queued_at),
-        **{**defaults, **fields},
-    )
 
 
 def seed_documents(readers: InMemoryReaders, source_id: str, count: int) -> None:
@@ -470,7 +441,7 @@ async def test_a_job_that_finished_after_the_search_snapshot_is_not_reported_as_
 ) -> None:
     """検索は古い(`running`)が、`mget` では終了・ロック解放済み。確認読みで偽陽性を避ける。"""
     seed_source(readers, "docs")
-    seed_job(readers, "job-1", "docs", status="running")
+    seed_job(readers, "job-1", "docs", status="running", started_at=at(-30))
     readers.put_lock("docs", job_id="job-1", lease_expires_at=at(60))
     readers.refresh_search()
     readers.update_job("job-1", status="succeeded", finished_at=at(-1))
@@ -480,8 +451,9 @@ async def test_a_job_that_finished_after_the_search_snapshot_is_not_reported_as_
 
     assert item.last_crawl is not None
     assert item.last_crawl.stalled is False
-    # 行の `status` も読み直した値にそろえる。
+    # 行の `status` などの項目も、読み直した値にそろえる(読み直す項目は一覧の行の全項目)。
     assert item.last_crawl.status is JobStatus.SUCCEEDED
+    assert (item.last_crawl.started_at, item.last_crawl.finished_at) == (at(-30), at(-1))
     assert operations(readers).count("jobs.get_jobs") == 1
 
 
@@ -496,6 +468,9 @@ async def test_a_running_job_without_its_lock_is_stalled_after_the_confirmation(
 
     assert item.last_crawl is not None
     assert item.last_crawl.stalled is True
+    # 読み直した記録から作る行も、一覧の行の項目を欠かさない。
+    assert (item.last_crawl.job_id, item.last_crawl.status) == ("job-1", JobStatus.RUNNING)
+    assert (item.last_crawl.trigger, item.last_crawl.queued_at) == (JobTrigger.MANUAL, at(0))
     # ロック文書 → ジョブ記録の順で読み直す。
     assert operations(readers)[-3:] == ["jobs.get_locks", "jobs.get_locks", "jobs.get_jobs"]
 
@@ -808,6 +783,28 @@ async def test_the_lock_is_read_before_the_job_records_and_the_count_last(
         "jobs.get_locks",
         "counts.count_for_source",
     ]
+
+
+async def test_a_job_that_finished_after_the_search_snapshot_is_shown_as_finished_in_the_detail(
+    readers: InMemoryReaders, service: SourceCatalogService
+) -> None:
+    """EP-02 でも、検索は古い(`running`)が `mget` では終了・ロック解放済み。偽陽性にしない。"""
+    seed_source(readers, "docs")
+    seed_job(readers, "job-1", "docs", status="running", started_at=at(-30))
+    readers.put_lock("docs", job_id="job-1", lease_expires_at=at(60))
+    readers.refresh_search()
+    readers.update_job("job-1", status="succeeded", finished_at=at(-1))
+    readers.remove_lock("docs")
+
+    response = await get_source(service)
+
+    assert response.last_crawl is not None
+    assert (response.last_crawl.stalled, response.last_crawl.cancellable) == (False, False)
+    assert response.last_crawl.status is JobStatus.SUCCEEDED
+    assert response.last_crawl.finished_at == at(-1)
+    assert response.lock is not None
+    assert response.lock.state is LockState.NONE
+    assert response.unavailable == {}
 
 
 async def test_a_failed_lock_document_marks_both_the_lock_and_the_stalled_flag(

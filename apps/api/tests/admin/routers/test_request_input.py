@@ -23,8 +23,8 @@ from loreley_api.admin.routers.request_input import (
 )
 from loreley_api.common.http import install_common_http
 from loreley_api.common.http.body import MAX_REQUEST_BODY_BYTES
+from tests.admin.factories import SENTINEL, errors_of
 
-SENTINEL = "SENTINEL-INPUT-VALUE"
 PAGING = Depends(read_paging(sortable_fields={"queued_at", "status"}, default_sort="-queued_at"))
 
 
@@ -63,13 +63,6 @@ def make_client() -> TestClient:
 @pytest.fixture
 def client() -> TestClient:
     return make_client()
-
-
-def errors_of(response) -> list[dict[str, str]]:
-    assert response.status_code == 400
-    error = response.json()["error"]
-    assert error["code"] == "invalid_request"
-    return error["details"]["errors"]
 
 
 def assert_plain_400(response) -> None:

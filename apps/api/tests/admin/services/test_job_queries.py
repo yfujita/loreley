@@ -4,7 +4,6 @@
 障害を注入して確かめる。
 """
 
-from datetime import timedelta
 from typing import Any
 
 import pytest
@@ -21,9 +20,7 @@ from loreley_api.admin.base.codes import (
 )
 from loreley_api.admin.base.errors import AdminApiError
 from loreley_api.admin.services.job_queries import JobQueryService
-from loreley_api.common.timestamps import format_instant
-from tests.admin.factories import make_admin_dependencies
-from tests.fakes.clock import DEFAULT_NOW as NOW
+from tests.admin.factories import at, make_admin_dependencies, on_nth_call, seed_job
 from tests.fakes.clock import FixedClock
 from tests.fakes.in_memory_readers import STORE_TIMEOUT, STORE_UNAVAILABLE, InMemoryReaders
 from tests.fakes.inline_runner import InlineRunner
@@ -32,10 +29,6 @@ pytestmark = pytest.mark.anyio
 
 STORE = UnavailableReason.STORE_UNAVAILABLE
 TIMEOUT = UnavailableReason.TIMEOUT
-
-
-def at(seconds_from_now: float) -> str:
-    return format_instant(NOW + timedelta(seconds=seconds_from_now))
 
 
 @pytest.fixture
@@ -58,26 +51,6 @@ async def list_all(service: JobQueryService, **overrides: Any) -> Any:
         "descending": True,
     }
     return await service.list_jobs(**{**arguments, **overrides})
-
-
-def seed_job(
-    readers: InMemoryReaders,
-    job_id: str,
-    *,
-    source_id: str = "docs",
-    queued_at: int = 0,
-    **fields: Any,
-) -> None:
-    """`queued_at` は現在からの秒数(大きいほど新しい)。"""
-    status = fields.pop("status", "succeeded")
-    defaults = {"trigger": "manual", "force_delete": False, "rewrite_mode": False}
-    readers.put_job(
-        job_id,
-        source_id=source_id,
-        status=status,
-        queued_at=at(queued_at),
-        **{**defaults, **fields},
-    )
 
 
 # --- EP-09 ---
@@ -145,6 +118,23 @@ async def test_the_default_order_is_newest_first_and_ties_are_broken_by_job_id(
 
     assert [item.job_id for item in descending.items] == ["job-a", "job-b", "job-old"]
     assert [item.job_id for item in ascending.items] == ["job-old", "job-a", "job-b"]
+
+
+async def test_pages_do_not_overlap_when_ties_span_the_page_boundary(
+    readers: InMemoryReaders, service: JobQueryService
+) -> None:
+    for number in range(60):
+        # 3 件ずつ同じ時刻にして、同順位が複数のページにまたがるようにする。
+        seed_job(readers, f"job-{number:02d}", queued_at=-(number // 3))
+    readers.refresh_search()
+
+    pages = [await list_all(service, page=number, items_per_page=25) for number in (1, 2, 3)]
+
+    seen = [item.job_id for page in pages for item in page.items]
+    # 新しい順で、同順位は `job_id` の昇順。ページの境目をまたいでも、取りこぼし・重複がない。
+    assert seen == [f"job-{number:02d}" for number in range(60)]
+    assert [page.total for page in pages] == [60, 60, 60]
+    assert [len(page.items) for page in pages] == [25, 25, 10]
 
 
 async def test_the_list_is_filtered_by_source_and_by_status(
@@ -227,6 +217,21 @@ async def test_a_job_that_finished_after_the_search_snapshot_is_shown_as_finishe
     assert item.status is JobStatus.SUCCEEDED
     assert item.finished_at == at(-1)
     assert (item.stalled, item.cancellable) == (False, False)
+    assert item.unavailable == {}
+
+
+async def test_a_job_finished_while_another_job_holds_the_lock_is_shown_as_finished(
+    readers: InMemoryReaders, service: JobQueryService
+) -> None:
+    """検索は古い(`running`)。その後に終了し、次のジョブがロックを取った(ロックの不一致)。"""
+    seed_job(readers, "job-1", status="running")
+    readers.refresh_search()
+    readers.update_job("job-1", status="succeeded", finished_at=at(-1))
+    readers.put_lock("docs", job_id="job-2", lease_expires_at=at(300))
+
+    [item] = (await list_all(service)).items
+
+    assert (item.status, item.stalled, item.cancellable) == (JobStatus.SUCCEEDED, False, False)
     assert item.unavailable == {}
 
 
@@ -522,7 +527,7 @@ async def test_a_running_job_within_its_lease_is_cancellable_and_not_failed(
     )
 
 
-async def test_a_job_that_finished_after_the_snapshot_is_shown_as_finished(
+async def test_a_job_that_finished_before_the_read_is_shown_as_finished(
     readers: InMemoryReaders, service: JobQueryService
 ) -> None:
     """EP-10 のジョブ記録は `mget`(リアルタイム)なので、検索の遅れの影響を受けない。"""
@@ -534,6 +539,33 @@ async def test_a_job_that_finished_after_the_snapshot_is_shown_as_finished(
 
     assert detail.status is JobStatus.SUCCEEDED
     assert (detail.stalled, detail.lease_expires_at) == (False, None)
+
+
+async def test_a_job_that_finishes_during_the_confirmation_is_shown_with_the_reread_values(
+    readers: InMemoryReaders, service: JobQueryService
+) -> None:
+    """最初の読みは `running`・ロックなし。確認読みの直前に終了してロックが消えた。
+
+    偽陽性の `stalled` にせず、`status` などは読み直した記録の値にそろえる。
+    """
+    seed_detail(readers, status="running")
+
+    def finish_the_job() -> None:
+        readers.update_job("job-1", status="succeeded", finished_at=at(-2))
+        readers.remove_lock("docs")
+
+    on_nth_call(readers, "jobs.get_locks", 2, finish_the_job)
+
+    detail = await service.get_job("job-1")
+
+    assert detail.status is JobStatus.SUCCEEDED
+    assert detail.finished_at == at(-2)
+    assert (detail.stalled, detail.cancellable, detail.lease_expires_at) == (False, False, None)
+    assert (detail.rerunnable, detail.rerun_blocked_reason) == (
+        False,
+        RerunBlockedReason.NOT_FAILED,
+    )
+    assert detail.unavailable == {}
 
 
 async def test_a_superseded_failed_crawl_is_blocked_as_superseded(
