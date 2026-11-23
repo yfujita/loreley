@@ -10,6 +10,7 @@ OpenSearch は HTTP 200 のまま一部の失敗を返しうる。応答を使�
 結果を残すため、`Failed` の値として返す。
 """
 
+import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
@@ -18,9 +19,11 @@ from loreley_api.infrastructure.opensearch.failure import (
     DocumentError,
     PartialResponseError,
     ResponseShapeError,
-    failed_from_exception,
+    classify_failure,
 )
 from loreley_api.infrastructure.opensearch.ports import RecordResults, StoredRecord
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -67,6 +70,18 @@ def as_str(value: object) -> str:
 
 def parse_search(response: object) -> ParsedSearch:
     """`search` の応答(または `msearch` のサブ応答)を検証して、素の値にする。"""
+    return _parse_search(response, reads_total=True)
+
+
+def parse_uncounted_search(response: object) -> ParsedSearch:
+    """総件数を使わない問い合わせ(`track_total_hits: false`)の応答。
+
+    `hits.total` があっても読まない。頭打ち(`relation: gte`)の値で失敗にしないため。
+    """
+    return _parse_search(response, reads_total=False)
+
+
+def _parse_search(response: object, *, reads_total: bool) -> ParsedSearch:
     body = as_mapping(response)
     timed_out = body.get("timed_out")
     if timed_out is True:
@@ -79,7 +94,7 @@ def parse_search(response: object) -> ParsedSearch:
 
     hits_section = as_mapping(body.get("hits"))
     hits = parse_hits(hits_section)
-    total = _parse_total(hits_section["total"]) if "total" in hits_section else None
+    total = _parse_total(hits_section["total"]) if reads_total and "total" in hits_section else None
     aggregations = body.get("aggregations")
     return ParsedSearch(
         total=total,
@@ -132,15 +147,23 @@ def parse_mget(
     if len(docs) != len(ids):
         raise ResponseShapeError("unexpected number of documents")
     results: RecordResults = {}
+    num_failed = 0
     for requested_id, doc in zip(ids, docs, strict=True):
         try:
             record = _parse_document(doc, requested_id, expected_record_type)
         except (ResponseShapeError, DocumentError):
-            results[requested_id] = failed_from_exception(
-                DocumentError(), target, operation=operation
-            )
+            results[requested_id] = classify_failure(DocumentError(), target)
+            num_failed += 1
             continue
         results[requested_id] = Ok(record)
+    if num_failed > 0:
+        # 多数が失敗してもログが膨らまないよう、1 回の取得につき 1 行にする(ID・理由文は出さない)。
+        logger.warning(
+            "opensearch mget had failed documents: operation=%s target=%s num_failed=%d",
+            operation,
+            target,
+            num_failed,
+        )
     return results
 
 

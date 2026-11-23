@@ -1,5 +1,6 @@
 """偽の生クライアントが、許可リスト外の呼び出しで失敗すること(C 11章 8 (b))。"""
 
+import copy
 from collections.abc import Callable
 
 import pytest
@@ -42,6 +43,15 @@ def test_a_call_outside_the_allow_list_fails(
 
     with pytest.raises(ForbiddenOpenSearchCall):
         call(client)
+
+
+def test_a_dunder_lookup_is_a_plain_missing_attribute_not_a_forbidden_call() -> None:
+    """`copy`・`hasattr` などが探すダンダー名で、基盤(`BaseException`)を中断させない。"""
+    client = FakeOpenSearchClient()
+
+    assert not hasattr(client, "__deepcopy__")
+    assert not hasattr(client.cat, "__deepcopy__")
+    assert copy.copy(client) is not client
 
 
 def test_the_failure_is_not_an_exception_so_a_reader_cannot_swallow_it() -> None:

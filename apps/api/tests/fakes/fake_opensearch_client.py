@@ -38,6 +38,10 @@ class RecordedRequest:
     query_params: Mapping[str, object]
 
 
+def _is_dunder(attribute: str) -> bool:
+    return attribute.startswith("__") and attribute.endswith("__")
+
+
 class _Namespace:
     """`cluster`・`cat` のように、許可した API だけを持つ名前空間。"""
 
@@ -46,6 +50,10 @@ class _Namespace:
         self._apis = dict(apis)
 
     def __getattr__(self, attribute: str) -> Callable[..., object]:
+        # `copy`・`hasattr` などの基盤が探すダンダー名は、通常の「属性なし」にする(`BaseException`
+        # で基盤を中断させない)。
+        if _is_dunder(attribute):
+            raise AttributeError(attribute)
         try:
             return self._apis[attribute]
         except KeyError:
@@ -72,6 +80,8 @@ class FakeOpenSearchClient:
 
     def __getattr__(self, attribute: str) -> object:
         # 存在しない属性(`index`・`bulk`・`indices`・`scroll` ...)は、許可リスト外。
+        if _is_dunder(attribute):
+            raise AttributeError(attribute)
         raise ForbiddenOpenSearchCall(attribute)
 
     def close(self) -> None:

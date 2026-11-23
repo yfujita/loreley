@@ -22,6 +22,8 @@ from loreley_api.common.concurrency import (
 DEADLINE_SECONDS = 0.2
 # 期限で放棄した呼び出しが、期限よりずっと前に戻ることの確認に使う上限。
 PROMPT_SECONDS = 1.0
+# イベントループが塞がれていないことの確認に使う、1 回の待ちの実測の上限。
+MAX_LOOP_GAP_SECONDS = 0.5
 
 
 def run_async[T](function: Callable[[], Awaitable[T]]) -> T:
@@ -127,22 +129,28 @@ def test_a_blocked_category_does_not_delay_another_category() -> None:
 
 
 def test_waiting_for_a_slot_does_not_block_the_event_loop() -> None:
-    """待っている要求はイベントループの上で待つ。他のコルーチン(`/healthz` など)が動く。"""
+    """待っている要求はイベントループの上で待つ。他のコルーチン(`/healthz` など)が動く。
+
+    ループが塞がれていれば、`sleep(0.005)` の 1 回の間隔が実測で大きく伸びる。
+    """
     runner = BlockingRunner({"a": 1})
     release = threading.Event()
 
-    async def scenario() -> int:
-        ticks = 0
+    async def scenario() -> float:
+        longest_gap_seconds = 0.0
         async with anyio.create_task_group() as task_group:
             task_group.start_soon(runner.run, "a", release.wait, 10)
             task_group.start_soon(runner.run, "a", release.wait, 10)
+            previous = time.monotonic()
             for _ in range(20):
                 await anyio.sleep(0.005)
-                ticks += 1
+                now = time.monotonic()
+                longest_gap_seconds = max(longest_gap_seconds, now - previous)
+                previous = now
             release.set()
-        return ticks
+        return longest_gap_seconds
 
-    assert run_async(scenario) == 20
+    assert run_async(scenario) < MAX_LOOP_GAP_SECONDS
 
 
 def test_run_does_not_abandon_a_cancelled_call_but_waits_for_the_thread() -> None:

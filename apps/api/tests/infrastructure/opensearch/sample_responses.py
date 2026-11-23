@@ -38,6 +38,13 @@ def search_response(
     return response
 
 
+def with_capped_total(response: Mapping[str, object], value: int = 10_000) -> dict[str, object]:
+    """`hits.total` を頭打ち(`relation: gte`)にした応答にする。"""
+    hits_section = dict(response["hits"])  # type: ignore[call-overload]
+    hits_section["total"] = {"value": value, "relation": "gte"}
+    return {**response, "hits": hits_section}
+
+
 def mget_doc(
     record_id: str, source: Mapping[str, object] | None = None, *, found: bool = True
 ) -> dict[str, object]:

@@ -157,6 +157,27 @@ def test_the_dynamic_mode_is_the_one_the_queries_assume(index: str) -> None:
     assert load_mappings(index)["dynamic"] == EXPECTED_DYNAMIC[index]
 
 
+@pytest.mark.parametrize(
+    "index", [name for name, mode in EXPECTED_DYNAMIC.items() if mode == "strict"]
+)
+def test_the_source_fields_the_queries_read_are_mapped_in_a_strict_index(index: str) -> None:
+    """`dynamic: strict` の索引は、未マップの項目を持たない。`_source` の `includes`・`excludes` の
+    項目名の綴り誤り(常に欠けて返る・除外できない)に気づく。`dynamic: false` の `loreley-jobs` は、
+    未マップでも `_source` から読める。
+    """
+    properties = load_mappings(index)["properties"]
+    assert isinstance(properties, dict)
+    included: set[str] = set()
+    for body in bodies_by_index()[index]:
+        source = body.get("_source")
+        if isinstance(source, dict):
+            included.update(source.get("includes", []))
+            included.update(source.get("excludes", []))
+
+    assert included, "no `_source` field list was found (the check would pass for any name)"
+    assert included <= set(properties), sorted(included - set(properties))
+
+
 def test_the_connector_config_is_not_searchable_and_is_excluded_from_the_listing() -> None:
     properties = load_mappings("sources")["properties"]
     assert isinstance(properties, dict)

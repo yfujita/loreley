@@ -41,7 +41,8 @@ ALLOWED_CALLS_BY_METHOD: dict[str, str] = {
 }
 ALLOWED_CALLS = frozenset(ALLOWED_CALLS_BY_METHOD.values())
 
-# 書き込み・索引管理・`refresh`・`scroll`・PIT・スクリプトを表す、メソッド名の最初の語。
+# 書き込み・索引管理・`refresh`・`scroll`・PIT・スクリプトを表す語。メソッド名を `_` で分けた
+# どの語でも判定する(`job_delete`・`source_purge` のように、動詞が後ろにある名前も拾う)。
 WRITE_VERBS = frozenset(
     {
         "index",
@@ -79,6 +80,9 @@ WRITE_VERBS = frozenset(
         "shrink",
         "split",
         "rollover",
+        "purge",
+        "erase",
+        "mark",
     }
 )
 
@@ -211,11 +215,11 @@ def find_variadic_parameters(tree: ast.AST) -> list[str]:
 
 
 def find_write_named_methods(class_node: ast.ClassDef) -> list[str]:
-    """(c): 書き込みを表す名前の公開メソッド。最初の語(`delete_job` → `delete`)で判定する。"""
+    """(c): 書き込みを表す名前の公開メソッド。名前のどの語(`job_delete` → `delete`)でも判定する。"""
     return [
         method.name
         for method in methods_of(class_node)
-        if not method.name.startswith("_") and method.name.split("_")[0] in WRITE_VERBS
+        if not method.name.startswith("_") and not WRITE_VERBS.isdisjoint(method.name.split("_"))
     ]
 
 
@@ -290,6 +294,13 @@ def test_the_wrapper_does_not_forward_arbitrary_arguments() -> None:  # (b)
 
 def test_the_wrapper_has_no_write_named_method() -> None:  # (b)
     assert find_write_named_methods(wrapper_class(load_sources())) == []
+
+
+def test_every_reader_file_is_registered_for_the_checks() -> None:
+    """Reader を足したのに `READER_FILES` に登録し忘れて、検査から外れることを防ぐ。"""
+    reader_files = {path.name for path in (PACKAGE_ROOT / OPENSEARCH_DIRECTORY).glob("*_reader.py")}
+
+    assert reader_files == set(READER_FILES)
 
 
 def test_reader_protocols_have_no_write_named_methods() -> None:  # (c)
@@ -475,6 +486,12 @@ def test_an_extra_public_wrapper_method_is_visible_to_the_surface_check() -> Non
         "put_script",
         "reindex",
         "close",
+        "purge_old_jobs",
+        "erase_source",
+        "mark_done",
+        "job_delete",  # 動詞が最初の語でない名前
+        "force_refresh",
+        "source_purge",
     ],
 )
 def test_a_write_named_method_is_detected(method: str) -> None:

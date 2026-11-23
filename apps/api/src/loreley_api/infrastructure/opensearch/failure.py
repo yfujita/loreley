@@ -67,16 +67,25 @@ def is_timeout(error: BaseException) -> bool:
     return False
 
 
+def classify_failure(error: Exception, target: FailureTarget) -> Failed:
+    """例外(部分的な失敗の印を含む)を `Failed` にする。ログは出さない。
+
+    1 回の取得で多数の失敗がありうる場合(`mget` の文書ごとの失敗)に、呼び出し側がまとめて
+    ログを出すために使う。
+    """
+    return Failed(
+        kind="timeout" if is_timeout(error) else "unavailable",
+        target=target,
+        error_class_name=type(error).__name__,
+    )
+
+
 def failed_from_exception(error: Exception, target: FailureTarget, *, operation: str) -> Failed:
     """例外(部分的な失敗の印を含む)を `Failed` にして、固定の項目だけをログに残す。
 
     `operation` は呼び出し側が決める固定の識別子(`jobs.list_jobs` など。ID を含めない)。
     """
-    failed = Failed(
-        kind="timeout" if is_timeout(error) else "unavailable",
-        target=target,
-        error_class_name=type(error).__name__,
-    )
+    failed = classify_failure(error, target)
     if isinstance(error, RequestError):
         # 400 は、実装・スキーマの不一致を示すことが多い。応答の扱いは他の失敗と同じ。
         logger.error(

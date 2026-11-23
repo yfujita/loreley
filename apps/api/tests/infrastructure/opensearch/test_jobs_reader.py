@@ -24,6 +24,7 @@ from tests.infrastructure.opensearch.sample_responses import (
     mget_doc,
     mget_response,
     search_response,
+    with_capped_total,
 )
 
 PAGE = PageRequest(page=2, items_per_page=25, descending=True)
@@ -94,6 +95,15 @@ def test_latest_by_source_returns_the_jobs_and_the_completion_time_per_source(
     [request] = fake_client.requests
     assert request.index == INDEX_NAMES.jobs
     assert request.body == queries.latest_by_source_body(["a", "b", "c"])
+
+
+def test_latest_by_source_ignores_a_capped_total(
+    reader: OpenSearchJobsReader, fake_client: FakeOpenSearchClient
+) -> None:
+    """`relation: gte`(10,000 件超)が返っても、総件数を使わないので失敗にしない。"""
+    fake_client.script("search", with_capped_total(latest_response(source_bucket("a"))))
+
+    assert reader.latest_by_source(["a"]) == Ok({"a": SourceJobsSummary(None, None, None)})
 
 
 def test_latest_by_source_without_sources_does_not_query(
@@ -372,6 +382,14 @@ def test_latest_crawl_id_returns_the_id_of_the_first_hit(
     [request] = fake_client.requests
     assert request.index == INDEX_NAMES.jobs
     assert request.body == queries.latest_crawl_id_body("a")
+
+
+def test_latest_crawl_id_ignores_a_capped_total(
+    reader: OpenSearchJobsReader, fake_client: FakeOpenSearchClient
+) -> None:
+    fake_client.script("search", with_capped_total(search_response([hit("job-9")])))
+
+    assert reader.latest_crawl_id("a") == Ok("job-9")
 
 
 def test_latest_crawl_id_is_none_when_there_is_no_crawl_job(

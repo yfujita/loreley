@@ -100,9 +100,13 @@ def test_every_error_code_used_by_a_generator_has_a_message() -> None:
         assert error.code in {code.value for code in ErrorCode}
 
 
-def test_a_code_without_a_message_is_a_programming_error() -> None:
-    with pytest.raises(KeyError):
-        AdminApiError(ErrorCode.LOCK_HELD, 409)
+@pytest.mark.parametrize("code", list(ErrorCode))
+def test_every_error_code_has_a_fixed_english_message(code: ErrorCode) -> None:
+    """未定義の code で `KeyError` にならない(エラー応答の組み立てが 500 にならない)。"""
+    error = AdminApiError(code, 400)
+
+    assert error.message.isascii()
+    assert error.message.strip() == error.message != ""
 
 
 def test_invalid_request_without_violations_has_no_details() -> None:

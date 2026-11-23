@@ -48,6 +48,7 @@ def test_r3_aggregates_the_latest_jobs_per_source_in_one_search() -> None:
     body = queries.latest_by_source_body(["a", "b"])
 
     assert body["size"] == 0
+    assert body["track_total_hits"] is False  # 総件数を使わない(10,000 件超でも失敗にしない)
     assert body["query"] == {
         "bool": {
             "filter": [
@@ -118,6 +119,7 @@ def test_r7_reads_only_the_id_of_the_latest_crawl() -> None:
     assert queries.latest_crawl_id_body("s") == {
         "size": 1,
         "_source": False,
+        "track_total_hits": False,
         "sort": [{"queued_at": "desc"}, {"job_id": "asc"}],
         "query": {
             "bool": {

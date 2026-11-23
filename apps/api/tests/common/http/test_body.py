@@ -1,13 +1,14 @@
 """本文の上限(A 5.1。1 MiB)。超過は 400 `invalid_request`(`details` なし)。"""
 
 from collections.abc import Iterator
+from functools import partial
 
 import anyio
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
-from loreley_api.common.http import install_common_http
+from loreley_api.common.http import ApiError, install_common_http
 from loreley_api.common.http.body import MAX_REQUEST_BODY_BYTES, read_limited_body
 
 SMALL_LIMIT = 10
@@ -59,13 +60,11 @@ def test_an_empty_body_is_read_as_empty(client: TestClient) -> None:
     assert response.json() == {"length": 0}
 
 
-def test_a_chunked_body_over_the_limit_is_stopped_while_reading(client: TestClient) -> None:
-    """`Content-Length` がなくても(chunked)、読みながら数えて打ち切る。"""
-    chunks_sent: list[int] = []
+def test_a_chunked_body_over_the_limit_is_a_400_without_details(client: TestClient) -> None:
+    """`Content-Length` がなくても(chunked)、読みながら数えて上限を超えたら 400 にする。"""
 
     def chunks() -> Iterator[bytes]:
-        for index in range(1_000):
-            chunks_sent.append(index)
+        for _ in range(1_000):
             yield b"x" * 4
 
     response = client.post("/small", content=chunks())
@@ -75,20 +74,89 @@ def test_a_chunked_body_over_the_limit_is_stopped_while_reading(client: TestClie
     assert "details" not in response.json()["error"]
 
 
-def test_a_declared_length_over_the_limit_is_rejected_before_reading(client: TestClient) -> None:
+class RecordingReceive:
+    """ASGI の `receive` の偽物。呼ばれた回数を数え、`chunks` を 1 つずつ返す。"""
+
+    def __init__(self, chunks: list[bytes]) -> None:
+        self._chunks = chunks
+        self.num_calls = 0
+
+    async def __call__(self) -> dict[str, object]:
+        index = self.num_calls
+        self.num_calls += 1
+        return {
+            "type": "http.request",
+            "body": self._chunks[index],
+            "more_body": index < len(self._chunks) - 1,
+        }
+
+
+def make_request(
+    headers: list[tuple[bytes, bytes]], chunks: list[bytes]
+) -> tuple[Request, RecordingReceive]:
+    receive = RecordingReceive(chunks)
+    scope = {"type": "http", "method": "POST", "path": "/", "headers": headers}
+    return Request(scope, receive), receive
+
+
+def test_a_chunked_body_over_the_limit_stops_reading_at_the_first_chunk_over() -> None:
+    chunk_size = 4
+    num_chunks_until_over = SMALL_LIMIT // chunk_size + 1
+    request, receive = make_request([], [b"x" * chunk_size] * 1_000)
+
+    with pytest.raises(ApiError):
+        anyio.run(partial(read_limited_body, request, max_bytes=SMALL_LIMIT))
+
+    assert receive.num_calls == num_chunks_until_over  # 超過後に、残りの本文を読み続けない
+
+
+def test_a_declared_length_over_the_limit_is_rejected_without_reading() -> None:
+    request, receive = make_request(
+        [(b"content-length", str(SMALL_LIMIT + 1).encode())], [b"x" * (SMALL_LIMIT + 1)]
+    )
+
+    with pytest.raises(ApiError):
+        anyio.run(partial(read_limited_body, request, max_bytes=SMALL_LIMIT))
+
+    assert receive.num_calls == 0
+
+
+def test_a_declared_length_at_the_limit_is_read() -> None:
+    request, receive = make_request(
+        [(b"content-length", str(SMALL_LIMIT).encode())], [b"x" * SMALL_LIMIT]
+    )
+
+    body = anyio.run(partial(read_limited_body, request, max_bytes=SMALL_LIMIT))
+
+    assert body == b"x" * SMALL_LIMIT
+    assert receive.num_calls == 1
+
+
+def test_a_declared_length_over_the_limit_is_a_400(client: TestClient) -> None:
     response = client.post("/small", content=b"x" * (SMALL_LIMIT + 1))
 
     assert response.status_code == 400
 
 
-def make_request(headers: list[tuple[bytes, bytes]], body: bytes) -> Request:
-    messages = [{"type": "http.request", "body": body, "more_body": False}]
+@pytest.mark.parametrize("num_digits", [20, 4_300, 100_000])
+def test_a_declared_length_with_too_many_digits_is_over_the_limit_not_a_server_error(
+    num_digits: int,
+) -> None:
+    """`int()` は 4,300 桁超で `ValueError`(500)になる。桁数で先に上限超過とする。"""
+    request, receive = make_request([(b"content-length", b"9" * num_digits)], [b""])
 
-    async def receive() -> dict[str, object]:
-        return messages.pop(0)
+    with pytest.raises(ApiError):
+        anyio.run(read_limited_body, request)
 
-    scope = {"type": "http", "method": "POST", "path": "/", "headers": headers}
-    return Request(scope, receive)
+    assert receive.num_calls == 0
+
+
+def test_leading_zeros_do_not_make_a_small_declared_length_over_the_limit() -> None:
+    request, _ = make_request([(b"content-length", b"0" * 5_000 + b"5")], [b"x" * 5])
+
+    body = anyio.run(read_limited_body, request)
+
+    assert body == b"x" * 5
 
 
 @pytest.mark.parametrize("length", [b"abc", b"-1", b"", "\u00b2".encode(), "\uff11\uff12".encode()])
@@ -96,7 +164,7 @@ def test_an_unusable_content_length_header_is_ignored_and_the_body_is_counted(
     length: bytes,
 ) -> None:
     """`isdigit()` は `²` も真にするが `int()` は失敗する。ASCII の数字だけを信じ、他は実測する。"""
-    request = make_request([(b"content-length", length)], b"x" * 5)
+    request, _ = make_request([(b"content-length", length)], [b"x" * 5])
 
     body = anyio.run(read_limited_body, request)
 

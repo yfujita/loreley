@@ -82,7 +82,7 @@ def reject_unknown_query(allowed_names: Collection[str]) -> Callable[[Request], 
 
 
 @dataclass(frozen=True)
-class PageRequest:
+class PageParams:
     page: int
     items_per_page: int
     sort_field: str
@@ -91,7 +91,7 @@ class PageRequest:
 
 def read_paging(
     *, sortable_fields: Collection[str], default_sort: str
-) -> Callable[..., Awaitable[PageRequest]]:
+) -> Callable[..., Awaitable[PageParams]]:
     """`page`・`items_per_page`・`sort` の依存関係を作る(B 2.1)。
 
     `sort` は単一の項目で、先頭の `-` が降順。`default_sort` は `-queued_at` のように書く。
@@ -102,7 +102,7 @@ def read_paging(
         page: Annotated[int, Query(ge=1)] = 1,
         items_per_page: Annotated[int, Query()] = DEFAULT_ITEMS_PER_PAGE,
         sort: Annotated[str, Query()] = default_sort,
-    ) -> PageRequest:
+    ) -> PageParams:
         violations: list[FieldViolation] = []
         if items_per_page not in ITEMS_PER_PAGE_CHOICES:
             violations.append(FieldViolation("items_per_page", Reason.UNSUPPORTED))
@@ -113,7 +113,7 @@ def read_paging(
             violations.append(FieldViolation("sort", Reason.UNSUPPORTED))
         if violations:
             raise invalid_request(violations)
-        return PageRequest(page, items_per_page, sort_field, descending=sort.startswith("-"))
+        return PageParams(page, items_per_page, sort_field, descending=sort.startswith("-"))
 
     return read_page_request
 

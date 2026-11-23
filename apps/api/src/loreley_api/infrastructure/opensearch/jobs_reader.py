@@ -25,7 +25,7 @@ from loreley_api.infrastructure.opensearch.responses import (
     as_mapping,
     as_str,
     parse_hits,
-    parse_search,
+    parse_uncounted_search,
 )
 
 LOCK_RECORD_TYPE = "lock"
@@ -108,7 +108,7 @@ class OpenSearchJobsReader:
         response = self._readonly.search(
             index=self._jobs_index, body=queries.latest_crawl_id_body(source_id)
         )
-        hits = parse_search(response).hits
+        hits = parse_uncounted_search(response).hits
         return hits[0].record_id if hits else None
 
     def _read_latest_by_source(self, source_ids: Sequence[str]) -> dict[str, SourceJobsSummary]:
@@ -118,7 +118,7 @@ class OpenSearchJobsReader:
         response = self._readonly.search(
             index=self._jobs_index, body=queries.latest_by_source_body(unique_source_ids)
         )
-        aggregations = parse_search(response).aggregations
+        aggregations = parse_uncounted_search(response).aggregations
         buckets = as_list(as_mapping(aggregations.get("by_source")).get("buckets"))
         summaries = {}
         for bucket in buckets:

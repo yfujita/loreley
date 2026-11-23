@@ -15,6 +15,19 @@ _MESSAGES: dict[ErrorCode, str] = {
     ErrorCode.UNAVAILABLE: "the data store is unavailable",
     ErrorCode.SOURCE_CONFIG_NOT_FOUND: "the data source is not found",
     ErrorCode.JOB_NOT_FOUND: "the job is not found",
+    # 次の 2 つの文は B 2.5・2.7 の例による。残りは、同じ書き方(条件を述べる固定の英語文)で補った。
+    ErrorCode.CONFIG_INVALID: "connector_config is invalid",
+    ErrorCode.LOCK_HELD: "the source is locked by another job",
+    ErrorCode.LOCK_IN_USE: "the lock is in use and cannot be released",
+    ErrorCode.SOURCE_DELETING: "the source is being deleted",
+    ErrorCode.MAINTENANCE_ENABLED: "maintenance is enabled",
+    ErrorCode.SOURCE_ALREADY_EXISTS: "the source already exists",
+    ErrorCode.JOB_NOT_CANCELLABLE: "the job cannot be cancelled",
+    ErrorCode.JOB_ALREADY_FINISHED: "the job has already finished",
+    ErrorCode.CRAWLER_ERROR: "the crawler returned an unexpected response",
+    ErrorCode.CRAWLER_UNAVAILABLE: "the crawler is unavailable",
+    ErrorCode.CRAWLER_UNREACHABLE: "the crawler is unreachable",
+    ErrorCode.CRAWLER_RESPONSE_LOST: "the response from the crawler was lost",
 }
 
 

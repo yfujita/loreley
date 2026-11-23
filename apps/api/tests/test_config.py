@@ -304,14 +304,16 @@ def test_an_invalid_value_reports_the_field_and_the_kind_only(
     assert error.__cause__ is None
 
 
-@pytest.mark.parametrize("value", ["nan", "inf", "-inf"])
+@pytest.mark.parametrize(
+    ("value", "kind"),
+    [("nan", "less_than_equal"), ("inf", "less_than_equal"), ("-inf", "greater_than")],
+)
 def test_a_timeout_that_is_not_a_finite_number_is_rejected(
-    monkeypatch: pytest.MonkeyPatch, value: str
+    monkeypatch: pytest.MonkeyPatch, value: str, kind: str
 ) -> None:
     error = config_error_of(monkeypatch, health_probe_timeout_seconds=value)
 
-    assert str(error).startswith("invalid settings: health_probe_timeout_seconds: ")
-    assert value not in str(error).split(": ", 2)[2]
+    assert str(error) == f"invalid settings: health_probe_timeout_seconds: {kind}"
 
 
 # --- URL ---

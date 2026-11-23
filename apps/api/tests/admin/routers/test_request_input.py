@@ -13,7 +13,7 @@ from loreley_api.admin.base.errors import AdminApiError
 from loreley_api.admin.routers.request_input import (
     JobIdPath,
     JsonObjectBody,
-    PageRequest,
+    PageParams,
     SourceIdPath,
     read_job_id,
     read_paging,
@@ -41,7 +41,7 @@ def make_client() -> TestClient:
     @router.get(
         "/jobs", dependencies=[Depends(reject_unknown_query({"page", "items_per_page", "sort"}))]
     )
-    async def list_jobs(paging: Annotated[PageRequest, PAGING]) -> dict[str, Any]:
+    async def list_jobs(paging: Annotated[PageParams, PAGING]) -> dict[str, Any]:
         return {
             "page": paging.page,
             "items_per_page": paging.items_per_page,

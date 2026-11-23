@@ -96,6 +96,8 @@ def latest_by_source_body(source_ids: Sequence[str]) -> Body:
     }
     return {
         "size": 0,
+        # 総件数を使わない。既定のままだと、10,000 件超で `relation: gte` が返り、検証が失敗する。
+        "track_total_hits": False,
         "query": {
             "bool": {
                 "filter": [
@@ -153,6 +155,8 @@ def latest_crawl_id_body(source_id: str) -> Body:
     return {
         "size": 1,
         "_source": False,
+        # 総件数を使わない(R-3 と同じ理由)。
+        "track_total_hits": False,
         "sort": [{"queued_at": _ORDER_DESCENDING}, {"job_id": _ORDER_ASCENDING}],
         "query": {
             "bool": {

@@ -9,8 +9,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from loreley_api.main import ADMIN_API_PREFIX, build_app, build_lifespan, close_all, main
-from tests.api_config import make_api_config
+from tests.api_config import SENTINEL_PASSWORD, make_api_config
 from tests.log_records import server_side_text
+from tests.secret_assertions import assert_secret_absent
 
 SOURCE_DIRECTORY = Path(__file__).resolve().parents[1] / "src"
 SENTINEL_PORT = "SENTINEL-PORT"
@@ -91,6 +92,23 @@ def test_building_and_running_the_app_makes_no_network_access(
         assert client.get("/healthz").status_code == 200
 
 
+def test_the_secret_password_is_in_neither_the_responses_nor_the_logs(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """lifespan の開始・終了と、未知のパス(外側・Admin のマウント内)の 404 を通して確かめる。"""
+    caplog.set_level(logging.DEBUG)
+    response_texts: list[str] = []
+
+    with TestClient(build_app(make_api_config())) as client:
+        for path in ("/healthz", "/nope", f"{ADMIN_API_PREFIX}/NO-SUCH-PATH"):
+            response_texts.append(client.get(path).text)
+
+    assert any("not_found" in text for text in response_texts)  # 404 の本文も対象に入っている
+    assert_secret_absent(
+        SENTINEL_PASSWORD, response_text="".join(response_texts), records=caplog.records
+    )
+
+
 def test_the_health_check_is_logged_at_debug_and_other_paths_at_info(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -133,7 +151,9 @@ def test_main_runs_uvicorn_once_with_the_settings_and_without_workers_or_reload(
     assert logging.getLogger().level == logging.DEBUG  # `configure_logging` が呼ばれた
 
 
-def test_main_does_not_set_a_graceful_shutdown_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_main_does_not_set_a_graceful_shutdown_timeout(
+    monkeypatch: pytest.MonkeyPatch, restore_logging: None
+) -> None:
     """`timeout_graceful_shutdown` は指定しない(Indexer と同じ。AAM-P-28)。"""
     for name, value in REQUIRED_ENVIRONMENT.items():
         monkeypatch.setenv(f"LORELEY_API_{name.upper()}", value)

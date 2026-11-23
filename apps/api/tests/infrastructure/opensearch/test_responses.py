@@ -1,5 +1,7 @@
 """部分的な失敗を成功と読まないこと(C 3.2。AAA-P-39。C 11章 6)。"""
 
+import logging
+
 import pytest
 
 from loreley_api.common.results import Failed, Ok
@@ -10,12 +12,14 @@ from loreley_api.infrastructure.opensearch.responses import (
     parse_mget,
     parse_msearch,
     parse_search,
+    parse_uncounted_search,
 )
 from tests.infrastructure.opensearch.sample_responses import (
     hit,
     mget_doc,
     mget_response,
     search_response,
+    with_capped_total,
 )
 
 
@@ -35,6 +39,28 @@ def test_a_response_without_a_total_is_allowed_when_the_total_is_not_requested()
 def test_a_missing_total_is_a_shape_error_when_the_total_is_required() -> None:
     with pytest.raises(ResponseShapeError):
         parse_counted_search(search_response([hit("a")]))
+
+
+def test_a_capped_total_is_a_shape_error_when_the_total_is_required() -> None:
+    """`relation: gte` は頭打ちの値で、総件数(ページングの `total`)として使えない。"""
+    response = with_capped_total(search_response([hit("a")], total=10_000))
+
+    with pytest.raises(ResponseShapeError):
+        parse_counted_search(response)
+
+
+def test_a_capped_total_is_ignored_when_the_total_is_not_used() -> None:
+    response = with_capped_total(search_response([hit("a")], total=10_000))
+
+    parsed = parse_uncounted_search(response)
+
+    assert parsed.total is None
+    assert parsed.hits == (StoredRecord("a", {}),)
+
+
+def test_an_uncounted_search_still_fails_on_a_partial_response() -> None:
+    with pytest.raises(PartialResponseError):
+        parse_uncounted_search(search_response([hit("a")], failed_shards=1))
 
 
 def test_a_timed_out_search_is_a_timeout_failure() -> None:
@@ -138,6 +164,35 @@ def test_an_mget_document_error_fails_only_that_document() -> None:
     assert results["a"] == Ok(StoredRecord("a", {"x": 1}))
     assert results["b"] == Failed("unavailable", "store", "DocumentError")
     assert results["c"] == Ok(None)
+
+
+def test_many_failed_mget_documents_are_logged_as_one_line_without_ids(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    secret_ids = [f"secret-id-{number}" for number in range(50)]
+    docs = [
+        {"_index": "i", "_id": doc_id, "error": {"reason": "secret-reason"}}
+        for doc_id in secret_ids
+    ]
+
+    with caplog.at_level(logging.DEBUG):
+        results = parse(mget_response(*docs), secret_ids)
+
+    assert all(
+        result == Failed("unavailable", "store", "DocumentError") for result in results.values()
+    )
+    [record] = caplog.records
+    assert record.levelno == logging.WARNING
+    assert record.getMessage() == (
+        "opensearch mget had failed documents: operation=test.operation target=store num_failed=50"
+    )
+
+
+def test_an_mget_without_failed_documents_logs_nothing(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.DEBUG):
+        parse(mget_response(mget_doc("a", {"x": 1}), mget_doc("b", found=False)), ["a", "b"])
+
+    assert caplog.records == []
 
 
 @pytest.mark.parametrize("found", ["true", 1, None])
