@@ -2,40 +2,51 @@
 
 ## 基本情報
 
-- 状態: in_progress
-- 現在工程: タスクレビュー(task-reviewer)
+- 状態: done(実装・レビュー・タスクレビュー完了。PR の作成はユーザー確認待ち)
+- 現在工程: 完了(PR 作成の確認待ち)
 - 最終更新: 2026-11-24
-
-- 最新作業記録: 0020-review-c-back-rereview.md
+- 最新作業記録: 0021-task-review-and-handoff.md
 
 ## 現在の状況
 
-プラン(0002)承認済み。P0〜P4 完了、レビュー R-A・R-B 完了(いずれも再レビューで指摘なし)。P5(P5a・P5b)と P6(EP-13・プローブ)が完了。EP-01〜14 の実装がそろった。ブランチ `feature/implement-admin-api`(開始 SHA `cedcd5667638ec18eaf6ee501963ab356d33ed5f`)。R-C 前半は code-reviewer が指摘なし、test-reviewer が Important 1 件(I1: EP-05〜08 の許可外メソッドの 405)を指摘し、修正・検証再実行済み(pytest 3246 passed、ruff・format・lock OK)、コミット済み。
-Crawler 実 API と B 9.2 の突き合わせは重大な差なし(0012)。AAPI-U-12・AAA-U-4 は実機で確認済み。`SourceSettings` は厳格版(EP-03・04)と nullable 版 `StoredSourceSettings`(EP-01・02)に分けた(0013)。
-P7 のうち P7a(OpenAPI の宣言・公開配線・`openapi_export.py`・server の結合テスト・`tzdata`・`ClientDisconnect`)と README が完了(pytest 3389 passed、コミット済み。0017)。P7 の手動スモークも完了(実 OpenSearch・Crawler・Indexer。EP-01〜14・障害系・OpenAPI の公開・ログ・Docker を確認し、専用スタックは後始末済み。0018)。
-R-C 前半の再レビューで I1 の解消を確認(新しい test-reviewer。元の agent は報告が受理されず打ち切り。0016)。Critical・Important なし。
+Admin API(EP-01〜14、ベース `/api/admin/v1`)を `apps/api` に実装し、完了した。ブランチ `feature/implement-admin-api`(開始 SHA `cedcd5667638ec18eaf6ee501963ab356d33ed5f`)。
+
+- 検証: `uv run pytest` 3410 passed、`ruff check`・`ruff format --check`・`uv lock --check` すべて通過(`task-reviewer` が再実行して確認)
+- 実装: 読み取り系 EP-01・02・09・10・11・12・14、書き込み系(Crawler 中継)EP-03〜08、ダッシュボード EP-13、OpenAPI の書き出し(`openapi_export.py`)と `OPENAPI_ENABLED` の公開、`apps/api/README.md` の更新
+- レビュー: R-A・R-B・R-C(前半・後半)とその再レビューで Critical・Important はすべて解消。`task-reviewer`(タスク全体)も Critical なし・差し戻し不要(0021)
+- 手動スモーク(実 OpenSearch・Crawler・Indexer): EP-01〜14・障害系(Crawler 停止・OpenSearch 停止)・OpenAPI の公開・ログ・Docker を確認し、専用スタックは後始末済み(0018)
+- 設計書(`docs/`)・`apps/crawler`・`apps/indexer`・compose・`Dockerfile`・infra は変更していない。差分は `apps/api` と `agent_tasks` のみ(開始 SHA からの 20 コミット・249 ファイル・約 33,000 行の追加。うち `apps/api` は 226 ファイル)
 
 ## 次のアクション
 
-1. task-reviewer によるタスク全体のレビュー(R-C の再レビューは code・test とも指摘なしで完了。0020)
-2. 指摘対応後、完了チェックリストの確認 → PR 作成(ユーザー確認のうえ)
+1. PR の作成: ユーザーに確認する(1 本か 2 本か。PR 説明に「既知のリスク」(下記)を書く)
+2. 設計書の追従改訂を別タスクとして起票するか決める
+3. 結合テストのタスクを起票するか決める
 
 ## 未解決事項
 
-- 手動スモークで未確認(0018): AAA-U-10、実行中ジョブの取消・実ロックの解放・`lock_in_use`・`stalled=true`、`force_delete=true`、`relocating`・複数ノードの `cat.*`、AAPI-U-7(`existence`)、窓 10,000 の実データ、OpenSearch の部分失敗。結合テストのタスクへ申し送り
-- `ClientDisconnect` は WARNING 1 行 + 400 に変更済み(0017)。テストを強化(0019)
-- Dockerfile のコメント(11 行目「現時点の `api` は基盤だけ」)が古い。HO-36 で Dockerfile に触るときに直す(0019)
-- `tzdata` は直接依存化済み(上限 `<2027` は 2027 年に見直し)
-- AAM-U-7、BAPI-U-2 の残りは実装時に確認
-- AAPI-U-11・AAPI-U-12・AAA-U-4 は実機で確認済み(0018)
-- 設計書追従改訂の申し送り(0017、7 件。D 4.12(c) の実装形と `servers` 固定、`ClientDisconnect` の確定、B 8.1 の EP-13 の 400、`ttl_*` の OpenAPI 型、`ErrorResponse.error.code` は `str` など)
-- 設計書追従改訂の申し送り(0015、3 件。D 5.0 の `lock_state` を読む時刻、C 8.5 に Crawler 失敗の WARNING、C 11章の DNS)
-- 設計書追従改訂の申し送り(0014、7 件。B 2.2 の列挙から EP-13 も外す、`HttpHealthProbe.check(url)`、`Connection: close`、`web` の空ファイル、R9 の AST 検査など)
-- 設計書追従改訂の申し送り(0013、7 件。B 2.11 の `SourceSettings`、`ttl_*` の `field` 名、違反の 2 段返却、`connector_config` の NaN・無限大、`%0A` の `job_id`、`lock_state` を読む時刻、巨大整数の `type`)
-- 設計書追従改訂の申し送り(0012): B 11 の AAPI-U-12・AAA-U-4 を「確認済み」に。`redirect=False` は urllib3 では冗長(害なし)
-- 設計書追従改訂の申し送り: 0004(4 件)・0005(5 件)・0006(ErrorCode の固定文 10 件)・0008(6 件)・0009(4 件)・0010(B 2.2 の列挙から EP-12・14 を外す、EP-09 のクエリ違反の返し方)
-- 据え置き: `test_secret_output.py` の DNS 依存、`job_queries.get_job` の失敗集約の整理、`brief_fields` の型付け、Protocol 整合テストの非公開 API 依存(Python 更新時)
+申し送りは 0021 に集約している(各記録の該当節が正本)。
+
+- **設計書の追従改訂の申し送り(別タスク)**: 0021 の A。0004・0005・0006・0008・0009・0010・0012・0013・0014・0015・0017・0019 に分散。主なもの: D 5.0 の `lock_state` を読む時刻、B 2.2 の単一応答の列挙から EP-12・13・14 を外す、B 11 の AAPI-U-12・AAA-U-4 を「確認済み」に、B 2.11 の `SourceSettings`、`ErrorCode` の固定文 10 件、D 4.12(c) の実装形
+- **結合テストのタスクへの申し送り**: 0021 の B。手動スモークで未確認(AAA-U-1〜3 の一部・AAA-U-7・AAA-U-10、実行中ジョブの取消・実ロックの解放・`lock_in_use`・`stalled=true`、`force_delete=true`、`relocating`・複数ノードの `cat.*`、AAPI-U-7、窓 10,000 の実データ、OpenSearch の部分失敗、`ClientDisconnect` の実機、BAPI-U-2 の残り(入れ子のマウントと `FastAPI(root_path=…)`))
+- **据え置き(軽微)**: 0021 の C(`test_secret_output.py` の DNS 依存、`job_queries.get_job` の失敗集約、`brief_fields` の型付け、`openapi_enabled` の二重、`packaging` の明示、Protocol 整合テストの Python 3.12 前提など)
+- **`apps/api/Dockerfile` 11 行目のコメント「現時点の `api` は基盤だけ」が古い**: HO-36 で Dockerfile に触るときに直す
+- **`tzdata` の上限 `<2027`**: 2027 年に見直す
+- **OpenAPI JSON のコミット先と Hey API 側の読み込み**: フロントエンドのタスク(FARC-P-6)
+
+### 既知のリスク(設計どおり。対策は別タスクの判断)
+
+認証なしの `api` が破壊的操作(削除ジョブ、ロック解放、クロール起動、取消)を公開する(HO-40)。本文なしの POST(EP-05・06・07)は `Origin` を問わず処理される(HO-41。0013 のテストで確認)。README 第 2 章に記載済み。信頼できるネットワークにだけ公開すること。
+
+### 解消済み(参考)
+
+- `ClientDisconnect` は WARNING 1 行 + 400 に変更し、テストを強化済み(0017・0019)
+- `tzdata` は直接依存化済み(0017)
+- AAPI-U-11・AAPI-U-12・AAA-U-4・AAM-U-7 の前半・BAPI-U-2 の `servers`・`paths` は確認済み(0012・0017・0018)
+- `SourceSettings` の共用の判断(厳格版と nullable 版に分離。0013)、OpenAPI の `requestBody` の宣言・422 の除去(0017)
 
 ## ユーザー判断待ち
 
-- なし
+- **PR を作成してよいか**: 作成する場合、1 本(20 コミット・約 33,000 行)か、2 本(読み取り系 P1〜P4 と、書き込み系・EP-13・OpenAPI・README の P5〜P7)か。プランの既定は 1 本
+- **設計書の追従改訂を別タスクとして起票するか**(0021 の A)
+- **結合テストのタスクを起票するか**(0021 の B)
