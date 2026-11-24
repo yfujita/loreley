@@ -1,6 +1,11 @@
 """設定の検証(C 11章 13)。違反は、値を出さずに起動失敗(`ConfigError`)にする。"""
 
 import os
+import re
+import tomllib
+import zoneinfo
+from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import pytest
 from pydantic import BaseModel, ValidationError
@@ -28,6 +33,9 @@ def clean_api_environment(monkeypatch: pytest.MonkeyPatch) -> None:
     for name in [name for name in os.environ if name.startswith(PREFIX)]:
         monkeypatch.delenv(name)
     set_environment(monkeypatch, **REQUIRED)
+
+
+PROJECT_DIRECTORY = Path(__file__).resolve().parents[1]
 
 
 def set_environment(monkeypatch: pytest.MonkeyPatch, **values: str) -> None:
@@ -421,6 +429,31 @@ def test_a_valid_time_zone_is_accepted(monkeypatch: pytest.MonkeyPatch, name: st
     set_environment(monkeypatch, cron_timezone=name)
 
     assert load_config().admin.cron_timezone == name
+
+
+def test_a_valid_time_zone_is_accepted_without_the_os_zoneinfo_database(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """slim イメージ(OS に zoneinfo がない)でも、直接の依存の `tzdata` で IANA 名を解決できる。"""
+    ZoneInfo.clear_cache()
+    zoneinfo.reset_tzpath(to=[])
+    try:
+        set_environment(monkeypatch, cron_timezone="Asia/Tokyo")
+
+        assert load_config().admin.cron_timezone == "Asia/Tokyo"
+    finally:
+        zoneinfo.reset_tzpath()
+        ZoneInfo.clear_cache()
+
+
+def test_tzdata_is_a_direct_dependency() -> None:
+    """間接依存(`opensearch-py` 経由)のままだと、その依存が変わったときに黙って失われる。"""
+    pyproject = tomllib.loads((PROJECT_DIRECTORY / "pyproject.toml").read_text(encoding="utf-8"))
+
+    names = [
+        re.split(r"[<>=!~ ]", dependency)[0] for dependency in pyproject["project"]["dependencies"]
+    ]
+    assert "tzdata" in names
 
 
 @pytest.mark.parametrize(

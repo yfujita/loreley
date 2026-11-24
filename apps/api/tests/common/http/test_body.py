@@ -1,5 +1,6 @@
 """本文の上限(A 5.1。1 MiB)。超過は 400 `invalid_request`(`details` なし)。"""
 
+import logging
 from collections.abc import Iterator
 from functools import partial
 
@@ -170,3 +171,55 @@ def test_an_unusable_content_length_header_is_ignored_and_the_body_is_counted(
     body = anyio.run(read_limited_body, request)
 
     assert body == b"x" * 5
+
+
+# --- 読み取りの途中の切断(`ClientDisconnect`。D 4.12(c)) ---
+
+
+def disconnect_during_body(app: FastAPI) -> list[dict[str, object]]:
+    """本文を読む POST で、読み取りの途中にクライアントが切断した状況を ASGI で再現する。
+
+    `TestClient` は切断を作れないので、`receive` が `http.disconnect` を返す形で呼ぶ。
+    """
+    sent: list[dict[str, object]] = []
+
+    async def receive() -> dict[str, object]:
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict[str, object]) -> None:
+        sent.append(message)
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/default",
+        "raw_path": b"/default",
+        "query_string": b"",
+        "root_path": "",
+        "headers": [(b"transfer-encoding", b"chunked")],
+        "client": ("127.0.0.1", 50000),
+        "server": ("testserver", 80),
+    }
+    anyio.run(app, scope, receive, send)
+    return sent
+
+
+def test_a_disconnect_while_reading_is_a_warning_and_a_400_not_an_error_and_a_500(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level(logging.DEBUG)
+
+    sent = disconnect_during_body(client.app)  # type: ignore[arg-type]
+
+    statuses = [message["status"] for message in sent if message["type"] == "http.response.start"]
+    assert statuses == [400]
+    records = [r for r in caplog.records if r.name.startswith("loreley_api")]
+    assert [(r.levelno, r.name) for r in records if r.levelno >= logging.WARNING] == [
+        (logging.WARNING, "loreley_api.common.http.body")
+    ]
+    access_lines = [r.getMessage() for r in records if r.name == "loreley_api.access"]
+    assert len(access_lines) == 1
+    assert access_lines[0].startswith("POST /default 400 ")

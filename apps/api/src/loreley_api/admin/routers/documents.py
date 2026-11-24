@@ -8,7 +8,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from loreley_api.admin.base.codes import DocumentTab, Reason
+from loreley_api.admin.base.codes import ApiTag, DocumentTab, ErrorCode, Reason
 from loreley_api.admin.base.constants import DEFAULT_ITEMS_PER_PAGE
 from loreley_api.admin.base.errors import FieldViolation, invalid_request
 from loreley_api.admin.routers.request_input import (
@@ -18,6 +18,7 @@ from loreley_api.admin.routers.request_input import (
     resolve_paging,
 )
 from loreley_api.admin.schemas.documents import DocumentListResponse
+from loreley_api.admin.schemas.errors import error_responses
 from loreley_api.admin.services.document_review import DocumentReviewService
 
 QUERY_NAMES = frozenset({"tab", "page", "items_per_page", "sort"})
@@ -78,7 +79,11 @@ async def read_document_query(
 def create_documents_router(document_review: DocumentReviewService) -> APIRouter:
     router = APIRouter()
 
-    @router.get("/sources/{source_id}/documents")
+    @router.get(
+        "/sources/{source_id}/documents",
+        tags=[ApiTag.DOCUMENTS],
+        responses=error_responses(ErrorCode.SOURCE_CONFIG_NOT_FOUND, ErrorCode.UNAVAILABLE),
+    )
     async def list_documents(
         source_id: SourceIdPath,
         # 検証の順序は パス → クエリ(A 5.3)。引数の順で実行される。

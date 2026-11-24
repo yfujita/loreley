@@ -193,3 +193,18 @@ class OversizeDetector(StrEnum):
 
     CRAWLER = "crawler"
     INDEXER = "indexer"
+
+
+class ApiTag(StrEnum):
+    """OpenAPI のタグ(6 種)。操作の対象のリソースで決める(A 5.4。AAM-P-4)。
+
+    EP-06・EP-08 は `SOURCES`(ソースに対する操作)、EP-07 は `JOBS`(ジョブに対する操作)。
+    B の領域の見出し「クロール操作」はタグではない。
+    """
+
+    SOURCES = "sources"
+    JOBS = "jobs"
+    DOCUMENTS = "documents"
+    OPENSEARCH = "opensearch"
+    DASHBOARD = "dashboard"
+    META = "meta"

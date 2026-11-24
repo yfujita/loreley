@@ -3,11 +3,21 @@
 本文の上限は 1 MiB(仮値)。超過は 400 `invalid_request`(`details` なし)。
 `Content-Length` が上限を超えるときは本文を読まずに拒否し、ないとき(chunked)や偽りのときは、
 読みながら数えて上限を超えた時点で打ち切る。
+
+読み取りの途中でクライアントが切断したとき(`ClientDisconnect`)は、サーバーの異常ではないので、
+WARNING を 1 行(固定文)だけ残して 400 `invalid_request` にする。そのままだと、想定外の例外として
+ERROR ログと 500 のアクセスログになり、本物の異常と見分けがつかなくなる。切断した相手には
+応答は届かない(アクセスログのステータスだけが残る)。
 """
 
+import logging
+
 from fastapi import Request
+from starlette.requests import ClientDisconnect
 
 from loreley_api.common.http.errors import INVALID_REQUEST_MESSAGE, ApiError
+
+logger = logging.getLogger(__name__)
 
 MAX_REQUEST_BODY_BYTES = 1024 * 1024
 
@@ -37,9 +47,13 @@ async def read_limited_body(request: Request, *, max_bytes: int = MAX_REQUEST_BO
 
     chunks: list[bytes] = []
     received_bytes = 0
-    async for chunk in request.stream():
-        received_bytes += len(chunk)
-        if received_bytes > max_bytes:
-            raise _too_large()
-        chunks.append(chunk)
+    try:
+        async for chunk in request.stream():
+            received_bytes += len(chunk)
+            if received_bytes > max_bytes:
+                raise _too_large()
+            chunks.append(chunk)
+    except ClientDisconnect:
+        logger.warning("the client disconnected while the request body was being read")
+        raise ApiError(400, "invalid_request", INVALID_REQUEST_MESSAGE) from None
     return b"".join(chunks)

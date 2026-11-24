@@ -13,12 +13,6 @@ from tests.fakes.inline_runner import InlineRunner
 
 
 @pytest.fixture
-def anyio_backend() -> str:
-    """`@pytest.mark.anyio` のテストは asyncio で動かす(trio は使わない)。"""
-    return "asyncio"
-
-
-@pytest.fixture
 def readers() -> InMemoryReaders:
     return InMemoryReaders()
 

@@ -1,6 +1,5 @@
 import json
 import logging
-import socket
 import subprocess
 import sys
 from pathlib import Path
@@ -48,19 +47,6 @@ CONFIGURED_INDEX_NAMES = IndexNames(
 )
 
 
-@pytest.fixture
-def forbid_network_connections(monkeypatch: pytest.MonkeyPatch) -> None:
-    """組み立てが外部に接続しないことの確認用。接続や名前解決を試みたらテストを失敗させる。"""
-
-    def refuse(*args: object, **kwargs: object) -> None:
-        raise AssertionError(f"unexpected network access: {args!r}")
-
-    monkeypatch.setattr(socket.socket, "connect", refuse)
-    monkeypatch.setattr(socket.socket, "connect_ex", refuse)
-    monkeypatch.setattr(socket, "create_connection", refuse)
-    monkeypatch.setattr(socket, "getaddrinfo", refuse)
-
-
 def test_the_built_app_serves_the_health_check() -> None:
     response = TestClient(build_app(make_api_config())).get("/healthz")
 
@@ -95,6 +81,19 @@ def test_the_admin_api_has_no_documentation_or_openapi_by_default() -> None:
             response = client.get(prefix + path)
             assert response.status_code == 404
             assert response.json()["error"]["code"] == "not_found"
+
+
+def test_the_openapi_setting_publishes_the_admin_openapi_only_under_the_admin_prefix() -> None:
+    """`LORELEY_API_OPENAPI_ENABLED=true` の設定が、サブアプリ側の公開に届く(外側は出さない)。"""
+    config = make_api_config(admin=make_admin_settings(openapi_enabled=True))
+    client = TestClient(build_app(config))
+
+    published = client.get(f"{ADMIN_API_PREFIX}/openapi.json")
+
+    assert published.status_code == 200
+    assert published.json()["openapi"].startswith("3.")
+    for path in ("/openapi.json", "/docs", "/redoc", f"{ADMIN_API_PREFIX}/docs"):
+        assert client.get(path).status_code == 404
 
 
 def test_the_access_log_of_the_admin_api_uses_the_dash_for_an_unknown_path(

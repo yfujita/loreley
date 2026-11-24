@@ -4,7 +4,7 @@
 `AdminDependencies` を作り、`create_admin_app(deps)` を `/api/admin/v1` にマウントする。
 """
 
-from loreley_api.admin.app import create_admin_app
+from loreley_api.admin.app import ADMIN_API_PREFIX, create_admin_app
 from loreley_api.admin.dependencies import (
     AdminDependencies,
     AdminProbes,
@@ -14,6 +14,7 @@ from loreley_api.admin.dependencies import (
 from loreley_api.admin.settings import AdminSettings
 
 __all__ = [
+    "ADMIN_API_PREFIX",
     "AdminDependencies",
     "AdminProbes",
     "AdminReaders",

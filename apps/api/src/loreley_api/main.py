@@ -17,6 +17,7 @@ from fastapi import FastAPI
 from starlette.types import Lifespan
 
 from loreley_api.admin import (
+    ADMIN_API_PREFIX,
     AdminProbes,
     AdminReaders,
     build_admin_dependencies,
@@ -41,8 +42,6 @@ from loreley_api.infrastructure.opensearch import (
 )
 from loreley_api.infrastructure.probes import HttpHealthProbe, WebDistProbe
 from loreley_api.server import SubAppMount, create_app
-
-ADMIN_API_PREFIX = "/api/admin/v1"
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +121,12 @@ def build_app(config: ApiConfig) -> FastAPI:
     )
     return create_app(
         routers=[create_health_router()],
-        mounts=[SubAppMount(ADMIN_API_PREFIX, create_admin_app(admin_dependencies))],
+        mounts=[
+            SubAppMount(
+                ADMIN_API_PREFIX,
+                create_admin_app(admin_dependencies, openapi_enabled=config.admin.openapi_enabled),
+            )
+        ],
         debug_access_log_paths={HEALTH_PATH},
         lifespan=build_lifespan(closers),
     )

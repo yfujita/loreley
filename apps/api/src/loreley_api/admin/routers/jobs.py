@@ -8,7 +8,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query
 
-from loreley_api.admin.base.codes import JobStatus, Reason
+from loreley_api.admin.base.codes import ApiTag, ErrorCode, JobStatus, Reason
 from loreley_api.admin.base.constants import SOURCE_ID_PATTERN
 from loreley_api.admin.base.errors import FieldViolation, invalid_request
 from loreley_api.admin.routers.request_input import (
@@ -18,6 +18,7 @@ from loreley_api.admin.routers.request_input import (
     reject_any_query,
     reject_unknown_query,
 )
+from loreley_api.admin.schemas.errors import error_responses
 from loreley_api.admin.schemas.jobs import JobDetailResponse, JobListResponse
 from loreley_api.admin.services.job_queries import JobQueryService
 
@@ -65,7 +66,12 @@ JOB_PAGING = Depends(read_paging(sortable_fields={"queued_at"}, default_sort=DEF
 def create_jobs_router(job_queries: JobQueryService) -> APIRouter:
     router = APIRouter()
 
-    @router.get("/jobs", dependencies=[Depends(reject_unknown_query(LIST_QUERY_NAMES))])
+    @router.get(
+        "/jobs",
+        tags=[ApiTag.JOBS],
+        responses=error_responses(ErrorCode.UNAVAILABLE),
+        dependencies=[Depends(reject_unknown_query(LIST_QUERY_NAMES))],
+    )
     async def list_jobs(
         paging: Annotated[PageParams, JOB_PAGING],
         filters: Annotated[JobListFilters, Depends(read_job_list_filters)],
@@ -78,7 +84,11 @@ def create_jobs_router(job_queries: JobQueryService) -> APIRouter:
             descending=paging.descending,
         )
 
-    @router.get("/jobs/{job_id}")
+    @router.get(
+        "/jobs/{job_id}",
+        tags=[ApiTag.JOBS],
+        responses=error_responses(ErrorCode.JOB_NOT_FOUND, ErrorCode.UNAVAILABLE),
+    )
     async def get_job(
         job_id: JobIdPath,
         # 検証の順序は パス → クエリ(A 5.3)。引数の順で実行される。
