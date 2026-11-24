@@ -9,6 +9,8 @@ dependencies = [
     "opensearch-py>=3.2,<4",
     "pydantic>=2.9,<3",
     "pydantic-settings>=2.6,<3",
+    # CRON_TIMEZONE の IANA 名の検証に使う。slim イメージに OS の zoneinfo がなくても動くよう直接依存にする。
+    # CalVer なので、年初に上限を見直す。
     "tzdata>=2026.6,<2027",
     "urllib3>=2.2,<3",
     "uvicorn>=0.32,<1",

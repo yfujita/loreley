@@ -23,6 +23,10 @@ def client() -> TestClient:
     async def read_default(request: Request) -> dict[str, int]:
         return {"length": len(await read_limited_body(request))}
 
+    @app.post("/items/{item_id}")
+    async def read_item(item_id: str, request: Request) -> dict[str, int]:
+        return {"length": len(await read_limited_body(request))}
+
     @app.post("/small")
     async def read_small(request: Request) -> dict[str, int]:
         return {"length": len(await read_limited_body(request, max_bytes=SMALL_LIMIT))}
@@ -176,7 +180,7 @@ def test_an_unusable_content_length_header_is_ignored_and_the_body_is_counted(
 # --- 読み取りの途中の切断(`ClientDisconnect`。D 4.12(c)) ---
 
 
-def disconnect_during_body(app: FastAPI) -> list[dict[str, object]]:
+def disconnect_during_body(app: FastAPI, path: str = "/default") -> list[dict[str, object]]:
     """本文を読む POST で、読み取りの途中にクライアントが切断した状況を ASGI で再現する。
 
     `TestClient` は切断を作れないので、`receive` が `http.disconnect` を返す形で呼ぶ。
@@ -195,8 +199,8 @@ def disconnect_during_body(app: FastAPI) -> list[dict[str, object]]:
         "http_version": "1.1",
         "method": "POST",
         "scheme": "http",
-        "path": "/default",
-        "raw_path": b"/default",
+        "path": path,
+        "raw_path": path.encode(),
         "query_string": b"",
         "root_path": "",
         "headers": [(b"transfer-encoding", b"chunked")],
@@ -223,3 +227,44 @@ def test_a_disconnect_while_reading_is_a_warning_and_a_400_not_an_error_and_a_50
     access_lines = [r.getMessage() for r in records if r.name == "loreley_api.access"]
     assert len(access_lines) == 1
     assert access_lines[0].startswith("POST /default 400 ")
+
+
+DISCONNECT_WARNING = "the client disconnected while the request body was being read"
+
+
+def test_the_disconnect_warning_is_a_fixed_sentence_without_values_or_the_exception(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    """リクエストの値(パス中の ID など)・例外の内容・トレースバックを、ログに出さない。"""
+    caplog.set_level(logging.DEBUG)
+    secret_path = "/items/SENTINEL-ITEM-ID"
+
+    disconnect_during_body(client.app, secret_path)  # type: ignore[arg-type]
+
+    warnings = [
+        r
+        for r in caplog.records
+        if r.name == "loreley_api.common.http.body" and r.levelno == logging.WARNING
+    ]
+    assert len(warnings) == 1
+    assert warnings[0].getMessage() == DISCONNECT_WARNING
+    assert warnings[0].args in ((), None)  # 値を差し込む引数がない
+    assert warnings[0].exc_info is None  # 例外の内容・トレースバックを出さない
+    assert "SENTINEL" not in repr(vars(warnings[0]))
+    non_access_records = [r for r in caplog.records if r.name != "loreley_api.access"]
+    assert all("SENTINEL" not in repr(vars(r)) for r in non_access_records)
+
+
+@pytest.mark.parametrize("error_type", [RuntimeError, ValueError, OSError])
+def test_a_read_error_other_than_a_disconnect_is_not_turned_into_a_400(
+    error_type: type[Exception],
+) -> None:
+    """切断以外の失敗(想定外の異常)は、そのまま伝播する。400 にすると本物の異常を隠す。"""
+
+    async def receive() -> dict[str, object]:
+        raise error_type("unexpected")
+
+    request = Request({"type": "http", "method": "POST", "path": "/", "headers": []}, receive)
+
+    with pytest.raises(error_type, match="unexpected"):
+        anyio.run(read_limited_body, request)

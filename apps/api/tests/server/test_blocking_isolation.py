@@ -2,7 +2,8 @@
 
 実物の `BlockingRunner`・実際の Crawler クライアント(`HttpCrawlerClient`)・ローカル HTTP スタブで、
 アプリ全体を動かす。ブロッキングの呼び出しがイベントループを塞ぐ・区分の枠を取り合う、という
-退行を捕まえる。`crawler` の枠を使い切っても、`opensearch` の枠の読み取り EP は待たされない。
+退行を捕まえる。`crawler` の枠を使い切っても、`opensearch` の枠の読み取り EP は待たされない
+(区分ごとの枠を小さくして、Crawler の呼び出しが別の区分で実行される退行も捕まえる)。
 """
 
 import json
@@ -15,7 +16,12 @@ import pytest
 from fastapi import FastAPI
 
 from loreley_api.admin import ADMIN_API_PREFIX, create_admin_app
-from loreley_api.common.concurrency import DEFAULT_CATEGORY_LIMITS, BlockingRunner
+from loreley_api.common.concurrency import (
+    CATEGORY_CRAWLER,
+    CATEGORY_OPENSEARCH,
+    CATEGORY_PROBE,
+    BlockingRunner,
+)
 from loreley_api.health import create_health_router
 from loreley_api.infrastructure.crawler_client import CrawlerClientConfig, HttpCrawlerClient
 from loreley_api.server import SubAppMount, create_app
@@ -28,8 +34,16 @@ from tests.fakes.local_http_server import LocalHttpServer, StubReply, local_http
 pytestmark = pytest.mark.anyio
 
 CRAWLER_DELAY_SECONDS = 1.5
-# `crawler` の枠(4)を使い切り、さらに待たせるための同時の起動数。
-NUM_CONCURRENT_STARTS = DEFAULT_CATEGORY_LIMITS["crawler"] + 2
+# 区分ごとの枠を同じ小さい値にする。Crawler の呼び出しが誤って別の区分(`opensearch` など)で
+# 実行されると、その枠を使い切って読み取りが待たされるので、区分の取り違えが顕在化する。
+CATEGORY_LIMIT = 2
+CATEGORY_LIMITS = {
+    CATEGORY_OPENSEARCH: CATEGORY_LIMIT,
+    CATEGORY_CRAWLER: CATEGORY_LIMIT,
+    CATEGORY_PROBE: CATEGORY_LIMIT,
+}
+# `crawler` の枠を使い切り、さらに待たせるための同時の起動数。
+NUM_CONCURRENT_STARTS = CATEGORY_LIMIT + 2
 WAIT_LIMIT_SECONDS = 10.0
 
 
@@ -51,7 +65,7 @@ def slow_crawler() -> Iterator[LocalHttpServer]:
 def app(slow_crawler: LocalHttpServer) -> Iterator[FastAPI]:
     crawler = HttpCrawlerClient(CrawlerClientConfig(slow_crawler.url, 3.0, 10.0))
     deps = make_admin_dependencies(
-        InMemoryReaders(), FixedClock(), BlockingRunner(), crawler=crawler
+        InMemoryReaders(), FixedClock(), BlockingRunner(CATEGORY_LIMITS), crawler=crawler
     )
     yield create_app(
         routers=[create_health_router()],
@@ -90,8 +104,8 @@ async def test_reads_and_the_health_check_respond_while_every_crawler_slot_is_bu
     async with anyio.create_task_group() as task_group:
         for index in range(NUM_CONCURRENT_STARTS):
             task_group.start_soon(start_crawl, f"docs-{index}")
-        # 枠(4)の分だけが Crawler に届き、残りは枠の空きを待っている。
-        await wait_until_the_crawler_has_received(slow_crawler, DEFAULT_CATEGORY_LIMITS["crawler"])
+        # 枠の分だけが Crawler に届き、残りは枠の空きを待っている。
+        await wait_until_the_crawler_has_received(slow_crawler, CATEGORY_LIMIT)
         started_at = time.monotonic()
 
         paths = ["/healthz", f"{ADMIN_API_PREFIX}/sources", f"{ADMIN_API_PREFIX}/meta"]

@@ -44,6 +44,9 @@ class _Unconnected:
     """どこにも接続しない代役。OpenAPI の生成では呼ばれないので、呼ばれたら失敗させる。"""
 
     def __getattr__(self, name: str) -> NoReturn:
+        # `copy`・`inspect` などが探すダンダー名(`__deepcopy__` など)は、存在しないものとして扱う。
+        if name.startswith("__"):
+            raise AttributeError(name)
         raise RuntimeError(f"the OpenAPI export does not connect anywhere: {name}")
 
 

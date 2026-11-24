@@ -98,7 +98,7 @@ docker run --restart unless-stopped \
 
 ## 5. 環境変数
 
-接頭辞は `LORELEY_API_`(下の表では省略)。実装は `src/loreley_api/config.py`、設計は `docs/v0.x/system-design/api/admin/admin-api-architecture-v0.1.md` の 7.2・7.3。空文字を渡した「任意」の URL・文字列は、未設定として扱う。
+接頭辞は `LORELEY_API_`(下の表では省略)。実装は `src/loreley_api/config.py`、設計は `docs/v0.x/system-design/api/admin/admin-api-architecture-v0.1.md` の 7.2・7.3。空文字を未設定として扱うのは、`DASHBOARDS_HEALTH_URL`・`EMBEDDING_HEALTH_URL`・`LLM_HEALTH_URL`・`DASHBOARDS_URL`・`CRON_TIMEZONE` だけ(compose の `${VAR:-}` のような空文字の受け渡しを許す)。ほかの任意の変数(`OPENSEARCH_USERNAME`・`OPENSEARCH_PASSWORD`・`OPENSEARCH_CA_CERTS_PATH` など)に空文字を渡しても未設定にはならず、設定として検証される(たとえば認証情報の片方だけが空文字だと起動に失敗する)。
 
 **必須**
 
@@ -151,7 +151,7 @@ docker run --restart unless-stopped \
 | `OPENAPI_ENABLED` | `false` | OpenAPI JSON の実行時公開(6 章) |
 | `WEB_DIST_DIR` | `/app/web` | Web UI のビルド成果物のディレクトリ。EP-13 が直下の `index.html` を確認する。存在は起動時に検査しない |
 
-**URL の検証**: scheme は `http`・`https`(`CRAWLER_URL`・`INDEXER_URL` は `http` だけ)、ホストあり、ユーザー情報(`user:pass@`)なし。認証情報は専用の変数で渡す。
+**URL の検証**: scheme は `http`・`https`(`CRAWLER_URL`・`INDEXER_URL` は `http` だけ)、ホストあり、ユーザー情報(`user:pass@`)なし、フラグメント(`#...`)なし。認証情報は専用の変数で渡す。
 
 **設定が不正なとき**: 起動に失敗して終了コード 1 で終わる。標準エラー出力には、**値を含まず**、項目名と検証の種別だけを出す(例: `loreley_api.config.ConfigError: invalid settings: port: int_parsing; opensearch_url: missing`)。ログは標準エラー出力に出る。
 

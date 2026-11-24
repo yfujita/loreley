@@ -3,10 +3,10 @@
 ## 基本情報
 
 - 状態: in_progress
-- 現在工程: レビュー R-C 後半(P7)
+- 現在工程: レビュー R-C 後半の再レビュー(指摘対応後)
 - 最終更新: 2026-11-24
 
-- 最新作業記録: 0018-p7-manual-smoke.md
+- 最新作業記録: 0019-review-c-back-and-fixes.md
 
 ## 現在の状況
 
@@ -17,13 +17,14 @@ R-C 前半の再レビューで I1 の解消を確認(新しい test-reviewer。
 
 ## 次のアクション
 
-1. レビュー R-C 後半(code-reviewer + test-reviewer 並列。比較基準 `463a050`〜、対象 P7a・README・OpenAPI)
-2. 指摘対応後、task-reviewer(タスク全体)→ 完了チェックリスト → PR 作成(ユーザー確認のうえ)
+1. R-C 後半の指摘対応(README の空文字の記述、`ClientDisconnect` のテスト強化、`app.openapi` の冪等化ほか。0019)は完了・検証再実行済み(pytest 3410 passed)。再レビュー(test-reviewer・code-reviewer)で Important の解消を確認する
+2. 解消後、task-reviewer(タスク全体)→ 完了チェックリスト → PR 作成(ユーザー確認のうえ)
 
 ## 未解決事項
 
 - 手動スモークで未確認(0018): AAA-U-10、実行中ジョブの取消・実ロックの解放・`lock_in_use`・`stalled=true`、`force_delete=true`、`relocating`・複数ノードの `cat.*`、AAPI-U-7(`existence`)、窓 10,000 の実データ、OpenSearch の部分失敗。結合テストのタスクへ申し送り
-- `ClientDisconnect` は WARNING 1 行 + 400 に変更済み(0017)
+- `ClientDisconnect` は WARNING 1 行 + 400 に変更済み(0017)。テストを強化(0019)
+- Dockerfile のコメント(11 行目「現時点の `api` は基盤だけ」)が古い。HO-36 で Dockerfile に触るときに直す(0019)
 - `tzdata` は直接依存化済み(上限 `<2027` は 2027 年に見直し)
 - AAM-U-7、BAPI-U-2 の残りは実装時に確認
 - AAPI-U-11・AAPI-U-12・AAA-U-4 は実機で確認済み(0018)

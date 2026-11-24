@@ -27,7 +27,7 @@ MAX_REQUEST_BODY_BYTES = 1024 * 1024
 _MAX_DECLARED_LENGTH_DIGITS = 19
 
 
-def _too_large() -> ApiError:
+def _invalid_body() -> ApiError:
     return ApiError(400, "invalid_request", INVALID_REQUEST_MESSAGE)
 
 
@@ -43,7 +43,7 @@ def _declares_more_than(declared_length: str, max_bytes: int) -> bool:
 
 async def read_limited_body(request: Request, *, max_bytes: int = MAX_REQUEST_BODY_BYTES) -> bytes:
     if _declares_more_than(request.headers.get("content-length", ""), max_bytes):
-        raise _too_large()
+        raise _invalid_body()
 
     chunks: list[bytes] = []
     received_bytes = 0
@@ -51,9 +51,9 @@ async def read_limited_body(request: Request, *, max_bytes: int = MAX_REQUEST_BO
         async for chunk in request.stream():
             received_bytes += len(chunk)
             if received_bytes > max_bytes:
-                raise _too_large()
+                raise _invalid_body()
             chunks.append(chunk)
     except ClientDisconnect:
         logger.warning("the client disconnected while the request body was being read")
-        raise ApiError(400, "invalid_request", INVALID_REQUEST_MESSAGE) from None
+        raise _invalid_body() from None
     return b"".join(chunks)

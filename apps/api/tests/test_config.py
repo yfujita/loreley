@@ -1,13 +1,14 @@
 """設定の検証(C 11章 13)。違反は、値を出さずに起動失敗(`ConfigError`)にする。"""
 
 import os
-import re
 import tomllib
 import zoneinfo
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
+from packaging.requirements import Requirement
+from packaging.utils import canonicalize_name
 from pydantic import BaseModel, ValidationError
 
 from loreley_api.config import (
@@ -450,9 +451,10 @@ def test_tzdata_is_a_direct_dependency() -> None:
     """間接依存(`opensearch-py` 経由)のままだと、その依存が変わったときに黙って失われる。"""
     pyproject = tomllib.loads((PROJECT_DIRECTORY / "pyproject.toml").read_text(encoding="utf-8"))
 
-    names = [
-        re.split(r"[<>=!~ ]", dependency)[0] for dependency in pyproject["project"]["dependencies"]
-    ]
+    names = {
+        canonicalize_name(Requirement(dependency).name)
+        for dependency in pyproject["project"]["dependencies"]
+    }
     assert "tzdata" in names
 
 

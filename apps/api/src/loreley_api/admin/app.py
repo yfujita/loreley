@@ -68,17 +68,25 @@ def _adjust_openapi(schema: dict[str, Any]) -> None:
 
 
 def _install_openapi_adjustment(app: FastAPI) -> None:
-    """`app.openapi()` を、FastAPI の生成の後に `_adjust_openapi` を 1 回だけ適用するものにする。
+    """`app.openapi()` を、FastAPI の生成の後に `_adjust_openapi` を適用するものにする。
 
     `/openapi.json` の応答も `app.openapi()` を呼ぶので、公開と書き出しは同じ内容になる。
+
+    調整の要否は「FastAPI が返した dict が、調整済みとして記録した dict か」で決める。
+    `app.openapi_schema` が None かどうかでは決めない。FastAPI は調整の前にキャッシュするので、
+    調整が失敗した後の呼び出しが、未調整のスキーマを黙って返してしまう。また、ルートが変わって
+    FastAPI がスキーマを作り直したときに、調整が走らず 422 が復活してしまう。調整は冪等なので、
+    失敗後の再試行は安全で、失敗が続く限り、呼び出しのたびに同じ失敗が伝わる。
     """
     generate_openapi = app.openapi
+    adjusted_schema: dict[str, Any] | None = None
 
     def openapi() -> dict[str, Any]:
-        is_first_call = app.openapi_schema is None
+        nonlocal adjusted_schema
         schema = generate_openapi()
-        if is_first_call:
+        if schema is not adjusted_schema:
             _adjust_openapi(schema)
+            adjusted_schema = schema
         return schema
 
     app.openapi = openapi  # type: ignore[method-assign]

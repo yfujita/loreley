@@ -4,11 +4,13 @@
 `requestBody`、422 がないこと、構造(参照先がある)。期待値は B の各 EP のエラーの表から書いた。
 """
 
-from typing import Any
+from typing import Any, NamedTuple
 
 import pytest
+from fastapi import FastAPI
 
 from loreley_api.admin import ADMIN_API_PREFIX, create_admin_app
+from loreley_api.admin import app as app_module
 from loreley_api.admin.base.codes import ApiTag, ErrorCode
 from loreley_api.admin.crawler_mapping.table import TABLE, CrawlerOperation, Passthrough
 from loreley_api.admin.schemas.errors import STATUS_OF_CODE, error_responses
@@ -20,92 +22,168 @@ from tests.openapi_structure import iter_operations, iter_refs, structure_proble
 
 ERROR_RESPONSE_REF = "#/components/schemas/ErrorResponse"
 JSON = "application/json"
-CRAWLER_FAILURES = {502, 503, 504}
+ERROR_CODE_PREFIX = "error.code: "
 
-# EP → (operationId, メソッド, パス, タグ, 宣言するエラーのステータス(B の各 EP のエラー表), 本文)。
-# 本文は、なし: None、あり: (スキーマ名, required)。400 はどの EP も持つ。
-OPERATIONS: dict[str, tuple[str, str, str, str, set[int], tuple[str, bool] | None]] = {
-    "EP-01": ("list_sources", "get", "/sources", "sources", {400, 503}, None),
-    "EP-02": ("get_source", "get", "/sources/{source_id}", "sources", {400, 404, 503}, None),
-    "EP-03": (
+
+class ExpectedOperation(NamedTuple):
+    """B の各 EP の記述から手書きした、操作ごとの期待値(実装から導かない)。"""
+
+    operation_id: str
+    method: str
+    path: str
+    tag: str
+    # 宣言する成功のステータス(B の各 EP の「成功」)。
+    ok_statuses: set[int]
+    # 宣言するエラーの「ステータス → `error.code` の集合」(B 2.3 の表の EP 列と各 EP のエラー表)。
+    error_codes: dict[int, set[str]]
+    # 本文なし: None、あり: (スキーマ名, required)。
+    request_body: tuple[str, bool] | None = None
+
+
+# 400 `invalid_request` はどの EP も持つ。
+INVALID_REQUEST = {400: {"invalid_request"}}
+# Crawler へ中継する EP(03〜08)が、共通に返しうる失敗(B 2.3)。
+CRAWLER_FAILURES = {
+    502: {"crawler_error"},
+    503: {"crawler_unavailable", "crawler_unreachable"},
+    504: {"crawler_response_lost"},
+}
+STORE_UNAVAILABLE = {503: {"unavailable"}}
+
+OPERATIONS: dict[str, ExpectedOperation] = {
+    "EP-01": ExpectedOperation(
+        "list_sources", "get", "/sources", "sources", {200}, INVALID_REQUEST | STORE_UNAVAILABLE
+    ),
+    "EP-02": ExpectedOperation(
+        "get_source",
+        "get",
+        "/sources/{source_id}",
+        "sources",
+        {200},
+        INVALID_REQUEST | {404: {"source_config_not_found"}} | STORE_UNAVAILABLE,
+    ),
+    "EP-03": ExpectedOperation(
         "register_source",
         "post",
         "/sources",
         "sources",
-        {400, 409} | CRAWLER_FAILURES,
+        {200, 201},
+        {400: {"invalid_request", "config_invalid"}, 409: {"source_already_exists"}}
+        | CRAWLER_FAILURES,
         ("RegisterSourceBody", True),
     ),
-    "EP-04": (
+    "EP-04": ExpectedOperation(
         "update_source",
         "put",
         "/sources/{source_id}",
         "sources",
-        {400, 404, 409} | CRAWLER_FAILURES,
+        {200},
+        {
+            400: {"invalid_request", "config_invalid"},
+            404: {"source_config_not_found"},
+            409: {"source_deleting"},
+        }
+        | CRAWLER_FAILURES,
         ("UpdateSourceBody", True),
     ),
-    "EP-05": (
+    "EP-05": ExpectedOperation(
         "start_source_delete",
         "post",
         "/sources/{source_id}/delete-jobs",
         "sources",
-        {400, 404, 409} | CRAWLER_FAILURES,
-        None,
+        {202},
+        INVALID_REQUEST
+        | {404: {"source_config_not_found"}, 409: {"maintenance_enabled", "lock_held"}}
+        | CRAWLER_FAILURES,
     ),
-    "EP-06": (
+    "EP-06": ExpectedOperation(
         "start_crawl",
         "post",
         "/sources/{source_id}/crawl-jobs",
         "sources",
-        {400, 404, 409} | CRAWLER_FAILURES,
+        {202},
+        INVALID_REQUEST
+        | {
+            404: {"source_config_not_found"},
+            409: {"source_deleting", "maintenance_enabled", "lock_held"},
+        }
+        | CRAWLER_FAILURES,
         ("StartCrawlBody", False),
     ),
     # ジョブに対する操作なので、タグは `jobs`(A 5.4)。
-    "EP-07": (
+    "EP-07": ExpectedOperation(
         "cancel_job",
         "post",
         "/jobs/{job_id}/cancel",
         "jobs",
-        {400, 404, 409} | CRAWLER_FAILURES,
-        None,
+        {200, 202},
+        INVALID_REQUEST
+        | {404: {"job_not_found"}, 409: {"job_not_cancellable", "job_already_finished"}}
+        | CRAWLER_FAILURES,
     ),
-    "EP-08": (
+    "EP-08": ExpectedOperation(
         "release_lock",
         "delete",
         "/sources/{source_id}/lock",
         "sources",
-        {400, 409} | CRAWLER_FAILURES,
-        None,
+        {200},
+        INVALID_REQUEST | {409: {"lock_in_use"}} | CRAWLER_FAILURES,
     ),
-    "EP-09": ("list_jobs", "get", "/jobs", "jobs", {400, 503}, None),
-    "EP-10": ("get_job", "get", "/jobs/{job_id}", "jobs", {400, 404, 503}, None),
-    "EP-11": (
+    "EP-09": ExpectedOperation(
+        "list_jobs", "get", "/jobs", "jobs", {200}, INVALID_REQUEST | STORE_UNAVAILABLE
+    ),
+    "EP-10": ExpectedOperation(
+        "get_job",
+        "get",
+        "/jobs/{job_id}",
+        "jobs",
+        {200},
+        INVALID_REQUEST | {404: {"job_not_found"}} | STORE_UNAVAILABLE,
+    ),
+    "EP-11": ExpectedOperation(
         "list_documents",
         "get",
         "/sources/{source_id}/documents",
         "documents",
-        {400, 404, 503},
-        None,
+        {200},
+        INVALID_REQUEST | {404: {"source_config_not_found"}} | STORE_UNAVAILABLE,
     ),
-    "EP-12": ("get_cluster", "get", "/opensearch/cluster", "opensearch", {400, 503}, None),
-    "EP-13": ("get_dashboard", "get", "/dashboard", "dashboard", {400}, None),
-    "EP-14": ("get_meta", "get", "/meta", "meta", {400}, None),
+    "EP-12": ExpectedOperation(
+        "get_cluster",
+        "get",
+        "/opensearch/cluster",
+        "opensearch",
+        {200},
+        INVALID_REQUEST | STORE_UNAVAILABLE,
+    ),
+    "EP-13": ExpectedOperation(
+        "get_dashboard", "get", "/dashboard", "dashboard", {200}, INVALID_REQUEST
+    ),
+    "EP-14": ExpectedOperation("get_meta", "get", "/meta", "meta", {200}, INVALID_REQUEST),
 }
 ENDPOINTS = list(OPERATIONS)
 
 
 @pytest.fixture(scope="module")
 def schema() -> dict[str, Any]:
-    deps = make_admin_dependencies(InMemoryReaders(), FixedClock(), InlineRunner())
-    return create_admin_app(deps).openapi()
+    return fresh_app().openapi()
 
 
 def operation_of(schema: dict[str, Any], endpoint: str) -> dict[str, Any]:
-    _, method, path, *_ = OPERATIONS[endpoint]
-    return schema["paths"][path][method]
+    expected = OPERATIONS[endpoint]
+    return schema["paths"][expected.path][expected.method]
 
 
-def error_statuses_of(operation: dict[str, Any]) -> set[int]:
-    return {int(status) for status in operation["responses"] if int(status) >= 400}
+def statuses_of(operation: dict[str, Any], *, is_error: bool) -> set[int]:
+    statuses = {int(status) for status in operation["responses"]}
+    return {status for status in statuses if (status >= 400) is is_error}
+
+
+def declared_codes_of(response: dict[str, Any]) -> set[str]:
+    """説明文の `error.code: a, b` を、集合にする。"""
+    description: str = response["description"]
+    assert ERROR_CODE_PREFIX in description, description
+    return set(description.split(ERROR_CODE_PREFIX, 1)[1].split(", "))
 
 
 # --- 14 操作がそろう ---
@@ -114,16 +192,14 @@ def error_statuses_of(operation: dict[str, Any]) -> set[int]:
 def test_exactly_the_14_operations_of_ep_01_to_ep_14_are_listed(schema: dict[str, Any]) -> None:
     listed = {(method, path) for method, path, _ in iter_operations(schema)}
 
-    assert listed == {(method, path) for _, method, path, *_ in OPERATIONS.values()}
+    assert listed == {(expected.method, expected.path) for expected in OPERATIONS.values()}
     assert len(listed) == 14
 
 
 @pytest.mark.parametrize("endpoint", ENDPOINTS)
 def test_the_operation_id_is_the_function_name(schema: dict[str, Any], endpoint: str) -> None:
     """パスや HTTP メソッドを含まない安定した名前(生成物の名前が版で揺れない。A 5.4)。"""
-    operation_id = OPERATIONS[endpoint][0]
-
-    assert operation_of(schema, endpoint)["operationId"] == operation_id
+    assert operation_of(schema, endpoint)["operationId"] == OPERATIONS[endpoint].operation_id
 
 
 def test_the_operation_ids_are_unique(schema: dict[str, Any]) -> None:
@@ -150,7 +226,7 @@ def test_there_are_exactly_the_six_tags() -> None:
 def test_every_operation_has_exactly_one_tag_decided_by_its_resource(
     schema: dict[str, Any], endpoint: str
 ) -> None:
-    assert operation_of(schema, endpoint)["tags"] == [OPERATIONS[endpoint][3]]
+    assert operation_of(schema, endpoint)["tags"] == [OPERATIONS[endpoint].tag]
 
 
 def test_the_operations_use_only_the_six_tags(schema: dict[str, Any]) -> None:
@@ -184,28 +260,25 @@ def test_every_operation_declares_the_400_with_the_common_error_schema(
 def test_the_declared_errors_are_those_of_the_endpoint_in_b(
     schema: dict[str, Any], endpoint: str
 ) -> None:
+    """ステータスだけでなく、ステータスごとの `error.code` も B と一致する。"""
+    operation = operation_of(schema, endpoint)
+    expected = OPERATIONS[endpoint].error_codes
+
+    assert statuses_of(operation, is_error=True) == set(expected)
+    for status, codes in expected.items():
+        response = operation["responses"][str(status)]
+        assert response["content"][JSON]["schema"] == {"$ref": ERROR_RESPONSE_REF}
+        assert declared_codes_of(response) == codes, f"{endpoint} {status}"
+
+
+@pytest.mark.parametrize("endpoint", ENDPOINTS)
+def test_the_declared_ok_statuses_are_those_of_the_endpoint_in_b(
+    schema: dict[str, Any], endpoint: str
+) -> None:
+    """EP-03 の 200(登録済みで同じ内容)・201 と、EP-07 の 200・202 は Crawler が決める。"""
     operation = operation_of(schema, endpoint)
 
-    assert error_statuses_of(operation) == OPERATIONS[endpoint][4]
-    for status in error_statuses_of(operation):
-        content = operation["responses"][str(status)]["content"][JSON]
-        assert content["schema"] == {"$ref": ERROR_RESPONSE_REF}
-
-
-def test_the_error_descriptions_name_the_codes_of_b(schema: dict[str, Any]) -> None:
-    descriptions = {
-        endpoint: {
-            status: response["description"]
-            for status, response in operation_of(schema, endpoint)["responses"].items()
-            if int(status) >= 400
-        }
-        for endpoint in ("EP-06", "EP-07", "EP-08")
-    }
-
-    assert descriptions["EP-06"]["409"].endswith("source_deleting, maintenance_enabled, lock_held")
-    assert descriptions["EP-07"]["409"].endswith("job_not_cancellable, job_already_finished")
-    assert descriptions["EP-08"]["409"].endswith("lock_in_use")
-    assert descriptions["EP-08"]["503"].endswith("crawler_unavailable, crawler_unreachable")
+    assert statuses_of(operation, is_error=False) == OPERATIONS[endpoint].ok_statuses
 
 
 def test_the_error_schema_is_the_common_format_of_a_5_2(schema: dict[str, Any]) -> None:
@@ -222,19 +295,88 @@ def test_the_error_schema_is_the_common_format_of_a_5_2(schema: dict[str, Any]) 
     )
 
 
-def test_the_ok_statuses_that_the_crawler_decides_are_declared(schema: dict[str, Any]) -> None:
-    """EP-03 の 200(登録済みで同じ内容)と EP-07 の 202(取消要求の受付)は Crawler が決める。"""
-    register = operation_of(schema, "EP-03")["responses"]
-    cancel = operation_of(schema, "EP-07")["responses"]
-
-    assert {"200", "201"} <= set(register)
-    assert {"200", "202"} <= set(cancel)
-
-
 def test_every_error_code_has_one_status_and_the_declaration_uses_it() -> None:
     assert set(STATUS_OF_CODE) == set(ErrorCode)
     declared = error_responses(*ErrorCode)
     assert {int(status) for status in declared} == set(STATUS_OF_CODE.values())
+
+
+def fresh_app() -> FastAPI:
+    deps = make_admin_dependencies(InMemoryReaders(), FixedClock(), InlineRunner())
+    return create_admin_app(deps)
+
+
+def declares_validation_errors(schema: dict[str, Any]) -> bool:
+    return any("422" in operation["responses"] for _, _, operation in iter_operations(schema)) or (
+        "HTTPValidationError" in schema["components"]["schemas"]
+    )
+
+
+def test_a_failed_adjustment_is_retried_and_no_unadjusted_schema_is_ever_returned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """調整が失敗した後の呼び出しで、FastAPI がキャッシュ済みの未調整のスキーマを返さない。
+
+    失敗は呼び出しのたびに伝わる(調整は冪等なので、原因が直れば次の呼び出しで調整される)。
+    """
+    app = fresh_app()
+    real_adjust = app_module._adjust_openapi
+    num_calls = 0
+
+    def fail_on_the_first_call(schema: dict[str, Any]) -> None:
+        nonlocal num_calls
+        num_calls += 1
+        if num_calls == 1:
+            raise ValueError("conflicting OpenAPI component schema: Sample")
+        real_adjust(schema)
+
+    monkeypatch.setattr(app_module, "_adjust_openapi", fail_on_the_first_call)
+
+    with pytest.raises(ValueError, match="conflicting"):
+        app.openapi()
+    retried = app.openapi()
+
+    assert not declares_validation_errors(retried)
+    assert num_calls == 2
+
+
+def test_a_failure_that_continues_is_raised_by_every_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = fresh_app()
+
+    def always_fail(schema: dict[str, Any]) -> None:
+        raise ValueError("conflicting OpenAPI component schema: Sample")
+
+    monkeypatch.setattr(app_module, "_adjust_openapi", always_fail)
+
+    for _ in range(2):
+        with pytest.raises(ValueError, match="conflicting"):
+            app.openapi()
+
+
+def test_the_adjustment_is_applied_again_when_fastapi_regenerates_the_schema() -> None:
+    """ルートの追加で FastAPI がスキーマを作り直しても、422 が復活しない。"""
+    app = fresh_app()
+    assert not declares_validation_errors(app.openapi())
+
+    @app.get("/added-later")
+    async def added_later(limit: int) -> dict[str, int]:  # 検証のある引数は、422 を足させる
+        return {"limit": limit}
+
+    regenerated = app.openapi()
+
+    assert "/added-later" in regenerated["paths"]
+    assert not declares_validation_errors(regenerated)
+
+
+def test_the_adjustment_is_not_repeated_while_the_schema_is_cached(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = fresh_app()
+    first = app.openapi()
+
+    monkeypatch.setattr(app_module, "_adjust_openapi", lambda schema: pytest.fail("repeated"))
+
+    assert app.openapi() is first
 
 
 # --- requestBody: 本文を依存関係で読む EP-03・04・06 だけが持つ ---
@@ -245,7 +387,7 @@ def test_only_the_endpoints_that_read_a_body_declare_a_request_body(
     schema: dict[str, Any], endpoint: str
 ) -> None:
     operation = operation_of(schema, endpoint)
-    expected = OPERATIONS[endpoint][5]
+    expected = OPERATIONS[endpoint].request_body
 
     if expected is None:
         assert "requestBody" not in operation

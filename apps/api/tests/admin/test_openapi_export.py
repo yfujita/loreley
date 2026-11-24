@@ -4,6 +4,7 @@
 出力が安定していること(2 回の出力が一致)、書き出しは `OPENAPI_ENABLED` と関係なくできること。
 """
 
+import copy
 import json
 import os
 import subprocess
@@ -68,6 +69,16 @@ def test_the_unconnected_stand_in_fails_if_anything_uses_it() -> None:
     """代役が使われたら(OpenAPI の生成がサービスを呼んだら)、黙って通らず失敗する。"""
     with pytest.raises(RuntimeError, match="does not connect anywhere"):
         _Unconnected().list_sources()
+
+
+def test_the_unconnected_stand_in_hides_dunder_attributes_but_fails_on_the_others() -> None:
+    """ダンダー名の探索(`copy` など)は `AttributeError`(存在しない)で返し、それ以外は失敗する。"""
+    unconnected = _Unconnected()
+
+    assert not hasattr(unconnected, "__deepcopy__")
+    assert copy.copy(unconnected) is not None  # `__copy__` の探索で `RuntimeError` にならない
+    with pytest.raises(RuntimeError, match="does not connect anywhere"):
+        unconnected.name  # noqa: B018
 
 
 def test_the_export_does_not_depend_on_the_openapi_enabled_setting(
