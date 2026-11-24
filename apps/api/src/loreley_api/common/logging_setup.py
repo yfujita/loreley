@@ -5,7 +5,8 @@ uvicorn のアクセスログ(ID を含む実際のパスを出す)を ERROR 以
 `access_log=False` で起動するが、設定ミスでログが出てもルートを DEBUG にして漏れないように、
 二重に防ぐ。
 
-OpenSearch などのライブラリのロガーの制限は、そのライブラリを導入する実装(infrastructure)で足す。
+OpenSearch・urllib3 のロガーも ERROR 以上に固定する。INFO・DEBUG では、ID を含む URL や
+リクエスト本文を出すため(`LOG_LEVEL=DEBUG` でも同じ。C 8.5)。
 """
 
 import logging
@@ -13,7 +14,14 @@ from typing import TextIO
 
 LOG_FORMAT = "%(asctime)s %(levelname)s %(name)s %(message)s"
 
-RESTRICTED_LOGGER_NAMES = ("uvicorn.access",)
+RESTRICTED_LOGGER_NAMES = (
+    "uvicorn.access",
+    "opensearch",
+    "opensearchpy",
+    "opensearchpy.trace",
+    "opensearchpy.helpers",
+    "urllib3",
+)
 RESTRICTED_LOG_LEVEL = logging.ERROR
 
 
