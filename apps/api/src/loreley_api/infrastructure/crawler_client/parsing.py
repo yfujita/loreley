@@ -1,6 +1,7 @@
 """Crawler の応答の解釈(B 9.1。C 4.1・4.2。D 4.9)。
 
-- 本文は 1 MiB まで読む(超えたら契約外。C 4.1)。
+- 本文は 2 MiB まで読む(超えたら契約外。C 4.1 は 1 MiB。リクエスト本文の上限 1 MiB の設定を
+  Crawler が足して返す登録・更新の応答を、502 にしないため広げた)。
 - 3xx(リダイレクトは追従しない)・その API の成功のステータス以外の 2xx・JSON のオブジェクトでない
   本文・`error.code` がないエラー本文は、契約外(502 の元)。
 - エラーでは `error.code` と `details` だけを取り出す。`message` は `config_invalid` のときだけ読む
@@ -22,9 +23,9 @@ from loreley_api.infrastructure.crawler_client.client import (
 )
 
 CONFIG_INVALID_CODE = "config_invalid"
-# Crawler の正常な応答は小さい(C 4.1)。`admin.base.constants.CRAWLER_RESPONSE_MAX_BYTES` と同じ値
-# (infrastructure は admin を import できないので、ここにも持つ)。
-RESPONSE_MAX_BYTES = 1024 * 1024
+# `admin.base.constants.CRAWLER_RESPONSE_MAX_BYTES` と同じ値(infrastructure は admin を import
+# できないので、ここにも持つ。理由もそちらを参照)。
+RESPONSE_MAX_BYTES = 2 * 1024 * 1024
 
 
 def collect_within_limit(chunks: Iterable[bytes], max_bytes: int) -> bytes | None:

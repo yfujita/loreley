@@ -11,7 +11,7 @@ from fastapi import FastAPI
 
 from loreley_api.admin import ADMIN_API_PREFIX, create_admin_app
 from loreley_api.admin import app as app_module
-from loreley_api.admin.base.codes import ApiTag, ErrorCode
+from loreley_api.admin.base.codes import ApiTag, DocumentTab, ErrorCode, JobStatus
 from loreley_api.admin.crawler_mapping.table import TABLE, CrawlerOperation, Passthrough
 from loreley_api.admin.schemas.errors import STATUS_OF_CODE, error_responses
 from tests.admin.factories import make_admin_dependencies
@@ -425,6 +425,102 @@ def test_the_request_body_schemas_are_in_the_components(schema: dict[str, Any]) 
     assert "source_id" not in components["UpdateSourceBody"]["properties"]
     assert components["StartCrawlBody"].get("required") is None  # 2 項目とも既定がある
     assert set(components["StartCrawlBody"]["properties"]) == {"force_delete", "rewrite_mode"}
+
+
+# --- クエリパラメータ: 実行時に検証している必須性と列挙を反映する(型生成が不正な要求を許さない) ---
+
+ITEMS_PER_PAGE_SCHEMA = {
+    "default": 25,
+    "enum": [25, 50, 100],  # B 2.1
+    "title": "Items Per Page",
+    "type": "integer",
+}
+# B 5.1: 保存上の各状態と、複合の `active`(= `queued` + `running`)。
+JOB_STATUS_VALUES = [
+    "active",
+    "queued",
+    "running",
+    "succeeded",
+    "partially_succeeded",
+    "failed",
+    "cancelled",
+]
+# B 6.1
+DOCUMENT_TAB_VALUES = ["skipped", "extract_failed", "oversize", "summary_pending"]
+
+
+def query_parameters_of(schema: dict[str, Any], endpoint: str) -> dict[str, dict[str, Any]]:
+    parameters = operation_of(schema, endpoint)["parameters"]
+    return {parameter["name"]: parameter for parameter in parameters if parameter["in"] == "query"}
+
+
+def test_the_documents_tab_is_a_required_enum_of_the_four_tabs(schema: dict[str, Any]) -> None:
+    tab = query_parameters_of(schema, "EP-11")["tab"]
+
+    assert tab["required"] is True
+    assert tab["schema"] == {"enum": DOCUMENT_TAB_VALUES, "title": "Tab", "type": "string"}
+    assert set(tab["schema"]["enum"]) == {tab.value for tab in DocumentTab}
+
+
+@pytest.mark.parametrize("endpoint", ["EP-09", "EP-11"])
+def test_items_per_page_is_an_enum_of_25_50_100_with_the_default(
+    schema: dict[str, Any], endpoint: str
+) -> None:
+    items_per_page = query_parameters_of(schema, endpoint)["items_per_page"]
+
+    assert items_per_page["required"] is False
+    assert items_per_page["schema"] == ITEMS_PER_PAGE_SCHEMA
+
+
+def test_the_jobs_status_is_an_optional_enum_of_the_states_and_active(
+    schema: dict[str, Any],
+) -> None:
+    status = query_parameters_of(schema, "EP-09")["status"]
+
+    assert status["required"] is False
+    assert status["schema"] == {"enum": JOB_STATUS_VALUES, "title": "Status", "type": "string"}
+    assert set(status["schema"]["enum"]) == {"active"} | {state.value for state in JobStatus}
+
+
+def test_the_other_query_parameters_are_not_changed(schema: dict[str, Any]) -> None:
+    """`sort` はタブごとに許容する項目が違うので列挙にしない。ほかも FastAPI の生成のまま。"""
+    page = {
+        "in": "query",
+        "name": "page",
+        "required": False,
+        "schema": {"default": 1, "minimum": 1, "title": "Page", "type": "integer"},
+    }
+    nullable_string = {"anyOf": [{"type": "string"}, {"type": "null"}]}
+    jobs = query_parameters_of(schema, "EP-09")
+    documents = query_parameters_of(schema, "EP-11")
+
+    assert jobs["page"] == documents["page"] == page
+    assert jobs["sort"]["schema"] == {"default": "-queued_at", "title": "Sort", "type": "string"}
+    assert documents["sort"]["schema"] == {**nullable_string, "title": "Sort"}
+    assert jobs["source_id"]["schema"] == {**nullable_string, "title": "Source Id"}
+    assert jobs["source_id"]["required"] is False
+    assert set(jobs) == {"page", "items_per_page", "sort", "source_id", "status"}
+    assert set(documents) == {"tab", "page", "items_per_page", "sort"}
+
+
+def test_the_enum_and_required_are_added_to_no_other_operation(schema: dict[str, Any]) -> None:
+    for method, path, operation in iter_operations(schema):
+        if operation["operationId"] in {"list_jobs", "list_documents"}:
+            continue
+        for parameter in operation.get("parameters", []):
+            assert "enum" not in parameter["schema"], f"{method} {path} {parameter['name']}"
+            assert parameter["required"] is (parameter["in"] == "path"), f"{method} {path}"
+
+
+def test_a_rule_for_a_missing_query_parameter_fails_instead_of_being_skipped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """操作やパラメータの名前を変えたときに、反映が外れたことに気づける。"""
+    rule = app_module._QueryParameterRule("list_jobs", "renamed", ["a"])
+    monkeypatch.setattr(app_module, "_QUERY_PARAMETER_RULES", (rule,))
+
+    with pytest.raises(ValueError, match="list_jobs renamed"):
+        fresh_app().openapi()
 
 
 # --- 文書の全体 ---

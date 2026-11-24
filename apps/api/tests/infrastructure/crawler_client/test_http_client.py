@@ -384,7 +384,7 @@ def test_an_unexpected_2xx_status_is_a_contract_violation(server: LocalHttpServe
     assert result == CrawlerContractViolation("unexpected_status", 200)
 
 
-def test_a_body_of_exactly_one_mebibyte_is_accepted(server: LocalHttpServer) -> None:
+def test_a_body_of_exactly_the_limit_is_accepted(server: LocalHttpServer) -> None:
     overhead = len(json.dumps({"pad": ""}))
     body = json.dumps({"pad": "x" * (RESPONSE_MAX_BYTES - overhead)}).encode()
     assert len(body) == RESPONSE_MAX_BYTES
@@ -395,7 +395,7 @@ def test_a_body_of_exactly_one_mebibyte_is_accepted(server: LocalHttpServer) -> 
     assert isinstance(result, CrawlerSucceeded)
 
 
-def test_a_body_over_one_mebibyte_is_a_contract_violation(server: LocalHttpServer) -> None:
+def test_a_body_over_the_limit_is_a_contract_violation(server: LocalHttpServer) -> None:
     server.set_default_reply(StubReply(200, b" " * (RESPONSE_MAX_BYTES + 1), JSON_HEADERS))
 
     result = make_client(server.url).release_lock("docs")

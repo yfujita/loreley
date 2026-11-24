@@ -14,8 +14,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from loreley_api.admin import create_admin_app
+from loreley_api.common.http.body import MAX_REQUEST_BODY_BYTES
 from loreley_api.common.logging_setup import configure_logging
 from loreley_api.infrastructure.crawler_client import CrawlerClientConfig, HttpCrawlerClient
+from loreley_api.infrastructure.crawler_client.parsing import RESPONSE_MAX_BYTES
 from loreley_api.server import SubAppMount, create_app
 from tests.admin.factories import ADMIN_PREFIX, SENTINEL, make_admin_dependencies
 from tests.admin.write_requests import (
@@ -251,6 +253,66 @@ def test_a_request_that_fails_validation_never_reaches_the_crawler(
 
     assert [r.status_code for r in responses] == [400, 400, 400, 404, 400]
     assert server.requests == []
+
+
+# --- 応答本文の上限: リクエスト本文の上限いっぱいの設定を保存した応答が、502 にならない ---
+
+# Crawler は受け取った設定に `status`・`updated_at` などを足して返すので、応答の方が大きい。
+RESPONSE_OVER_REQUEST_LIMIT_BYTES = 4 * 1024
+
+
+def crawler_source_reply_of_size(status: int, num_bytes: int) -> StubReply:
+    """本文がちょうど `num_bytes` の保存内容の応答(`connector_config` を水増しする)。"""
+    empty = json.dumps(crawler_source_body(connector_config={"root": "/r", "pad": ""})).encode()
+    pad = "x" * (num_bytes - len(empty))
+    body = json.dumps(crawler_source_body(connector_config={"root": "/r", "pad": pad})).encode()
+    assert len(body) == num_bytes
+    return StubReply(status, body, JSON_HEADERS)
+
+
+def test_a_registration_succeeds_when_the_response_is_larger_than_the_request_limit(
+    client: TestClient, server: LocalHttpServer
+) -> None:
+    num_bytes = MAX_REQUEST_BODY_BYTES + RESPONSE_OVER_REQUEST_LIMIT_BYTES
+    server.set_default_reply(crawler_source_reply_of_size(201, num_bytes))
+
+    response = client.post(SOURCES, json=register_body())
+
+    assert response.status_code == 201
+    assert response.json()["source_id"] == "docs-share"
+
+
+def test_an_update_succeeds_when_the_response_is_larger_than_the_request_limit(
+    client: TestClient, server: LocalHttpServer
+) -> None:
+    num_bytes = MAX_REQUEST_BODY_BYTES + RESPONSE_OVER_REQUEST_LIMIT_BYTES
+    server.set_default_reply(crawler_source_reply_of_size(200, num_bytes))
+
+    response = client.put(f"{SOURCES}/docs-share", json=update_body())
+
+    assert response.status_code == 200
+
+
+def test_a_registration_response_over_the_limit_is_a_crawler_error(
+    client: TestClient, server: LocalHttpServer
+) -> None:
+    server.set_default_reply(crawler_source_reply_of_size(201, RESPONSE_MAX_BYTES + 1))
+
+    response = client.post(SOURCES, json=register_body())
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "crawler_error"
+
+
+def test_an_update_response_over_the_limit_is_a_crawler_error(
+    client: TestClient, server: LocalHttpServer
+) -> None:
+    server.set_default_reply(crawler_source_reply_of_size(200, RESPONSE_MAX_BYTES + 1))
+
+    response = client.put(f"{SOURCES}/docs-share", json=update_body())
+
+    assert response.status_code == 502
+    assert response.json()["error"]["code"] == "crawler_error"
 
 
 # --- 409 の付随情報(実クライアントを通す) ---

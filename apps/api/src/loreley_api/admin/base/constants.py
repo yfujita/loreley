@@ -17,8 +17,12 @@ CLUSTER_INDEX_LIMIT = 1_000
 # `loreley-sources` の全件取得の上限(超過は 503)。
 SOURCES_FETCH_LIMIT = 10_000
 
-# Crawler の応答本文の上限(超過は 502 `crawler_error`)。
-CRAWLER_RESPONSE_MAX_BYTES = 1024 * 1024
+# Crawler の応答本文の上限(超過は 502 `crawler_error`)。登録・更新の応答は、受け取った設定に
+# `status`・`updated_at` などを足して返す。リクエスト本文の上限(1 MiB)に近い設定が保存できたのに
+# 応答が上限を超えて 502 になる(保存は成功しているのにエラーが返る)ことを、通常の設定では避けるため
+# 2 MiB にする。非 ASCII だけの設定は JSON の `\uXXXX` 表記で膨らみうるので、窓が完全にゼロになる
+# わけではない(1 MiB 級の設定自体が非現実的なので許容する)。
+CRAWLER_RESPONSE_MAX_BYTES = 2 * 1024 * 1024
 
 # `source_id`(パス・登録の本文で共通): 半角英数字で始まり、半角英数字・`.`・`_`・`-` だけの
 # 256 文字以内(B 2.12。Crawler と同じ規則)。ASCII だけなので文字数 = バイト数。

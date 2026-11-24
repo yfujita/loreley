@@ -194,7 +194,7 @@ def test_collect_within_limit_stops_reading_when_the_limit_is_exceeded() -> None
     assert consumed == [b"abc", b"def"]  # 3 つ目は読まない
 
 
-def test_the_response_limit_is_one_mebibyte_like_the_admin_constant() -> None:
+def test_the_response_limit_is_the_same_as_the_admin_constant() -> None:
     from loreley_api.admin.base.constants import CRAWLER_RESPONSE_MAX_BYTES
 
-    assert RESPONSE_MAX_BYTES == CRAWLER_RESPONSE_MAX_BYTES == 1024 * 1024
+    assert RESPONSE_MAX_BYTES == CRAWLER_RESPONSE_MAX_BYTES == 2 * 1024 * 1024
