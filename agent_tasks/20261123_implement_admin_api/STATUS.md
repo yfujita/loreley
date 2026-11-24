@@ -3,10 +3,10 @@
 ## 基本情報
 
 - 状態: in_progress
-- 現在工程: レビュー R-C 後半の再レビュー(指摘対応後)
+- 現在工程: タスクレビュー(task-reviewer)
 - 最終更新: 2026-11-24
 
-- 最新作業記録: 0019-review-c-back-and-fixes.md
+- 最新作業記録: 0020-review-c-back-rereview.md
 
 ## 現在の状況
 
@@ -17,8 +17,8 @@ R-C 前半の再レビューで I1 の解消を確認(新しい test-reviewer。
 
 ## 次のアクション
 
-1. R-C 後半の指摘対応(README の空文字の記述、`ClientDisconnect` のテスト強化、`app.openapi` の冪等化ほか。0019)は完了・検証再実行済み(pytest 3410 passed)。再レビュー(test-reviewer・code-reviewer)で Important の解消を確認する
-2. 解消後、task-reviewer(タスク全体)→ 完了チェックリスト → PR 作成(ユーザー確認のうえ)
+1. task-reviewer によるタスク全体のレビュー(R-C の再レビューは code・test とも指摘なしで完了。0020)
+2. 指摘対応後、完了チェックリストの確認 → PR 作成(ユーザー確認のうえ。task-reviewer
 
 ## 未解決事項
 
