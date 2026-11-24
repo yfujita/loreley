@@ -3,21 +3,21 @@
 ## 基本情報
 
 - 状態: in_progress
-- 現在工程: レビュー R-C 前半の再レビュー(指摘対応後)
+- 現在工程: 実施(P7 着手)
 - 最終更新: 2026-11-24
 
-- 最新作業記録: 0015-review-c-front-and-fixes.md
+- 最新作業記録: 0016-review-c-front-rereview.md
 
 ## 現在の状況
 
 プラン(0002)承認済み。P0〜P4 完了、レビュー R-A・R-B 完了(いずれも再レビューで指摘なし)。P5(P5a・P5b)と P6(EP-13・プローブ)が完了。EP-01〜14 の実装がそろった。ブランチ `feature/implement-admin-api`(開始 SHA `cedcd5667638ec18eaf6ee501963ab356d33ed5f`)。R-C 前半は code-reviewer が指摘なし、test-reviewer が Important 1 件(I1: EP-05〜08 の許可外メソッドの 405)を指摘し、修正・検証再実行済み(pytest 3246 passed、ruff・format・lock OK)、コミット済み。
 Crawler 実 API と B 9.2 の突き合わせは重大な差なし(0012)。AAPI-U-12・AAA-U-4 は実機で確認済み。`SourceSettings` は厳格版(EP-03・04)と nullable 版 `StoredSourceSettings`(EP-01・02)に分けた(0013)。
 残りは P7(OpenAPI・README・手動スモーク)。
-test-reviewer に I1 の解消を再レビュー中(code-reviewer は Important なし・src の変更 65 行をメインエージェントが確認済みのため再レビュー不要)。
+R-C 前半の再レビューで I1 の解消を確認(新しい test-reviewer。元の agent は報告が受理されず打ち切り。0016)。Critical・Important なし。
 
 ## 次のアクション
 
-1. 再レビューの結果を受け、Critical/Important が残れば修正
+1. P7 を実施: (a) OpenAPI・`openapi_export.py`・`server/` のテスト(code-implementer)、(b) README(document-writer。並行)、(c) tzdata の判断、Docker の確認、(d) 手動スモーク(メインエージェント)
 2. 解消後、P7(OpenAPI の `requestBody` 宣言・422 除去・operationId・tags・README・手動スモーク)→ R-C(後半)→ task-reviewer → PR
 
 ## 未解決事項
