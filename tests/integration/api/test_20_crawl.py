@@ -171,15 +171,17 @@ def test_crawl_holds_the_lock_while_running_and_updates_the_states_when_finished
     # 終了後の EP-02・EP-01(件数は検索インデックスの直接読みと一致する)
     indexed_count = opensearch.count_source_documents(source_id)
     assert indexed_count == 3, f"3 documents must be indexed: {indexed_count}"
-    # 最終クロール・文書数は検索で読むので、書き込みの反映(最大約 1 秒)を待つ
+    # 最終クロール・最終完了時刻・文書数は検索で読むので、書き込みの反映(最大約 1 秒)を待つ。
+    # 3 つは別々に読まれるため、1 つが反映されても残りが遅れることがある(連続実行の 4 回目で観測)
     detail = wait_for_source_detail(
         api,
         source_id,
         lambda body: (
             body["last_crawl"]["status"] == "succeeded"
+            and body["last_completed_at"] == job["finished_at"]
             and body["index"]["document_count"] == indexed_count
         ),
-        what="EP-02 showing the finished crawl and the indexed count",
+        what="EP-02 showing the finished crawl, its finish time and the indexed count",
     )
     assert detail["lock"] == {"state": "none", "job": None, "acquired_at": None}, (
         f"the lock must be released: {detail['lock']}"
@@ -193,7 +195,11 @@ def test_crawl_holds_the_lock_while_running_and_updates_the_states_when_finished
     row = wait_for_source_row(
         api,
         source_id,
-        lambda row: row["last_crawl"] == detail["last_crawl"],
+        lambda row: (
+            row["last_crawl"] == detail["last_crawl"]
+            and row["last_completed_at"] == job["finished_at"]
+            and row["document_count"] == indexed_count
+        ),
         what=f"EP-01 showing the finished crawl of {source_id}",
     )
     assert row["last_crawl"] == detail["last_crawl"], f"EP-01 must match EP-02: {row}"

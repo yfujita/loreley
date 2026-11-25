@@ -3,24 +3,23 @@
 ## 基本情報
 
 - 状態: in_progress
-- 現在工程: P4 完了(23 件全成功)、P5 実施中(最終確認と記録)
+- 現在工程: P5 完了、レビューフェーズ(code-reviewer・test-reviewer・document-reviewer 並列)
 - 最終更新: 2026-11-25
-- 最新作業記録: 0008-p4-component-failures.md
+- 最新作業記録: 0009-p5-final-check-and-docs.md
 - ブランチ: `feature/create-it-for-admin-api`、比較基準 SHA `55dce2f`
 
 ## 現在の状況
 
-プラン(0002)承認済み。P1(0004)〜P4(0008)完了。AIT-01〜92 の 23 件が 2 回連続で全件成功(約 343 秒)。P5(README・結果文書、apps/api 単体テスト、既存 IT 再実行、最終 2 回連続)を実施中。
+プラン(0002)承認済み。P1(0004)〜P5(0009)完了。api IT は修正後 2 回連続で 23 件全成功、apps/api 単体テスト 3423 passed、既存 Crawler IT 14・Indexer IT 40 成功。次はレビューフェーズ。
 
 ## 次のアクション
 
-1. P5 実施 → 記録 → コミット
-2. レビューフェーズ
-3. レビューフェーズ(code-reviewer / test-reviewer / document-reviewer)→ タスクレビュー
+1. レビューフェーズ(指摘対応を含む)
+2. タスクレビュー(task-reviewer)→ 完了報告・PR(ユーザー確認)
 
 ## 未解決事項
 
-- AIT-91 の停止中クロールの終わり方は実装時に確認・記録
+- (解決済み)AIT-91 の停止中クロールは `failed`/`indexer_unavailable` で終わる(0008)
 - 据え置き: apps/api/Dockerfile 11 行目の古いコメント(触れる場合のみ)
 
 ## ユーザー判断待ち

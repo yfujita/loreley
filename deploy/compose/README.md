@@ -7,7 +7,7 @@ OpenSearch・Indexer・Crawler・api を起動する compose 構成(MVP)。`comp
 > - 確認環境: macOS(x86_64)、Docker 20.10.13(Docker Desktop。VM のメモリ約 3.8GiB、CPU 2)、docker compose v2.3.3
 > - 結合テスト(`tests/integration/indexer`・`tests/integration/crawler`)は、この構成を専用のプロジェクト名 `loreley-it` で起動して実行する。手順と結果は [tests/integration/indexer/README.md](../../tests/integration/indexer/README.md)・[tests/integration/crawler/README.md](../../tests/integration/crawler/README.md) を参照
 > - `crawler` サービス(2026-11-16 に追加)の確認は、Crawler の結合テストの手動起動と一括スクリプトによる(結果は [crawler-integration.md](../../docs/v0.x/test-results/crawler-integration.md))。`docker compose up -d --build`(サービス名なし)を `.env` の設定なしで直接実行した確認は未実施
-> - `api` サービス(2026-11-25 に追加)は、`docker compose config` による環境変数の展開と publish 先の確認だけを行った。起動しての動作確認は未実施で、Admin API の結合テスト(`tests/integration/api`。作成中)で確認する
+> - `api` サービス(2026-11-25 に追加)の確認は、`docker compose config` による環境変数の展開と publish 先の確認、および Admin API の結合テストの一括スクリプトによる(結果は [admin-api-integration.md](../../docs/v0.x/test-results/admin-api-integration.md))。ただし結合テストは `web` の mount(`tests/integration/api/fixtures/web`)を付けて実行しており、mount なしで `web` が `abnormal` になることの実機確認は未実施
 
 ## 構成
 
@@ -107,7 +107,7 @@ docker compose down -v                # 停止してデータ(名前付きボリ
 - **`LORELEY_API_OPENAPI_ENABLED` は渡さない**: 既定(無効)のまま。`/openapi.json` は公開されない
 - **検索対象のディレクトリは mount しない**: `:ro` で mount するのは `crawler` だけ
 - **`web` が `abnormal` に見える(既知。未対応)**: api の状態確認は、`LORELEY_API_WEB_DIST_DIR`(既定 `/app/web`)直下の `index.html` が読めるかで `web` を判定する。現在の `apps/api` のイメージは Web UI のビルド成果物を含まない(`apps/api/Dockerfile` の冒頭に明記。HO-36 は未対応)ため、この compose で起動した api は、`web` を `abnormal` と報告する(コードと Dockerfile の読解による)。api 自身や他のコンポーネントの異常ではない
-- **起動直後の見え方**(設計書 `api-base-design-v0.1.md` の 6 章・9.2 の HO-45): Indexer は起動時の整理が終わるまで接続を拒否するように見え、Crawler は起動時の回復が終わるまで接続できない(最大約 3 分。イメージの `--start-period` 180 秒に基づく値で、設計書も仮値としている)。このあいだ、api の状態確認ではその 2 つが異常に見え、Crawler への操作は 503 になりうる。回復すれば自動で応じる(再起動は要らない)。Crawler・Indexer が停止している間も、読み取りの API は OpenSearch だけで応答する(設計書の記述。この compose での実機確認は未実施で、Admin API の結合テストで確認する)
+- **起動直後の見え方**(設計書 `api-base-design-v0.1.md` の 6 章・9.2 の HO-45): Indexer は起動時の整理が終わるまで接続を拒否するように見え、Crawler は起動時の回復が終わるまで接続できない(最大約 3 分。イメージの `--start-period` 180 秒に基づく値で、設計書も仮値としている)。このあいだ、api の状態確認ではその 2 つが異常に見え、Crawler への操作は 503 になりうる。回復すれば自動で応じる(再起動は要らない)。Crawler・Indexer が停止している間も、読み取りの API は OpenSearch だけで応答する(設計書の記述。Admin API の結合テストの Crawler 停止・Indexer 停止の区間(AIT-90・91)で、この compose での実機確認を行った。結果は [admin-api-integration.md](../../docs/v0.x/test-results/admin-api-integration.md))
 - **認証がない・公開範囲**: 次の「ループバックのみ公開する理由」を読むこと。**`API_HOST_PORT` はホスト側のポート番号を変えるだけで、バインド先は変わらない**。`ports` を `0.0.0.0` や、ホストを省いた書き方に変えない
 
 ## ループバックのみ公開する理由
