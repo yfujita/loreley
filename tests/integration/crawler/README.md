@@ -62,7 +62,7 @@ scripts/run-crawler-integration-test.sh -k oversize      # 名前に oversize �
 | --- | --- | --- |
 | `LORELEY_IT_WAIT_TIMEOUT_SECS` | `300` | 起動後の待機の上限(秒)。1 以上の整数 |
 
-`OPENSEARCH_VERSION`・`OPENSEARCH_HEAP_SIZE`・`CRAWLER_LOG_LEVEL` などの compose の変数は、そのまま compose に渡る(`deploy/compose/.env.example`)。ただしホスト側ポートと `CRAWLER_DOCUMENTS_DIR` はスクリプトが固定する。
+`OPENSEARCH_VERSION`・`OPENSEARCH_HEAP_SIZE`・`CRAWLER_LOG_LEVEL` などの compose の変数は、そのまま compose に渡る(`deploy/compose/.env.example`)。ただしホスト側ポートと `CRAWLER_DOCUMENTS_DIR` はスクリプトが固定する。あわせて、Crawler と api に同じ変数から渡る `LORELEY_CRON_TIMEZONE=UTC`・`LORELEY_ADMITTING_LOCK_GRACE_SECONDS=60`(compose の既定値)も固定し、シェルや `deploy/compose/.env` の値に左右されないようにしている(この Crawler の IT に、この 2 変数を使うテストはない)。
 
 ### 手動で実行する(スタックを起動して pytest を直接実行する)
 
@@ -101,6 +101,10 @@ Indexer の結合テスト(`scripts/run-indexer-integration-test.sh`)とは、**
 
 - Indexer 用のスクリプトは、起動するサービスを `opensearch opensearch-init indexer` に明示しており、`crawler` は起動しない。Crawler 用のスクリプトが使う `compose.test.yaml` も別のファイルで、重ねて使わない
 - 両方とも、テスト用の上書き(`MAX_RAW_BYTES` などの値)が違う。他方のスタックに向けて実行しない
+
+### api の結合テストと同時に動かせない
+
+api の結合テスト(`scripts/run-api-integration-test.sh`)とも、**compose のプロジェクト名(`loreley-it`)とホストのポート(9200・8000・8001)が同じ**ため、同時には実行できない。どちらかを終えて `down -v` してから、もう一方を実行する。api の結合テストは、`api` のポート(8080)も使う。
 
 ## 結果の見方
 

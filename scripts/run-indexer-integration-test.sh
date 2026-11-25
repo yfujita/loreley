@@ -29,6 +29,7 @@
 #   - `docker compose up --wait` は使わない。ホストの compose v2.3.3 では、使い捨てコンテナ
 #     (opensearch-init)が正常終了したあとも戻らないことを確認したため(`up -d` + 自前のポーリング)。
 #   - プロジェクト名は loreley-it で固定。開発用スタックや無関係なコンテナには触れない。
+#     Crawler・api の結合テストとはプロジェクト名・ポートが同じなので、同時には動かせない。
 #   - ホスト側ポートは 9200(OpenSearch)と 8000(Indexer)で固定。テストがこの 2 つに接続する。
 set -euo pipefail
 
@@ -40,6 +41,10 @@ readonly INDEXER_PORT=8000
 # 9200・8000 を見るのに、スタックは別のポートで起動し、テストが「起動していません」と誤って中止する。
 export OPENSEARCH_HOST_PORT="$OPENSEARCH_PORT"
 export INDEXER_HOST_PORT="$INDEXER_PORT"
+# 削除記録・検索エイリアスの索引名も同じ理由で固定する。シェルや deploy/compose/.env で別の名前にされていると、
+# スタックだけが別の索引を使って、テストが失敗する。
+export LORELEY_DELETIONS_INDEX_NAME="loreley-deletions"
+export LORELEY_SEARCH_INDEX_ALIAS="loreley-documents"
 readonly POLL_INTERVAL_SECS=3
 readonly LOG_TAIL_LINES=100
 readonly MIN_MAX_MAP_COUNT=262144

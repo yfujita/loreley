@@ -1,0 +1,62 @@
+# Admin API(api)の結合テスト用の上書き。`deploy/compose/compose.yaml` の後ろに重ねて使う
+# (本番用の設定には混ぜない。Crawler 用の tests/integration/crawler/compose.test.yaml・Indexer 用の
+# tests/integration/indexer/compose.test.yaml とは別で、重ねない。必要な値はここに複製する)。
+#
+#   CRAWLER_DOCUMENTS_DIR=$PWD/tests/integration/api/data \
+#   docker compose -p loreley-it \
+#     -f deploy/compose/compose.yaml -f tests/integration/api/compose.test.yaml up -d --build
+#
+# 値を変えたら、これに依存するテストの前提も確認すること。
+#   - 原本の上限(MAX_RAW_BYTES): 70,000 バイトのファイルが上限超過(oversize)になる前提(AIT-40)
+#   - Crawler のポーリング間隔: 実行中のジョブを観測・操作する窓(ロックを持つ時間)の長さの前提
+#     (AIT-20・50・60)。値は 10 秒で、クロール 1 回が約 10〜12 秒かかる
+#   - 待ち時間の値(ポーリング間隔・上限): テスト側の待機の上限(support.py の定数)の前提
+# 環境変数名は apps/crawler/src/loreley_crawler/config.py(接頭辞 LORELEY_CRAWLER_)などのとおり。
+
+# 原本 1 件の上限 64 KiB(既定 20 MiB)。Indexer・Crawler・Crawler が検査に使う Indexer の値の
+# 3 か所を同じにする必要があるので、1 か所で定義する(YAML アンカー)。
+x-max-raw-bytes: &max_raw_bytes "65536"
+
+services:
+  indexer:
+    environment:
+      LORELEY_INDEXER_MAX_RAW_BYTES: *max_raw_bytes
+      # 削除ワーカーの走査間隔(既定 2 秒)。ワーカーは終了通知の受理で起床するので、走査間隔を待たずに
+      # 削除を始める場合がある(0.4〜1.1 秒を観測)。走査間隔は、起床しないケースで削除が早く終わり
+      # すぎ、Crawler の最初の確認までにロックを持つ窓が閉じる競合に備える保険として、Crawler IT(1 秒)
+      # より長くしている。5 秒にした効果は未検証(値を変えたときは再検証が要る)。
+      LORELEY_INDEXER_DELETION_POLL_INTERVAL_SECONDS: "5"
+
+  crawler:
+    # 診断用に、ループバックへ publish する(テストは Crawler API を直接呼ばない。conftest が `/healthz`
+    # だけを確認する)。本番用の compose.yaml は Crawler をホストに公開しない(設計書 crawler-architecture
+    # 10 章)。認証がないため 0.0.0.0 へは公開しない。
+    ports:
+      - "127.0.0.1:${CRAWLER_HOST_PORT:-8001}:8001"
+    environment:
+      LORELEY_CRAWLER_MAX_RAW_BYTES: *max_raw_bytes
+      LORELEY_CRAWLER_INDEXER_MAX_RAW_BYTES: *max_raw_bytes
+      # 削除結果のポーリング間隔(既定 5 秒)。Crawler は終了通知の直後に Indexer の状態を 1 回読み
+      # (まだ running)、その後この間隔だけ待つので、ジョブがロックを持つ時間はほぼこの値になる。
+      # HTTP 数回の操作(1 秒未満)より十分長く、クロール 1 回が約 10〜12 秒で済む値にする。
+      LORELEY_CRAWLER_POLLING_INTERVAL_SECONDS: "10"
+      # ポーリングの上限(既定 1,800 秒)。Indexer の削除が進まないとき、ジョブが居座って直列の
+      # Job Runner が後続のテストを止めるのを避ける。
+      LORELEY_CRAWLER_POLLING_TIMEOUT_SECONDS: "120"
+      # Job Runner が実行待ちのジョブを探す間隔(既定 5 秒)。起動(202)から実行開始までの待ちを短くする。
+      LORELEY_CRAWLER_RUNNER_SCAN_INTERVAL_SECONDS: "1"
+    healthcheck:
+      # test はイメージの HEALTHCHECK のものを使う。healthy になるまでの待ちを短くするため、確認間隔
+      # だけ縮める(イメージは 15 秒)。start_period はイメージと同じ 180 秒。
+      interval: 3s
+      start_period: 180s
+
+  api:
+    volumes:
+      # EP-13 の `web` を normal にするため、index.html だけを置いたディレクトリを、既定の
+      # `LORELEY_API_WEB_DIST_DIR`(/app/web)に mount する(Web UI の成果物はイメージに含まれない)。
+      # 相対パスは、最初の compose ファイル(deploy/compose/)のディレクトリが基準。
+      - ../../tests/integration/api/fixtures/web:/app/web:ro
+    healthcheck:
+      # test はイメージの HEALTHCHECK のものを使う。確認間隔だけ縮める(イメージは 15 秒)。
+      interval: 3s

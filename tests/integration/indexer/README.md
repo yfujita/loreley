@@ -93,6 +93,7 @@ docker compose -p loreley-it -f deploy/compose/compose.yaml -f tests/integration
 - テストは、後始末として、作成したデータ(ソース・文書・記録)を**削除しない**(IT-41・IT-42 のように削除 API を確認するものを除く)。後始末はスタックごと `down -v` で消すことに任せている。**開発用のスタックに向けて実行しない**(テストのデータが残る)
 - IT-41 は、検索インデックスの `refresh_interval` を一時的に変更し、終了時に戻す(失敗しても戻す)
 - ホストの `9200`・`8000` を開発用スタックが使っていると、スクリプトは事前確認で中止する
+- Crawler の結合テスト(`scripts/run-crawler-integration-test.sh`)・api の結合テスト(`scripts/run-api-integration-test.sh`)とは、プロジェクト名(`loreley-it`)とホストのポート(9200・8000)が同じため、同時には実行できない。どちらかを終えて `down -v` してから、もう一方を実行する
 
 ### シナリオ ID でテストを選べない
 
