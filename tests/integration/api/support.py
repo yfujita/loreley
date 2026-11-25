@@ -5,7 +5,7 @@
   - `document_id` の**独立実装**(api・Crawler・Indexer のコードは import しない。実装の誤りを
     テストが同じ誤りで見逃さないため)
   - Admin API の HTTP クライアント(`AdminApi`。14 エンドポイントと `/healthz`)
-  - OpenSearch を直接読む検証ヘルパ(`OpenSearchProbe`)
+  - OpenSearch を直接読む検証ヘルパ(`OpenSearchProbe`。書き込みは前提作りの 2 つだけ)
   - 検索対象のディレクトリを `source_id` ごとに作る `SourceDirectory`
   - 応答の検査(`expect_json`・`expect_error`)と、待ち(`poll_until` と各待ちヘルパ)
   - 障害系だけが使う `ComposeControl`(`docker compose stop/start`。許可リストとプロジェクトを固定)
@@ -120,6 +120,12 @@ def parse_instant(value: str) -> datetime:
     """Admin API・OpenSearch の ISO 8601(`Z` 終わり)を、タイムゾーンつきの日時にする。"""
     parsed = datetime.fromisoformat(value)
     return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=UTC)
+
+
+def format_instant(value: datetime) -> str:
+    """直接書き込む記録の日時。Crawler が書く形(UTC・ミリ秒・`Z` 終わり)に合わせる。"""
+    utc_value = value.astimezone(UTC)
+    return utc_value.strftime("%Y-%m-%dT%H:%M:%S.") + f"{utc_value.microsecond // 1000:03d}Z"
 
 
 # --- 応答の検査 ---
@@ -257,6 +263,85 @@ def wait_for_source_detail(
     )
 
 
+def wait_for_source_row(
+    api: "AdminApi", source_id: str, is_ready: Callable[[dict[str, Any]], bool], *, what: str
+) -> dict[str, Any]:
+    """EP-01 の `source_id` の行が `is_ready` を満たすまで待って返す(検索で読むので遅れる)。"""
+
+    def row_of(listing: dict[str, Any]) -> dict[str, Any] | None:
+        return next((item for item in listing["items"] if item["source_id"] == source_id), None)
+
+    listing = wait_for_source_listing(
+        api, lambda body: (row := row_of(body)) is not None and is_ready(row), what=what
+    )
+    row = row_of(listing)
+    assert row is not None
+    return row
+
+
+def wait_for_job_list(
+    api: "AdminApi", is_ready: Callable[[dict[str, Any]], bool], *, what: str, **query: str | int
+) -> dict[str, Any]:
+    """EP-09 の応答が `is_ready` を満たすまで待つ(検索で読むため、書き込みの反映が遅れる)。"""
+    return poll_until(
+        lambda: expect_json(api.list_jobs(**query), 200),
+        is_ready,
+        timeout_secs=READ_LAG_TIMEOUT_SECONDS,
+        poll_interval_secs=READ_LAG_POLL_INTERVAL_SECONDS,
+        what=what,
+    )
+
+
+def wait_for_document_list(
+    api: "AdminApi",
+    source_id: str,
+    is_ready: Callable[[dict[str, Any]], bool],
+    *,
+    what: str,
+    **query: str | int,
+) -> dict[str, Any]:
+    """EP-11 の応答が `is_ready` を満たすまで待つ(検索で読むため、書き込みの反映が遅れる)。"""
+    return poll_until(
+        lambda: expect_json(api.list_documents(source_id, **query), 200),
+        is_ready,
+        timeout_secs=READ_LAG_TIMEOUT_SECONDS,
+        poll_interval_secs=READ_LAG_POLL_INTERVAL_SECONDS,
+        what=what,
+    )
+
+
+def wait_for_finish_notice_started(opensearch: "OpenSearchProbe", job_id: str) -> dict[str, Any]:
+    """ジョブ記録に `finish_notice.send_started_at` が記録されるのを待つ(終了通知の送信の開始)。
+
+    これ以降の取消は、Indexer の削除を止めない(crawler-architecture 4.7)。その後 Crawler は、
+    削除結果をポーリングする間(間隔 10 秒)ロックを持つので、取消・競合の操作はその窓で行う。
+    ジョブ記録は ID 指定で直接読む(検索ではないので反映の遅れがない)。すでに終端なら、窓を
+    見逃したことが分かるメッセージで失敗させる(待ち続けない)。
+    """
+
+    def has_started_sending(record: dict[str, Any] | None) -> bool:
+        if record is None:
+            return False
+        notice = record.get("finish_notice") or {}
+        return notice.get("send_started_at") is not None or record["status"] in (
+            TERMINAL_JOB_STATUSES
+        )
+
+    record = poll_until(
+        lambda: opensearch.fetch_job(job_id),
+        has_started_sending,
+        timeout_secs=RUNNING_WAIT_TIMEOUT_SECONDS,
+        poll_interval_secs=RUNNING_POLL_INTERVAL_SECONDS,
+        what=f"job {job_id} starting to send the finish notice",
+    )
+    assert record["status"] not in TERMINAL_JOB_STATUSES, (
+        f"job {job_id} was already {record['status']} when first observed; the window after the "
+        f"finish notice (the Crawler polling interval) was missed: "
+        f"failure_reason={record.get('failure_reason')}"
+    )
+    return record
+
+
 def wait_until_expired(api: "AdminApi", last_seen_at: datetime, ttl_seconds: int) -> None:
     """`last_seen_at + TTL` が過ぎるまで待つ(実時間が過ぎるのを待つ。上限つきのポーリング)。
 
@@ -372,6 +457,7 @@ class OpenSearchProbe:
     """OpenSearch の REST API を直接**読む**検証用クライアント(opensearch-py は使わない)。
 
     Admin API が読んだ実データを、api を経由せずに読んで、独立に計算した期待値と照合するために使う。
+    書き込みは、実 Crawler に作らせられない前提(スキップ記録・孤児ロック)の 2 つだけ(`write_*`)。
     検索・件数の確認の前には必ず `_refresh` する(refresh 前は新しい書き込みが見えないため)。
     ID 指定の取得(GET)は refresh なしで最新が読める。
     """
@@ -474,6 +560,108 @@ class OpenSearchProbe:
 
     def fetch_source_config(self, source_id: str) -> dict[str, Any] | None:
         return self.fetch_source(SOURCES_INDEX, source_id)
+
+    def source_config_records(self) -> list[dict[str, Any]]:
+        """登録済みのデータソース設定の全件(`_id`=`source_id` の昇順。検索結果の形)。"""
+        hits = self.search(SOURCES_INDEX, {"match_all": {}})
+        assert len(hits) < self.SEARCH_PAGE_SIZE, (
+            f"{len(hits)} sources reach the search limit {self.SEARCH_PAGE_SIZE}; "
+            "the independent computation would skip some of them"
+        )
+        return sorted(hits, key=lambda hit: hit["_id"])
+
+    # --- クラスタ(EP-12 の独立した期待値。api と同じ引数で `_cat/*`・`_cluster/health` を読む) ---
+
+    def cluster_health(self) -> dict[str, Any]:
+        response = self._http.get("/_cluster/health")
+        assert response.status_code == 200, f"cluster health failed: {response.text[:300]}"
+        return dict(response.json())
+
+    def cat_rows(self, kind: str, columns: str, **extra_params: str) -> list[dict[str, Any]]:
+        """`_cat/{kind}`(indices・shards・nodes)の行。値は文字列のまま(api と同じく JSON 形式)。"""
+        response = self._http.get(
+            f"/_cat/{kind}",
+            params={"format": "json", "h": columns, "bytes": "b", **extra_params},
+        )
+        assert response.status_code == 200, f"cat {kind} failed: {response.text[:300]}"
+        return list(response.json())
+
+    # --- 前提作りのための直接書き込み ---
+    # 検索インデックス・`loreley-jobs` の書き込み手は本来 Indexer・Crawler だけ(admin-api 1.1)。
+    # 次の 2 つは、実 Crawler に作らせられない状態を作るための前提作りだけで、判定は Admin API と
+    # 実 Crawler の応答で行う(Crawler の結合テストの `force_last_seen_at` が前例)。形式は
+    # crawler-architecture 3.3.3・5.1 と、実 Crawler が書いた実物の記録に合わせる。
+
+    def write_skip_record(
+        self,
+        *,
+        source_id: str,
+        document_id: str,
+        external_id: str,
+        stage: str,
+        reason: str,
+        attempts: int,
+        consecutive_skips: int,
+        first_skipped_at: datetime,
+        last_skipped_at: datetime,
+        last_job_id: str,
+    ) -> None:
+        """スキップ記録 `skip-{source_id}-{document_id}`(crawler-architecture 3.3.3)を作る。
+
+        実 Crawler がスキップを記録するには、取得の失敗(権限エラーなど)を起こす必要がある。
+        macOS の bind mount で確実に起こせないため、記録だけを直接書く(AIT-41)。
+        """
+        self._create_job_index_record(
+            f"skip-{source_id}-{document_id}",
+            {
+                "record_type": "skip",
+                "source_id": source_id,
+                "document_id": document_id,
+                "external_id": external_id,
+                "stage": stage,
+                "reason": reason,
+                "attempts": attempts,
+                "consecutive_skips": consecutive_skips,
+                "first_skipped_at": format_instant(first_skipped_at),
+                "last_skipped_at": format_instant(last_skipped_at),
+                "last_job_id": last_job_id,
+            },
+        )
+
+    def write_lock_record(
+        self,
+        *,
+        source_id: str,
+        owner: str,
+        job_id: str,
+        acquired_at: datetime,
+        lease_expires_at: datetime,
+        heartbeat_at: datetime,
+    ) -> None:
+        """ロック文書 `lock-{source_id}`(crawler-architecture 5.1)を作る。
+
+        孤児ロック(ジョブが終端なのにロックだけが残る状態)は、Crawler の異常終了などでしか生じない。
+        Crawler は起動時の回復で自分のロックを消すため、実 Crawler には作らせられない(AIT-51)。
+        """
+        self._create_job_index_record(
+            f"lock-{source_id}",
+            {
+                "record_type": "lock",
+                "source_id": source_id,
+                "owner": owner,
+                "job_id": job_id,
+                "lease_expires_at": format_instant(lease_expires_at),
+                "heartbeat_at": format_instant(heartbeat_at),
+                "acquired_at": format_instant(acquired_at),
+            },
+        )
+
+    def _create_job_index_record(self, record_id: str, body: dict[str, Any]) -> None:
+        """`loreley-jobs` に作る(あれば失敗する。`source_id` は一意なので衝突しない)。"""
+        response = self._http.put(
+            f"/{JOBS_INDEX}/_create/{record_id}", params={"refresh": "true"}, json=body
+        )
+        assert response.status_code == 201, f"create {record_id} failed: {response.text[:300]}"
 
 
 # --- 検索対象のディレクトリ ---

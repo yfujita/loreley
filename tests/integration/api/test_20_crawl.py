@@ -28,7 +28,6 @@
     `running` を観測し、窓を見逃したときは、見逃したことが分かるメッセージで失敗する(support.py)。
 """
 
-from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
@@ -48,7 +47,7 @@ from support import (
     wait_for_job_terminal,
     wait_for_lock_released,
     wait_for_source_detail,
-    wait_for_source_listing,
+    wait_for_source_row,
     wait_until_expired,
 )
 
@@ -191,7 +190,12 @@ def test_crawl_holds_the_lock_while_running_and_updates_the_states_when_finished
         f"last_completed_at must be the finish time of this job: {detail['last_completed_at']}"
     )
     assert detail["index"]["document_count"] == indexed_count
-    row = _list_row(api, source_id, lambda row: row["last_crawl"] == detail["last_crawl"])
+    row = wait_for_source_row(
+        api,
+        source_id,
+        lambda row: row["last_crawl"] == detail["last_crawl"],
+        what=f"EP-01 showing the finished crawl of {source_id}",
+    )
     assert row["last_crawl"] == detail["last_crawl"], f"EP-01 must match EP-02: {row}"
     assert (row["last_completed_at"], row["document_count"]) == (
         job["finished_at"],
@@ -275,7 +279,9 @@ def test_force_delete_and_rewrite_mode_reach_the_indexer_and_delete_what_the_rat
     assert not summary_b["deleted_count"], f"B must record no deletion: {summary_b}"
     assert job_b["deletion"]["confirmation"] == "confirmed", f"B: {job_b['deletion']}"
     assert opensearch.count_source_documents(source_id) == 4, "B must delete nothing"
-    row_after_b = _list_row(api, source_id, lambda row: row["document_count"] == 4)
+    row_after_b = wait_for_source_row(
+        api, source_id, lambda row: row["document_count"] == 4, what="EP-01 counting 4 after B"
+    )
     assert row_after_b["document_count"] == 4, "EP-01 must still count 4"
 
     # 4. force_delete・rewrite_mode つきのクロール C: 割合ルールを無視して削除する
@@ -310,7 +316,9 @@ def test_force_delete_and_rewrite_mode_reach_the_indexer_and_delete_what_the_rat
     assert remaining == kept_document_ids, (
         f"only the files that remain must stay indexed: {sorted(remaining)}"
     )
-    row_after_c = _list_row(api, source_id, lambda row: row["document_count"] == 2)
+    row_after_c = wait_for_source_row(
+        api, source_id, lambda row: row["document_count"] == 2, what="EP-01 counting 2 after C"
+    )
     assert row_after_c["document_count"] == 2, "EP-01 must count the 2 remaining"
 
 
@@ -389,24 +397,6 @@ def _assert_existing_job(details: dict[str, Any], job_id: str) -> None:
     )
     assert existing_job["lease_expires_at"] is not None, f"the lease must be set: {details}"
     assert details["lock_state"] == "held_crawl", f"lock_state must be held_crawl: {details}"
-
-
-def _list_row(
-    api: AdminApi, source_id: str, is_ready: Callable[[dict[str, Any]], bool]
-) -> dict[str, Any]:
-    """EP-01 の、この `source_id` の行が `is_ready` を満たすまで待って返す(検索で読むため反映が遅れる)。"""
-
-    def row_of(listing: dict[str, Any]) -> dict[str, Any] | None:
-        return next((item for item in listing["items"] if item["source_id"] == source_id), None)
-
-    listing = wait_for_source_listing(
-        api,
-        lambda body: (row := row_of(body)) is not None and is_ready(row),
-        what=f"EP-01 showing the expected row of {source_id}",
-    )
-    row = row_of(listing)
-    assert row is not None
-    return row
 
 
 def _last_seen_at_of(

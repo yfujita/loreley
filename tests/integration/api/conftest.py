@@ -8,7 +8,8 @@
 ディレクトリ、待ち、障害系の `ComposeControl`)は `support.py` にある。
 """
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from typing import Any
 
 import httpx
 import pytest
@@ -132,3 +133,27 @@ def registered_source(api: AdminApi, source_directory: SourceDirectory) -> Sourc
     """
     register_source(api, source_directory)
     return source_directory
+
+
+@pytest.fixture
+def make_registered_source(
+    api: AdminApi, request: pytest.FixtureRequest
+) -> Iterator[Callable[..., SourceDirectory]]:
+    """同じテストで、登録済みのソースを追加で作る関数(実行待ち・別ソースの状態を作るテスト用)。
+
+    `make(label, **overrides)` は、`label` を含む一意の `source_id` で空のディレクトリを作り、
+    EP-03 で登録して返す(`overrides` は `source_settings` の上書き)。ディレクトリは、テストの後に
+    削除する。
+    """
+    created: list[SourceDirectory] = []
+
+    def make(label: str, **overrides: Any) -> SourceDirectory:
+        directory = SourceDirectory(unique_id(f"{label}-{request.node.name}"))
+        directory.create()
+        created.append(directory)
+        register_source(api, directory, **overrides)
+        return directory
+
+    yield make
+    for directory in created:
+        directory.cleanup()
