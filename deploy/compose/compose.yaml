@@ -1,4 +1,4 @@
-# Loreley の compose 構成(MVP: OpenSearch・Indexer・Crawler)。
+# Loreley の compose 構成(MVP: OpenSearch・Indexer・Crawler・api)。
 #
 # 起動(このディレクトリで実行。.env は任意。無くても既定値で動く):
 #   docker compose up -d --build
@@ -8,6 +8,8 @@
 #   crawler は、検索対象のディレクトリ(.env の CRAWLER_DOCUMENTS_DIR。既定は ./documents)を
 #   読み取り専用で mount する。Indexer だけを起動したいときは、サービス名を指定する:
 #   docker compose up -d --build opensearch opensearch-init indexer
+#   api は opensearch と opensearch-init だけを待つ(crawler・indexer が落ちていても起動する)。
+#   起動直後は、crawler・indexer が接続できるようになるまで、api の画面の状態は「異常」に見える。
 # 停止(データは残す): docker compose down
 # 停止(データも消す): docker compose down -v
 #
@@ -15,15 +17,16 @@
 # 書かない(プロジェクト名は `-p` で指定する。未指定ならディレクトリ名 `compose` になる)。
 #
 # 公開範囲(重要):
-#   Indexer API・Crawler API には認証・認可がなく(Indexer は `DELETE` でソースの文書の全削除、
-#   Crawler はクロール・ソース削除ジョブの起動、ロック解放、設定の登録・更新まで呼べる)、
-#   OpenSearch もセキュリティプラグインを無効にしている(認証・TLS なし)。
+#   Indexer API・Crawler API・api(Admin API)には認証・認可がなく(Indexer は `DELETE` でソースの
+#   文書の全削除、Crawler と api はクロール・ソース削除ジョブの起動、ロック解放、設定の登録・更新まで
+#   呼べる)、OpenSearch もセキュリティプラグインを無効にしている(認証・TLS なし)。
 #   そのため、ホストへの publish は必ず 127.0.0.1(ループバック)に限る。`0.0.0.0` を省いた
 #   `ports: "9200:9200"` のような書き方は、全 NIC に公開されるので使わない。
 #   コンテナ間はこのファイルが作る内部ネットワークで、サービス名(opensearch)で通信する。
 #   Crawler は設計書(crawler-architecture 10章)のとおり、ホストに公開しない(ports なし)。
 #   Crawler API は、FileSystem Connector の root にコンテナ内の任意のパスを登録でき、認証もないため。
 #   結合テストの pytest だけは、tests/integration/crawler/compose.test.yaml がループバックに publish する。
+#   api は、127.0.0.1 にだけ publish する(認証がなく、到達できる全員が破壊的操作を実行できるため)。
 #
 # 上限・索引名の同値定義(重要):
 #   Crawler は起動時に、自分の上限値(原本 1 件・バッチ・last-seen の件数など)が Indexer の上限
@@ -31,8 +34,19 @@
 #   (INDEXER_MAX_RAW_BYTES など)は、Indexer の `LORELEY_INDEXER_*` と Crawler の
 #   `LORELEY_CRAWLER_INDEXER_*` に、同じ変数・同じ既定値(Indexer のコードの既定値)を渡す。
 #   値を変えるときは、同じ変数 1 か所を変えれば両方に反映される。
-#   `loreley-jobs` の索引名(LORELEY_JOBS_INDEX_NAME)も、opensearch-init・Indexer・Crawler に
+#   `loreley-jobs` の索引名(LORELEY_JOBS_INDEX_NAME)も、opensearch-init・Indexer・Crawler・api に
 #   同じ変数を渡す(Indexer はロックとメンテナンスフラグをここから読む)。
+#   `loreley-sources`(LORELEY_SOURCES_INDEX_NAME)は opensearch-init・Crawler・api に、
+#   `loreley-deletions`(LORELEY_DELETIONS_INDEX_NAME)は opensearch-init・Indexer・api に、
+#   検索インデックスのエイリアス(LORELEY_SEARCH_INDEX_ALIAS)は opensearch-init・Indexer・api に渡す。
+#   opensearch-init の SEARCH_INDEX_NAME は実体名(loreley-documents-000001)で別物なので、
+#   Indexer・api には渡さない(再インデックスでエイリアスを付け替えたあと、古い索引を読まないため)。
+#
+# Crawler と api の同値定義(重要):
+#   cron のタイムゾーン(LORELEY_CRON_TIMEZONE)と、受付途中のロックの猶予
+#   (LORELEY_ADMITTING_LOCK_GRACE_SECONDS)は、Crawler と api に同じ変数を渡す。ずれると、画面の表示と
+#   実際の実行時刻、ロック状態の表示と Crawler の拒否が食い違う(データは壊れない)。
+#   api は Crawler の値を読めないので、この変数で揃える。
 
 services:
   opensearch:
@@ -97,6 +111,9 @@ services:
       # Indexer・Crawler が使う索引名と同じ値にする(ファイル冒頭の「上限・索引名の同値定義」)。
       JOBS_INDEX_NAME: ${LORELEY_JOBS_INDEX_NAME:-loreley-jobs}
       SOURCES_INDEX_NAME: ${LORELEY_SOURCES_INDEX_NAME:-loreley-sources}
+      DELETIONS_INDEX_NAME: ${LORELEY_DELETIONS_INDEX_NAME:-loreley-deletions}
+      # エイリアス(SEARCH_INDEX_NAME は init が作る実体名で、ここでは設定しない。既定のまま)。
+      SEARCH_INDEX_ALIAS: ${LORELEY_SEARCH_INDEX_ALIAS:-loreley-documents}
     volumes:
       # スキーマと init スクリプトは、イメージに焼かず読み取り専用で mount する(変更が再ビルド不要で、
       # コンテナ側から書き換えられない)。
@@ -117,6 +134,9 @@ services:
       LORELEY_INDEXER_SUMMARY_ENABLED: "false"
       # Crawler と同じ値にする(ファイル冒頭の「上限・索引名の同値定義」)。
       LORELEY_INDEXER_JOBS_INDEX_NAME: ${LORELEY_JOBS_INDEX_NAME:-loreley-jobs}
+      LORELEY_INDEXER_DELETIONS_INDEX_NAME: ${LORELEY_DELETIONS_INDEX_NAME:-loreley-deletions}
+      # 検索インデックスの名前には、実体名でなくエイリアスを渡す(opensearch-init の SEARCH_INDEX_ALIAS と同じ値)。
+      LORELEY_INDEXER_SEARCH_INDEX_NAME: ${LORELEY_SEARCH_INDEX_ALIAS:-loreley-documents}
       # 上限。既定値は Indexer のコードの既定値と同じ(apps/indexer の config.py)。
       LORELEY_INDEXER_MAX_RAW_BYTES: ${INDEXER_MAX_RAW_BYTES:-20971520}
       LORELEY_INDEXER_MAX_BATCH_DOCUMENTS: ${INDEXER_MAX_BATCH_DOCUMENTS:-50}
@@ -151,6 +171,9 @@ services:
       # Indexer・opensearch-init と同じ値にする(ファイル冒頭の「上限・索引名の同値定義」)。
       LORELEY_CRAWLER_JOBS_INDEX_NAME: ${LORELEY_JOBS_INDEX_NAME:-loreley-jobs}
       LORELEY_CRAWLER_SOURCES_INDEX_NAME: ${LORELEY_SOURCES_INDEX_NAME:-loreley-sources}
+      # api と同じ値にする(ファイル冒頭の「Crawler と api の同値定義」)。
+      LORELEY_CRAWLER_TIMEZONE: ${LORELEY_CRON_TIMEZONE:-UTC}
+      LORELEY_CRAWLER_ADMITTING_LOCK_GRACE_SECONDS: ${LORELEY_ADMITTING_LOCK_GRACE_SECONDS:-60}
       # Indexer の上限(起動時の整合性検査用)。Indexer の `LORELEY_INDEXER_*` と同じ変数・同じ値。
       # 渡さないと検査が省略され、上限を超える設定でも起動できてしまう(警告が出るだけ)。
       LORELEY_CRAWLER_INDEXER_MAX_RAW_BYTES: ${INDEXER_MAX_RAW_BYTES:-20971520}
@@ -187,6 +210,39 @@ services:
     stop_grace_period: 30s
     # healthcheck は、イメージの HEALTHCHECK(/healthz、start-period 180 秒)をそのまま使う。
     # 起動時の回復(OpenSearch への読み書き)が終わるまで接続できないため、start-period が長い。
+
+  api:
+    build: ../../apps/api
+    environment:
+      # 接続先。コンテナ間は内部ネットワークのサービス名で通信する(Crawler・Indexer の `/healthz` も読む)。
+      LORELEY_API_OPENSEARCH_URL: http://opensearch:9200
+      LORELEY_API_CRAWLER_URL: http://crawler:8001
+      LORELEY_API_INDEXER_URL: http://indexer:8000
+      LORELEY_API_LOG_LEVEL: ${API_LOG_LEVEL:-INFO}
+      # 索引名。Crawler・Indexer・opensearch-init と同じ変数から渡す(ファイル冒頭の「上限・索引名の同値定義」)。
+      LORELEY_API_SOURCES_INDEX_NAME: ${LORELEY_SOURCES_INDEX_NAME:-loreley-sources}
+      LORELEY_API_JOBS_INDEX_NAME: ${LORELEY_JOBS_INDEX_NAME:-loreley-jobs}
+      LORELEY_API_DELETIONS_INDEX_NAME: ${LORELEY_DELETIONS_INDEX_NAME:-loreley-deletions}
+      # 検索インデックスの名前には、実体名(opensearch-init の SEARCH_INDEX_NAME)でなくエイリアスを渡す。
+      LORELEY_API_SEARCH_INDEX_NAME: ${LORELEY_SEARCH_INDEX_ALIAS:-loreley-documents}
+      # Crawler と同じ値にする(ファイル冒頭の「Crawler と api の同値定義」)。
+      LORELEY_API_CRON_TIMEZONE: ${LORELEY_CRON_TIMEZONE:-UTC}
+      LORELEY_API_ADMITTING_LOCK_GRACE_SECONDS: ${LORELEY_ADMITTING_LOCK_GRACE_SECONDS:-60}
+      # OPENAPI_ENABLED は設定しない(既定の無効のまま)。
+    depends_on:
+      opensearch:
+        condition: service_healthy
+      opensearch-init:
+        condition: service_completed_successfully
+      # crawler・indexer は待たない。落ちていても、api は起動して画面にその異常を表示する。
+    ports:
+      # ループバックのみ(ファイル冒頭の「公開範囲」を参照)。認証がないため、0.0.0.0 へは公開しない。
+      # コンテナ内のポート(8080)は固定で、ホスト側だけ .env の API_HOST_PORT で変えられる。
+      - "127.0.0.1:${API_HOST_PORT:-8080}:8080"
+    restart: unless-stopped
+    # 検索対象のディレクトリは mount しない(読み取り専用でも mount するのは crawler だけ)。
+    # healthcheck は、イメージの HEALTHCHECK(/healthz、start-period 10 秒)をそのまま使う。
+    # Web UI のビルド成果物(/app/web)は、現時点のイメージに含まれない(Dockerfile の冒頭を参照)。
 
 volumes:
   opensearch-data:
