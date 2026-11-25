@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 | --- | --- |
-| 状態 | **実施済み**(2026-11-25。23 件。P4 完了時点でクリーンな状態から 2 回連続で全件成功。P5 の修正後も 2 回連続で全件成功。実行中のホストのスリープで 1 回失敗、待ちの不足で 1 回失敗した(いずれも原因と対処を 4.6 に記載)。未検証事項は 7 章、申し送り項目別の判定は 4.4) |
+| 状態 | **実施済み**(2026-11-25。23 件。P4 完了時点でクリーンな状態から 2 回連続で全件成功。P5 の修正後も 2 回連続で全件成功。レビュー指摘への対応後も 2 回連続で全件成功(計 8 回の実行、成功 6 回)。実行中のホストのスリープ(推定)で 1 回失敗、待ちの不足で 1 回失敗した(いずれも原因と対処を 4.6 に記載)。未検証事項は 7 章、申し送り項目別の判定は 4.4) |
 | 作成日 | 2026-11-25 |
-| 参照する設計書 | `docs/v0.x/system-design/api/admin/admin-api-v0.1.md`(EP-01〜14、2.5〜2.9、10 章)、`admin-api-architecture-v0.1.md`(AAA-P-6、AAA-U-1〜3・7・10)、`docs/v0.x/system-design/api/api-base-design-v0.1.md`(8 章 compose、9.2 の HO-34・35・40・41・43・44・45)、`docs/v0.x/system-design/crawler/crawler-architecture-v0.4.md`(3.3、5.1、7.5〜7.8、8.1)、`crawler-api-v0.4.md`、`docs/v0.x/system-design/indexer/indexer-architecture-v0.10.md`(9.2・9.3・9.7) |
+| 参照する設計書 | `docs/v0.x/system-design/api/admin/admin-api-v0.1.md`(EP-01〜14、2.5〜2.9、10 章)、`admin-api-architecture-v0.1.md`(AAA-P-6、AAA-U-1〜3・7・10)、`docs/v0.x/system-design/api/api-base-design-v0.1.md`(8 章 compose、9.2 の HO-34・35・40・41・43・44・45)、`docs/v0.x/system-design/crawler/crawler-architecture-v0.4.md`(3.3、5.1、7.5〜7.8、8.1)、`crawler-api-v0.4.md`、`docs/v0.x/system-design/indexer/indexer-architecture-v0.10.md`(9.2・9.3・9.7)。**略号**(テストの docstring や設計書の表記): A=`api-base-design-v0.1.md`、B=`admin-api-v0.1.md`(「B 8.1」は B の 8.1 章)、C=`admin-api-architecture-v0.1.md`、D=`admin-api-module-structure-v0.1.md`、E・F=`docs/v0.x/system-design/ui-admin/frontend/` の `ui-admin-frontend-architecture-v0.1.md`・`ui-admin-frontend-module-structure-v0.1.md`(A は `system-design/api/`、B〜D は `system-design/api/admin/` にある)。4.4 の「0021 B 章」は、作業記録 0021 の B 章(申し送り)で、設計書 B とは別 |
 | 関連 | `tests/integration/api/README.md`(実行・シナリオ一覧)、`deploy/compose/README.md`(起動・公開範囲の注意)、`docs/v0.x/test-results/crawler-integration.md`・`indexer-integration.md`(同種の記録)、`agent_tasks/20261125_create_it_for_admin_api/`(作業の経緯。0004〜0008 が各フェーズの一次記録)、`agent_tasks/20261123_implement_admin_api/0021-task-review-and-handoff.md` の B 章(申し送り元)・`0018`(手動スモーク) |
 
 ## 1. 目的
@@ -24,8 +24,8 @@ Admin API(`apps/api`)を compose で起動し、実 OpenSearch・実 Indexer・�
 | 項目 | 内容 |
 | --- | --- |
 | 実施日・実施者 | 2026-11-25。Claude Code(実装は `code-implementer`、静的検査・残骸の確認はメインエージェント)。ユーザーの指示のもとで実施 |
-| ブランチ・コミット | `feature/create-it-for-admin-api`。ブランチ作成時の基準は `55dce2f`。P1〜P4 の各フェーズはコミット済み(P4 は `abceb9c`)。最終確認(P5)と本書・README は P5 で作成した |
-| ホスト | macOS(x86_64。`uv --version` の出力が `x86_64-apple-darwin`)。compose v2.3.3(0008)、uv 0.13.8。Docker のバージョン・Docker VM のメモリ・CPython のバージョンは、本タスクでは**記録していない**(既存の IT の記録は Docker 20.10.13・VM 約 3.84GiB。同じホストと推測するが未確認) |
+| ブランチ・コミット | `feature/create-it-for-admin-api`。ブランチ作成時の基準は `55dce2f`。P1〜P5 の各フェーズとレビュー対応はコミット済み(P4 は `abceb9c`、P5 は `d3250ee`。レビュー対応は後続のコミット)。本書・README は P5 で作成し、レビュー指摘への対応で更新した |
+| ホスト | macOS(x86_64。`uv --version` の出力が `x86_64-apple-darwin`)。compose v2.3.3(0008)、uv 0.13.8。CPython は 3.13.4(pytest の実行ログの `platform` 行。`tests/integration/api/results/` の 15 本すべてで同じ)。Docker のバージョン・Docker VM のメモリは、本タスクでは**記録していない**(既存の IT の記録は Docker 20.10.13・VM 約 3.84GiB。同じホストと推測するが未確認) |
 | pytest | `uv.lock` で固定: pytest 9.2.0、httpx 0.28.1(15 パッケージ)。`requires-python` は `>=3.12,<3.14` |
 | OpenSearch | `opensearchproject/opensearch:3.9.0`(compose の既定。`deploy/compose/.env` は存在せず、スクリプトはバージョンを設定しないので既定のままと考えられる。実行時のタグは確認していない)。単一ノード |
 | 実行方法 | `scripts/run-api-integration-test.sh`(`-p loreley-it`。`up -d --build opensearch opensearch-init indexer crawler api` + 自前ポーリング → pytest(`-v -rP`) → `down -v --remove-orphans` と `tests/integration/api/data` の削除) |
@@ -93,13 +93,13 @@ Admin API(`apps/api`)を compose で起動し、実 OpenSearch・実 Indexer・�
 
 | B の項目 | 判定 | 根拠・備考 |
 | --- | --- | --- |
-| AAA-U-1 クエリの意味(並べ替えの順序・`terms` の `size`・`top_hits`) | **確認済み** | AIT-30(複数ソース・複数ジョブ。2 回クロールのソースで `top_hits` が最新を選ぶ。全行を独立計算と照合)、AIT-31(`sort` の順序逆転)、AIT-32(`cat.*`・`cluster.health`)。ただし、IT の実行中に作られたソースの数は記録しておらず、`terms` の `size` の上限を超える規模は未検証 |
+| AAA-U-1 クエリの意味(並べ替えの順序・`terms` の `size`・`top_hits`) | **確認済み** | AIT-30(複数ソース・複数ジョブ。2 回クロールのソースで `top_hits` が最新を選ぶ。全行を独立計算と照合)、AIT-31(`sort` の順序逆転)、AIT-32(`cat.*`・`cluster.health`)。AIT-30 は、レビュー対応で、登録ソース総数を 12 件以上(クロールしないソースを追加)にし、`len(rows) > 10`(OpenSearch の `terms` 集計の既定 `size` 10 を超える)をアサートする形に強めた。その状態で 2 回連続で成功した。api は `terms` の `size` に取得対象のソース数を渡している(コードによる。`apps/api/.../queries.py`)ので、`size` が既定のままになる退行は検出できる。12 件を大きく超える規模(数百件)は未検証 |
 | AAA-U-2 `mget`・`msearch` の実応答の形、`ids` クエリ、スレッド間共有 | **一部確認** | `ids` クエリは AIT-41(`existing`・`new`)で確認。`mget`・`msearch` は、これらを使う EP が実 OpenSearch に対して正しい値を返したことでの間接的な確認で、応答の形を見る専用のアサートはない。スレッド間共有の専用の確認はない(未検証) |
-| AAA-U-3 `refresh_interval`・`max_result_window` | **一部確認** | 検索で読む EP の反映遅れが最大約 1 秒であることを観測(設計 AAA-P-6 と同じ。`refresh_interval` の設定値そのものは読んでいない)。`window_limit=10000` の応答と、範囲外ページ(`page=2`)が `items=[]` になることは確認。10,000 件を超える実データは未検証 |
+| AAA-U-3 `refresh_interval`・`max_result_window` | **一部確認** | 検索で読む EP の反映遅れは、**少なくとも 1 回の取りこぼし**(EP-03 直後の EP-01 でソースが見えない。P3a)を観測した。約 1 秒は設計の既定値(設計 AAA-P-6 が推測と明記)で、**最大遅延は未測定**、`refresh_interval` の設定値も読んでいない。`window_limit=10000` の応答と、範囲外ページ(`page=2`)が `items=[]` になることは確認。10,000 件を超える実データは未検証 |
 | AAA-U-7 同時実行上限(16・4・8)の実測 | **未検証** | IT では並行リクエストの負荷をかけていない |
 | AAA-U-10 期限後に残るスレッドの数と時間 | **未検証** | EP-13 の確認の期限後のスレッドは測っていない。AIT-90〜92 は、停止中の EP-13 の応答の値を確認しただけ |
-| EP-07 実行中ジョブの取消 | **確認済み** | AIT-50: 実行待ちは 200 `cancelled`、実行中(終了通知の送信後)は 202 → `cancelled`・`cancel_after_finish_notice=true`・警告 `polling_aborted`。終端のジョブの再取消は 409 `job_already_finished`。AIT-60: 削除ジョブの取消は 409 `job_not_cancellable` |
-| EP-08 実ロックの解放 | **確認済み**(範囲に注意) | AIT-51: 孤児ロックの解放(`released=true`・`failed_job_id=null`)・再送 `released=false`・解放後のクロール成功。ただし**解放したロックは OpenSearch へ直接書いた孤児ロック**。実行中ジョブの期限切れロックの解放(`failed_job_id` が非 null になる経路)は未検証(`lease_expired` と同じ) |
+| EP-07 実行中ジョブの取消 | **一部確認** | AIT-50: 実行待ちは 200 `cancelled`、実行中(終了通知の送信後)は 202 → `cancelled`・`cancel_after_finish_notice=true`・警告 `polling_aborted`。終端のジョブの再取消は 409 `job_already_finished`。AIT-60: 削除ジョブの取消は 409 `job_not_cancellable`。**終了通知の送信前の実行中取消**(`cancel_after_finish_notice=false`、登録途中は `partial=true`)は未検証(7 章) |
+| EP-08 実ロックの解放 | **一部確認** | AIT-51: 孤児ロックの解放(`released=true`・`failed_job_id=null`)・再送 `released=false`・解放後のクロール成功は確認。ただし**解放したのは OpenSearch へ直接書いた孤児ロック**で、実行中ジョブのロックの解放(`failed_job_id` が非 null になる経路)は未検証(`lease_expired` と同じ。7 章) |
 | EP-06 の `lock_held`・EP-08 の `lock_in_use`(409) | **確認済み** | AIT-20(実行中)・AIT-60(実行待ちの削除ジョブ)。EP-06 は `lock_held`(AIT-51 では `lock_state=orphan`)、EP-08 は `lock_in_use`。申し送りの「EP-06 の `lock_in_use`」は、この IT では EP-08 の `lock_in_use` として確認した(EP-06 が `lock_in_use` を返す経路は、計画・テストにない) |
 | 実行中の `lock_state` | **一部確認** | `none`・`held_crawl`(AIT-20・50)・`held_delete`(AIT-60)・`orphan`(AIT-51)を実機で確認。`stalled=true`・`lease_expired` などは未検証(記録があるのは上記の値だけ。`lock_state` の全分岐は単体テストの範囲) |
 | `force_delete=true`(EP-06) | **確認済み** | AIT-21: 割合ルールで止まった削除が `force_delete=true` で実行される(`forced=true`・`deleted_count=2`)。`rewrite_mode=true` も中継された |
@@ -121,35 +121,39 @@ Admin API(`apps/api`)を compose で起動し、実 OpenSearch・実 Indexer・�
 | 障害系の途中失敗 | 4.3 の末尾のとおり。`finally` で復旧し、後始末まで終わる |
 | 他プロジェクトへの影響 | P4 の前後で `docker ps -a` の出力が一致(他プロジェクトの `opensearch-opensearch-1`(停止中)のみ。操作していない) |
 | compose v2.3.3 の `stop`/`start`(P4 冒頭) | `stop crawler`/`indexer`/`opensearch` は対象の 1 つだけが止まり、他は Up のまま・コンテナ ID も不変。OpenSearch 停止中も crawler・indexer は healthy のまま。`start opensearch` から 4 サービスが healthy になるまで約 56 秒 |
-| 静的検査 | `ruff check`・`ruff format`(10 files)・`uv lock --check`・`pytest --collect-only`(23 件)・`bash -n`: OK。**`shellcheck` は未インストールのため未実施** |
+| 静的検査 | `ruff check`・`ruff format --check`(11 files)・`uv lock --check`・`pytest --collect-only`(23 件)・`bash -n`: OK(レビュー対応後の最終版で再実行して確認した)。**`shellcheck` は未インストールのため未実施** |
 
 実機で動かしていない経路: 事前確認のうち、`loreley-it` の残りのコンテナ・ボリュームを検出して中止する経路、ポート使用中の中止(`describe_port_owner`)、`compose down` 失敗時の分岐、シグナル(INT・TERM)、`--keep`、待機の上限超過(終了コード 10)。
 
 ### 4.6 最終確認(P5)
 
-2026-11-25 に、P4 完了後のコードに対して次を実施した(いずれも `--keep` なし、`down -v` 済みのクリーンな状態から。実行のたびに `loreley-it` のコンテナ・ボリューム・ネットワーク・`data/` が残っていないことを確認した)。
+2026-11-25 に、P4 完了後のコードに対して次を実施した(api IT はいずれも `--keep` なしで、`down -v` 済みのクリーンな状態から。スクリプトの事前確認は、`loreley-it` の残りを検出すると中止するので、各実行は残りがない状態で始まっている)。所要時間は、`tests/integration/api/results/` のログ末尾の値(`.gitignore` 済みで、手元にだけある)。
 
 **api IT の全件実行(23 件)の履歴**
 
 | 実行 | 結果 | 備考 |
 | --- | --- | --- |
 | 1 回目(P5) | 23 passed(334.0 秒) | |
-| 2 回目(P5) | 22 passed・1 failed(AIT-60) | `lock_lost`(`lease_expired`)。実行中にホストがスリープした(下記) |
+| 2 回目(P5) | 22 passed・1 failed(AIT-60)。pytest 318.78 秒 | `lock_lost`(`lease_expired`)。実行中にホストがスリープしたと**推定**(記録なし。下記) |
 | 3 回目(`caffeinate -i` 付き) | 23 passed(339.7 秒) | |
-| 4 回目(`caffeinate -i` 付き) | 22 passed・1 failed(AIT-20) | テストの待ち不足(下記)。修正した |
+| 4 回目(`caffeinate -i` 付き) | 22 passed・1 failed(AIT-20)。pytest 337.33 秒 | テストの待ち不足(下記)。修正した |
 | 5 回目(修正後・`caffeinate -i` 付き) | 23 passed(354.1 秒) | |
 | 6 回目(修正後・`caffeinate -i` 付き) | 23 passed(357.8 秒) | |
+| 7 回目(レビュー対応後・`caffeinate -i` 付き) | 23 passed(pytest 380.75 秒、スクリプト全体 482 秒) | レビュー指摘への対応後(下記) |
+| 8 回目(同上) | 23 passed(pytest 375.41 秒、スクリプト全体 466 秒) | |
 
-修正後のコードで、クリーンな状態から 2 回連続で全 23 件が成功した(5・6 回目)。1・3 回目も修正前のコードで成功している。
+AIT-20 の修正後のコードで、クリーンな状態から 2 回連続で全 23 件が成功した(5・6 回目)。1・3 回目も修正前のコードで成功している。
 
-- **2 回目の失敗(AIT-60)の原因は、実行中のホストのスリープと判断している**。AIT-60 の別ソースのクロールが `failure_reason=lock_lost`・`failure_detail=ロックの所有権を失った(lease_expired)` で失敗した。Crawler のコンテナのログが 05:58:32 UTC から 07:36:10 UTC まで約 1 時間 38 分途切れており(実行全体の壁時計も約 1 時間 42 分)、その間にホスト(とコンテナ)が止まりロックのリースが切れたと考えられる。ホストのスリープの記録そのものは取っておらず、推定である。同じ実行の他の 22 件は成功した。以降は `caffeinate -i` を付けて実行した。**IT の実行中はホストをスリープさせないこと**(README に記載)
-- **4 回目の失敗(AIT-20)はテストの待ち不足**。EP-02 の `last_crawl` は `succeeded` になっていたが、`last_completed_at` がまだ `null` だった。最終クロール・最終完了時刻・文書数は別々に検索で読まれるため、反映の遅れ(設計の AAA-P-6。最大約 1 秒)でどれか 1 つが遅れることがある。アプリの不具合ではない。待ちの条件に `last_completed_at`(ジョブの `finished_at` との一致)と文書数を加えた(`test_20_crawl.py`。EP-02 と EP-01 の両方)。アサートの期待値は変えていない
+**レビュー対応(7・8 回目)**: code-reviewer・test-reviewer・document-reviewer の指摘への対応でテストを強めた(AIT-20: 409 再送のオプションが走行中ジョブに適用されないことをジョブ側で確認、窓の確認順の入れ替え、終了直後の `latest_for_source`・`rerunnable` の待ち / AIT-30: 登録ソース 12 件以上 / AIT-40: `external_id` と `document_id` の対応 / AIT-60: 削除後も過去のクロールのジョブが EP-10 で読めることと、ジョブ記録が残ること / AIT-91: `failure_reason=indexer_unavailable` の断定と、EP-10・11 などの読み取りの追加 / 反映遅れの待ちの追加)。対応後のコードで、クリーンな状態から 2 回連続で全 23 件が成功した(7・8 回目。スリープによる遅延はなし)。あわせて Crawler IT スクリプトを変更した(新しい共通変数 2 つの固定)ので Crawler IT を 1 回再実行し、14 passed(38.9 秒、スクリプト全体 137 秒)だった。終了後、`loreley-it` のコンテナ・ボリューム・ネットワークと `data/` は残っておらず、他プロジェクトのコンテナ(`opensearch-opensearch-1`。停止中)は変わっていない(実装担当と私の両方が確認)
 
-**`apps/api` の単体テスト・ruff(退行確認)**: `uv run pytest -q` が 3423 passed(97.8 秒)、`ruff check` が All checks passed。`apps/` は本タスクで変更していない
+- **2 回目の失敗(AIT-60)は、実行中のホストのスリープによると推定している(スリープの記録はない)**。AIT-60 の別ソースのクロールが `failure_reason=lock_lost`・`failure_detail=ロックの所有権を失った(lease_expired)` で失敗した(失敗メッセージはログに残っている)。推定の根拠は、pytest の経過が 318.78 秒なのに、実行全体の壁時計が約 1 時間 42 分で、Crawler のコンテナのログが約 1 時間 38 分途切れていたこと(いずれも実行時の観察。作業記録 0009 に書いてあるのは Crawler のログの途切れだけ)。Crawler のログの実物は後始末(`down -v`)で消えており、再確認できない。ログファイル名の時刻(この実行は 14:56:00 開始、次の実行は 16:40:48 開始)は、約 1 時間 42 分と矛盾しない。この間にホスト(とコンテナ)が止まり、ロックのリースが切れたと考えられる。ほかの原因(Docker VM の停止など)を切り分けた記録はない。同じ実行の他の 22 件は成功した。以降は `caffeinate -i` を付けて実行した(3〜6 回目は `lock_lost` が出ていない)。**IT の実行中はホストをスリープさせないこと**(README に記載)
+- **4 回目の失敗(AIT-20)は、テストの待ち不足と判断した**。ログの失敗メッセージは「`last_completed_at` がジョブの `finished_at` と一致しない(値は `None`)」。EP-02 の `last_crawl` は `succeeded` になっていたが、`last_completed_at` がまだ `null` だった(0009)。最終クロール・最終完了時刻・文書数は別々に検索で読まれるため、設計 AAA-P-6 の反映遅れで、どれか 1 つが遅れたと判断した(別の原因の切り分けはしていない。約 1 秒は設計の推測で、最大遅延は未測定)。アプリの不具合ではない。待ちの条件に `last_completed_at`(ジョブの `finished_at` との一致)と文書数を加えた(`test_20_crawl.py`。EP-02 と EP-01 の両方)。アサートの期待値は変えていない。**確認する値は、読む EP ごとに待ち条件に含める**方針で、この失敗は、その条件の不足だった
 
-**既存 IT の再実行(`compose.yaml` を変更したため)**: `scripts/run-crawler-integration-test.sh` が 14 passed(35.1 秒)、`scripts/run-indexer-integration-test.sh` が 40 passed(16.6 秒)。どちらも終了コード 0
+**`apps/api` の単体テスト・ruff(退行確認)**: `uv run pytest -q` が 3423 passed、`ruff check` が All checks passed(0009)。`apps/` は本タスクで変更していない。所要時間は記録がない
 
-**他プロジェクトへの影響**: 実行の前後で `docker ps -a` に `loreley-it` の残りはなく、他プロジェクトのコンテナ(`opensearch-opensearch-1`。停止中)は操作していない
+**既存 IT の再実行(`compose.yaml` を変更したため)**: `scripts/run-crawler-integration-test.sh` が 14 passed(35.13 秒)、`scripts/run-indexer-integration-test.sh` が 40 passed(16.60 秒)。出所: `tests/integration/crawler/results/pytest-20261125-144535.log`・`tests/integration/indexer/results/pytest-20261125-144729.log`(passed 件数と所要時間はログの値)
+
+**他プロジェクトへの影響**: P5 の `docker ps -a` による前後確認は、記録がないため書かない(P2〜P4 の確認は 4.1 と 0005〜0008)
 
 ## 5. 評価・発見事項
 
@@ -161,7 +165,7 @@ Admin API(`apps/api`)を compose で起動し、実 OpenSearch・実 Indexer・�
    - `skipped_by_ratio` のとき `deletion.summary.deleted_count` は `null`(0 ではない。`deleted` で 0 件のときは 0)。設計 9.3 は値を定めていない
    - 実 Crawler が検出した原本サイズ超過の記録(`detected_by=crawler`)の `size` は `null`。EP-11 も `size: null`(設計 3.3.4「分かる場合だけ」と整合)。`size_hint` が付く場面は未確認
    - 取消の打ち切り時点の `deletion.summary` は `status=running`・`observed_at` あり・`deleted_count` 等は `null`
-3. **検索で読む EP の反映遅れは最大約 1 秒**(EP-01・09・11、EP-02 の最終クロール・文書数)。設計 AAA-P-6 のとおり。EP-03 直後の EP-01 でソースが見えないことが 1 回観測された。ID 指定で読む EP-10 とロックは即時。Admin API は `refresh` を呼ばない設計なので、利用側は次の取得で追いつく
+3. **検索で読む EP は、反映が遅れることがある**(EP-01・09・11、EP-02 の最終クロール・最終完了時刻(`last_completed_at`)・文書数)。設計 AAA-P-6 は最大約 1 秒と推測しているが、**この IT で見たのは、少なくとも 1 回の取りこぼし**(P3a。EP-03 直後の EP-01 でソースが見えない)と、P5 の AIT-20 の失敗(4.6。EP-02 の `last_completed_at` が `null` のまま)で、**最大遅延は測っておらず、`refresh_interval` の設定値も読んでいない**。ID 指定で読む EP-10 のジョブ本体とロックは即時。Admin API は `refresh` を呼ばない設計なので、利用側は次の取得で追いつく。**待ちの方針**: 確認する値は、読む EP ごとに待ち条件に含める。AIT-20 の不安定さ(4.6)は、この条件の不足(`last_completed_at` と文書数を待ち条件に入れていなかった)だった。レビュー後は、EP-10 の `latest_for_source`・`rerunnable` や EP-02 の `delete_job` など、同種の箇所も待ち条件に含めた(テストのコメントでは、これらも検索の結果から導く値とされている)
 4. **窓の実測**: Crawler のポーリング間隔 10 秒・Indexer の走査間隔 5 秒の設定で、ロックを持つ窓は約 10 秒。AIT-20・50・60 は窓を見逃さなかった(各 2 回の実行)。`crawl_started_at` から削除判定の開始まで 0.4〜1.1 秒
 5. **Indexer 不達時の Crawler の失敗は速い**(リトライ 3 回・バックオフ 1・2 秒)。クロール・ソース削除とも数秒で `failed`(`indexer_unavailable`)になり、ポーリング上限 120 秒には達しなかった。停止中に始めたクロールは `failed`・`rerunnable=true` で、復旧後の再実行で完了する
 6. **`start crawler`・`start indexer` は、依存の使い捨て `opensearch-init` を同じコンテナで再実行する**(compose v2.3.3。冪等で害なし)
@@ -173,7 +177,7 @@ Admin API(`apps/api`)を compose で起動し、実 OpenSearch・実 Indexer・�
 
 | 項目 | 値 |
 | --- | --- |
-| 全 23 件(初回ビルドなし) | pytest 約 343〜345 秒(344.8 秒・342.8 秒)。スクリプト全体 6 分 58 秒(起動・待機・後始末を含む。pytest との差は約 73〜75 秒。内訳は測っていない) |
+| 全 23 件(初回ビルドなし) | pytest 334〜381 秒(P4 とその後の成功 8 回: 344.8・342.8・334.0・339.7・354.1・357.8・380.8・375.4 秒。7・8 回目はレビュー対応で確認を増やした後の値)。失敗した 2 回は 318.78 秒(2 回目。スリープと推定される失敗で、壁時計とは大きく食い違う。4.6)と 337.33 秒(4 回目)。スクリプト全体は、P4 で 6 分 58 秒(起動・待機・後始末を含む。pytest との差は約 73〜75 秒。内訳は測っていない)。7・8 回目のスクリプト全体は 482 秒・466 秒(約 8 分)。P5 の 1〜6 回目のスクリプト全体の時間は記録がない |
 | 初回(ビルドあり) | AIT-01 のみで、スクリプト全体約 4〜5 分(P2。イメージのビルドを含む) |
 | 20 件(障害系なし) | pytest 約 172 秒 |
 | 主なテスト | AIT-21 約 55 秒、test_30 約 35 秒(3 テスト)、test_40 約 23 秒(2 テスト)、test_50 約 25 秒(2 テスト)、AIT-60 約 33 秒、AIT-90 約 35 秒、AIT-91 約 49 秒、AIT-92 約 85 秒 |
@@ -193,6 +197,9 @@ Admin API(`apps/api`)を compose で起動し、実 OpenSearch・実 Indexer・�
 - **`ClientDisconnect`**、**入れ子のマウント・`root_path`**(BAPI-U-2)
 - **`stalled=true`・`lease_expired`**: 実行中ジョブの期限切れロックと、その解放(`failed_job_id` が非 null)
 - **EP-05 の `force_delete`**: 仕様上 `null` で本文を取らない。強制削除は EP-06 で確認した(4.4)
+- **EP-07 の、終了通知の送信前の実行中取消**(`cancel_after_finish_notice=false`。登録途中は `partial=true`): AIT-50 は、実行待ちの取消と、終了通知の送信後の実行中の取消だけ
+- **ソース削除でのスキップ記録の削除**(crawler-architecture 8.1): AIT-60 の対象ソースにはスキップ記録がない(実 Crawler にスキップを起こさせられない。AIT-41 と同じ理由)。文書・原本サイズ超過記録・削除記録・設定の削除と、ジョブ記録が残ることは確認した
+- **`--keep` でスタックを残したままの pytest の繰り返し**: テストが作るソースは削除されず積み上がり、`support.py` の `OpenSearchProbe` のソース全件読み(上限 100 件)に達すると失敗しうる。繰り返すときは、100 件に達する前にスタックを作り直す(README に記載。この上限に達した実行はない。推測)
 - `terms` の `size` の上限を超えるソース数、`mget`・`msearch` の応答の形の専用の確認、スレッド間共有(AAA-U-2)、`max_result_window` の設定値そのもの(AAA-U-3)
 - 起動直後に Crawler が回復中(最大約 3 分。HO-45)の間の api の見え方(IT は全サービスが healthy になるのを待ってから始める)。`web` の成果物を mount しないときの EP-13(`deploy/compose/README.md` の「`web` が `abnormal` に見える」注記は、コードの読解による。実機は未確認のまま)
 - `OPENAPI_ENABLED=true` のときの動作、認証・CSRF(スコープ外)
@@ -204,7 +211,7 @@ Admin API(`apps/api`)を compose で起動し、実 OpenSearch・実 Indexer・�
 
 - **窓に依存**する(Crawler のポーリング間隔 10 秒・Indexer の走査間隔 5 秒)。極端に遅い・速い環境では AIT-20・50・60 が失敗しうる(失敗メッセージで原因は分かる)
 - **OpenSearch への直接書き込み**(AIT-41・51)が Crawler の記録の形式に依存する。形式が変わるとテストが壊れて検出できる
-- 検索の反映遅れ(最大約 1 秒)を上限 10 秒のポーリングで吸収している
+- 検索の反映遅れ(約 1 秒は設計の推測で、最大遅延は未測定)を、上限 10 秒のポーリングで吸収している
 - ホストと Docker VM の時計: AIT-21 は api の `Date` ヘッダを基準にしてずれを避けているが、AIT-51 の孤児ロックの `acquired_at`(2 時間前)は余裕が大きい
 
 ## 8. 再実行の手順
@@ -226,8 +233,7 @@ scripts/run-api-integration-test.sh --keep -k test_30   # 反復用。終了後�
   - HO-34(compose への `api` の追加)・HO-35(環境変数・索引名の配線。検索エイリアスに実体名を渡さない): `deploy/compose/compose.yaml` に実装し、実機で起動・動作を確認した(AIT-01 ほか)
   - HO-43(cron のタイムゾーンの共通変数): 実装し、AIT-01 の EP-14 `cron_timezone=Asia/Tokyo` で Crawler と同じ変数から api に届くことを確認した(Crawler の側の実効は、`docker compose config` での展開の確認)
   - HO-44(受付途中の猶予の共通変数): 実装し、`docker compose config` で Crawler・api に同じ変数から渡ることを確認した(ずれたときの食い違いは未検証。7 章)
-  - HO-40・41(認証なし・ブラウザ経由の書き込みへの保護なしの注意書き): `deploy/compose/README.md` に追記した(P1)。IT での確認の対象ではない
-  - HO-45(起動直後の見え方): `deploy/compose/README.md` に記載済み(P1)。Crawler・Indexer の停止中も読み取りの EP が OpenSearch だけで応答することは AIT-90・91 で確認した。起動直後の見え方そのものは未検証
-- **据え置き**: `apps/api/Dockerfile` 11 行目の古いコメント(「現時点の `api` は基盤だけ」)。HO-36(Web の成果物)で Dockerfile に触るときに直す(0021 C)。本タスクでは Dockerfile に触れていない
+  - HO-40・41(認証なし・ブラウザ経由の書き込みへの保護なしの注意書き): `deploy/compose/README.md` に追記した(P1)。IT での確認の対象ではない。HO-40 の文言(「`:ro` のマウントだけ」)を、`deploy/compose/README.md` の記述(Crawler の `:ro` の mount と、コンテナ内で読める範囲。FileSystem Connector の `root` はコンテナ内の任意の絶対パスを受け付ける。コードからの推測で実行は未確認)に合わせて直す
+  - HO-45(起動直後の見え方): `deploy/compose/README.md` に、設計書の記述(実機未確認)と実機確認したことを分けて記載済み(P1 とレビュー対応)。**実機で確認したのは、Crawler・Indexer の停止中も読み取りの EP が OpenSearch だけで応答すること**(AIT-90・91)。**起動直後の見え方(回復中の接続拒否など)は未検証**(IT は全サービスの healthy を待ってから始める。7 章)
+- **据え置き**: `apps/api/Dockerfile` の冒頭近くの古いコメント(「現時点の `api` は基盤だけで、Web UI の配信(`/app/web`)は含めない。」)。HO-36(Web の成果物)で Dockerfile に触るときに直す(0021 C)。本タスクでは Dockerfile に触れていない
 - **スクリプトの重複**: Indexer・Crawler・api の 3 つの実行スクリプトが重複している(共通化は未対応。Crawler の IT の記録の負債と同じ)
-- 本書の 4.6 は、最終確認(P5)の結果を追記する欄

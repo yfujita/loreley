@@ -30,6 +30,7 @@ from support import (
     SourceDirectory,
     expect_error,
     expect_json,
+    find_source_row,
     parse_instant,
     register_source,
     source_settings,
@@ -58,10 +59,6 @@ def _file_system_config(directory: SourceDirectory) -> dict[str, Any]:
 
 def _source_ids_of(listing: dict[str, Any]) -> set[str]:
     return {item["source_id"] for item in listing["items"]}
-
-
-def _row_of(listing: dict[str, Any], source_id: str) -> dict[str, Any]:
-    return next(item for item in listing["items"] if item["source_id"] == source_id)
 
 
 def test_register_update_and_read_a_source(
@@ -211,7 +208,8 @@ def test_register_update_and_read_a_source(
         api,
         lambda body: (
             {source_id, later_source_id} <= _source_ids_of(body)
-            and _row_of(body, source_id)["schedule_cron"] == RARELY_FIRING_CRON
+            and (row := find_source_row(body, source_id)) is not None
+            and row["schedule_cron"] == RARELY_FIRING_CRON
         ),
         what="EP-01 listing both sources with the updated schedule",
     )
@@ -222,7 +220,8 @@ def test_register_update_and_read_a_source(
     assert listed_source_ids.index(source_id) < listed_source_ids.index(later_source_id), (
         f"{source_id} must come before {later_source_id}: {listed_source_ids}"
     )
-    row = _row_of(listing, source_id)
+    row = find_source_row(listing, source_id)
+    assert row is not None, f"{source_id} must be listed: {listing}"
     assert (row["connector_type"], row["status"], row["schedule_cron"]) == (
         "file_system",
         "active",

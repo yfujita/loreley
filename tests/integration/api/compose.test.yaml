@@ -21,8 +21,10 @@ services:
   indexer:
     environment:
       LORELEY_INDEXER_MAX_RAW_BYTES: *max_raw_bytes
-      # 削除ワーカーの走査間隔(既定 2 秒)。終了通知から Crawler の最初の確認までに Indexer の削除が
-      # 終わってしまい、ロックを持つ窓が閉じる競合の確率を下げるため、Crawler IT(1 秒)より長くする。
+      # 削除ワーカーの走査間隔(既定 2 秒)。ワーカーは終了通知の受理で起床するので、走査間隔を待たずに
+      # 削除を始める場合がある(0.4〜1.1 秒を観測)。走査間隔は、起床しないケースで削除が早く終わり
+      # すぎ、Crawler の最初の確認までにロックを持つ窓が閉じる競合に備える保険として、Crawler IT(1 秒)
+      # より長くしている。5 秒にした効果は未検証(値を変えたときは再検証が要る)。
       LORELEY_INDEXER_DELETION_POLL_INTERVAL_SECONDS: "5"
 
   crawler:

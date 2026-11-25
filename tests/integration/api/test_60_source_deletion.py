@@ -72,8 +72,10 @@ def test_source_delete_queued_behind_a_running_crawl_removes_only_that_source(
       `source_config_not_found`、EP-01 に S の行はなく、EP-08 は `released=false`(ロックは削除ジョブが
       自分で消した)。OpenSearch から、S の文書・原本サイズ超過記録・削除記録・設定が消え、Z の文書は
       Z のクロール前と同じ件数で残り、EP-02 の Z の `document_count` も同じ(B 3.5・crawler-architecture 8.1)。
-      ※ S のジョブ記録は、ソース削除では消えない(crawler-architecture 8.1 の順 3)ので、削除ジョブも
-      EP-10 で読める。
+      ※ S のジョブ記録は、ソース削除では消えない(crawler-architecture 8.1 の順 3)ので、削除ジョブも、
+      S の過去のクロールのジョブも、EP-10 で 200 で読め、`loreley-jobs` にも残る。
+      ※ スキップ記録の削除(8.1 の順 2)は、このテストではスキップ記録を作らないので未検証のまま
+      (実 Crawler にスキップを起こさせられない。AIT-41 と同じ理由)。
 
     【単体テストでは確認できず実機で確認する点】
     実 Crawler・実 Indexer によるソース削除の全手順(文書・記録・設定の実際の削除)、実行待ちの削除ジョブが
@@ -183,7 +185,17 @@ def test_source_delete_queued_behind_a_running_crawl_removes_only_that_source(
     listed_ids = {item["source_id"] for item in listing["items"]}
     assert bystander.source_id in listed_ids, "Z must stay listed"
 
-    # OpenSearch の実データ: S は跡形もなく、Z は残る
+    # ジョブ記録はソース削除で消えない: S の過去のクロールも、削除ジョブも、EP-10 と直接読みで残る
+    past_crawl = expect_json(api.get_job(doomed_crawl["job_id"]), 200)
+    assert (past_crawl["job_type"], past_crawl["source_id"], past_crawl["status"]) == (
+        "crawl",
+        doomed.source_id,
+        "succeeded",
+    ), f"S's past crawl must stay readable after the source is deleted: {past_crawl}"
+    for job_id in (doomed_crawl["job_id"], delete_job_id):
+        assert opensearch.fetch_job(job_id) is not None, f"job record {job_id} must stay"
+
+    # OpenSearch の実データ: S の文書・記録・設定は消え、Z は残る
     assert opensearch.count_source_documents(doomed.source_id) == 0, "S's documents must be gone"
     assert opensearch.oversize_records(doomed.source_id) == [], "S's oversize records must be gone"
     assert opensearch.fetch_deletion_result(doomed_crawl["job_id"]) is None, (

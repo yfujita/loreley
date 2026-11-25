@@ -42,6 +42,8 @@ from typing import Any
 from support import (
     COMPONENT_RECOVERY_POLL_INTERVAL_SECONDS,
     COMPONENT_RECOVERY_TIMEOUT_SECONDS,
+    READ_LAG_POLL_INTERVAL_SECONDS,
+    READ_LAG_TIMEOUT_SECONDS,
     AdminApi,
     ComposeControl,
     OpenSearchProbe,
@@ -111,8 +113,8 @@ def settings_for_update(directory: SourceDirectory) -> dict[str, Any]:
 def test_crawler_down_fails_only_the_crawler_calls_and_the_crawl_works_after_recovery(
     api: AdminApi,
     opensearch: OpenSearchProbe,
-    registered_source: SourceDirectory,
     compose_control: ComposeControl,
+    registered_source: SourceDirectory,
 ) -> None:
     """【何を確認するか】(AIT-90)
     Crawler が止まっている間、Crawler に中継する EP-03〜08 が 503 `crawler_unreachable`
@@ -214,9 +216,9 @@ def test_crawler_down_fails_only_the_crawler_calls_and_the_crawl_works_after_rec
 def test_indexer_down_keeps_the_api_alive_and_fails_the_crawl_and_the_deletion_until_recovery(
     api: AdminApi,
     opensearch: OpenSearchProbe,
+    compose_control: ComposeControl,
     registered_source: SourceDirectory,
     make_registered_source: Callable[..., SourceDirectory],
-    compose_control: ComposeControl,
 ) -> None:
     """【何を確認するか】(AIT-91)
     Indexer が止まっている間も、api の読み取りと操作は影響を受けず(EP-13 の `indexer` だけが
@@ -239,9 +241,11 @@ def test_indexer_down_keeps_the_api_alive_and_fails_the_crawl_and_the_deletion_u
     - 手順 2: EP-13 は `indexer` が `abnormal`(`reason` は `connection_refused` か `name_not_resolved`)、
       `crawler`・`opensearch`・`api`・`web` が `normal`(B 10.2)。読み取りの EP は 200。
     - 手順 3(a): 起動(EP-06)は受け付けられる(202。受付は Indexer を呼ばないため。B 10.2)。ジョブは
-      Indexer に届かず `failed`(`failure_reason=indexer_unavailable`。crawler-architecture 7.8)になり、
-      ロックは解放され、`rerunnable=true`・`latest_for_source=true`(B 2.9)。
-    - 手順 4(b): 202 で受け付けられ、ジョブは `failed`(順 1 の Indexer の呼び出しが尽きる。
+      Indexer に届かず `failed`(`failure_reason=indexer_unavailable`、`failure_detail` は「Indexer が
+      応答しない」を含む。crawler-architecture 7.8)になり、ロックは解放され(EP-02 の `lock.state=none`、
+      `last_crawl` はこのジョブ)、`rerunnable=true`・`latest_for_source=true`(B 2.9)。
+    - 手順 4(b): 202 で受け付けられ、ジョブは `failed`(`failure_reason=indexer_unavailable`、
+      `failure_detail` は「Indexer が応答しない」を含む。順 1 の Indexer の呼び出しが尽きる。
       crawler-architecture 8.1)。D の文書は消えず(2 件)、設定は `deleting` で残る(8.1)。EP-01・02 は
       `status=deleting`・`delete_job` が失敗したジョブ、EP-02 の `lock.state=none`(ロックは解放済み)。EP-04・06 は
       409 `source_deleting`、同じ内容の EP-03 は 409 `source_already_exists`(`details.status=deleting`。
@@ -259,7 +263,7 @@ def test_indexer_down_keeps_the_api_alive_and_fails_the_crawl_and_the_deletion_u
     crawl_source.write("c1.md", b"# c1\n\ntext of c1\n")
     delete_source.write("d1.md", b"# d1\n\ntext of d1\n")
     delete_source.write("d2.md", b"# d2\n\ntext of d2\n")
-    run_crawl(api, opensearch, delete_source.source_id)
+    first_delete_crawl = run_crawl(api, opensearch, delete_source.source_id)
     assert opensearch.count_source_documents(delete_source.source_id) == 2, (
         "D must have 2 documents"
     )
@@ -275,6 +279,8 @@ def test_indexer_down_keeps_the_api_alive_and_fails_the_crawl_and_the_deletion_u
             "EP-01": api.list_sources(),
             "EP-02": api.get_source(crawl_source.source_id),
             "EP-09": api.list_jobs(source_id=crawl_source.source_id),
+            "EP-10": api.get_job(first_delete_crawl["job_id"]),
+            "EP-11": api.list_documents(crawl_source.source_id, tab="extract_failed"),
             "EP-12": api.opensearch_cluster(),
             "EP-14": api.meta(),
         }
@@ -295,9 +301,29 @@ def test_indexer_down_keeps_the_api_alive_and_fails_the_crawl_and_the_deletion_u
             },
         )
         assert crawl_job["status"] == "failed", f"the crawl cannot reach the Indexer: {crawl_job}"
+        assert crawl_job["failure_reason"] == "indexer_unavailable", (
+            f"the failure must be told as indexer_unavailable: {crawl_job}"
+        )
+        assert "Indexer が応答しない" in crawl_job["failure_detail"], (
+            f"failure_detail must say the Indexer did not respond: {crawl_job}"
+        )
         assert crawl_job["rerunnable"] is True, f"a failed latest crawl is rerunnable: {crawl_job}"
         assert crawl_job["rerun_blocked_reason"] is None, f"must not be blocked: {crawl_job}"
         assert crawl_job["latest_for_source"] is True, f"must be the latest: {crawl_job}"
+        crawl_detail = wait_for_source_detail(
+            api,
+            crawl_source.source_id,
+            lambda body: (
+                body["last_crawl"] is not None and body["last_crawl"]["status"] == "failed"
+            ),
+            what="EP-02 showing the failed crawl",
+        )
+        assert crawl_detail["last_crawl"]["job_id"] == crawl_job_id, (
+            f"last_crawl must be the failed job: {crawl_detail}"
+        )
+        assert crawl_detail["lock"]["state"] == "none", (
+            f"the failed job released the lock: {crawl_detail['lock']}"
+        )
 
         # 4. (b) 停止中に始めたソース削除
         delete_job_id = expect_json(api.start_source_delete(delete_source.source_id), 202)["job_id"]
@@ -315,6 +341,12 @@ def test_indexer_down_keeps_the_api_alive_and_fails_the_crawl_and_the_deletion_u
         assert delete_job["status"] == "failed", (
             f"the deletion cannot reach the Indexer: {delete_job}"
         )
+        assert delete_job["failure_reason"] == "indexer_unavailable", (
+            f"the failure must be told as indexer_unavailable: {delete_job}"
+        )
+        assert "Indexer が応答しない" in delete_job["failure_detail"], (
+            f"failure_detail must say the Indexer did not respond: {delete_job}"
+        )
 
         assert opensearch.count_source_documents(delete_source.source_id) == 2, (
             "D's documents must stay (the Indexer could not delete them)"
@@ -322,14 +354,26 @@ def test_indexer_down_keeps_the_api_alive_and_fails_the_crawl_and_the_deletion_u
         row = wait_for_source_row(
             api,
             delete_source.source_id,
-            lambda listed: listed["status"] == "deleting" and listed["delete_job"] is not None,
-            what="EP-01 showing D as deleting with its delete_job",
+            lambda listed: (
+                listed["status"] == "deleting"
+                and listed["delete_job"] is not None
+                and listed["delete_job"]["status"] == "failed"
+            ),
+            what="EP-01 showing D as deleting with its failed delete_job",
         )
         assert row["delete_job"]["job_id"] == delete_job_id, (
             f"delete_job must be the failed job: {row}"
         )
         assert row["delete_job"]["status"] == "failed", f"delete_job must be failed: {row}"
-        detail = expect_json(api.get_source(delete_source.source_id), 200)
+        # EP-02 の `delete_job` は検索で読むので、反映を待つ(`status` は ID 指定で即時)
+        detail = wait_for_source_detail(
+            api,
+            delete_source.source_id,
+            lambda body: (
+                body["delete_job"] is not None and body["delete_job"]["status"] == "failed"
+            ),
+            what="EP-02 showing D's failed delete_job",
+        )
         assert detail["status"] == "deleting", f"EP-02 must show deleting: {detail}"
         assert detail["delete_job"]["job_id"] == delete_job_id, f"delete_job must match: {detail}"
         assert detail["lock"]["state"] == "none", (
@@ -398,7 +442,14 @@ def test_indexer_down_keeps_the_api_alive_and_fails_the_crawl_and_the_deletion_u
     )
     assert crawled["status"] == "active", f"C must stay active: {crawled}"
 
-    superseded = expect_json(api.get_job(crawl_job_id), 200)
+    # `latest_for_source` は検索で読むので、再実行のクロールが反映されるまで待つ
+    superseded = poll_until(
+        lambda: expect_json(api.get_job(crawl_job_id), 200),
+        lambda job: job["latest_for_source"] is False,
+        timeout_secs=READ_LAG_TIMEOUT_SECONDS,
+        poll_interval_secs=READ_LAG_POLL_INTERVAL_SECONDS,
+        what="EP-10 no longer marking the failed crawl as the latest",
+    )
     assert (
         superseded["status"],
         superseded["latest_for_source"],
@@ -412,8 +463,8 @@ def test_indexer_down_keeps_the_api_alive_and_fails_the_crawl_and_the_deletion_u
 def test_opensearch_down_fails_the_reads_and_the_crawl_and_everything_recovers(
     api: AdminApi,
     opensearch: OpenSearchProbe,
-    registered_source: SourceDirectory,
     compose_control: ComposeControl,
+    registered_source: SourceDirectory,
 ) -> None:
     """【何を確認するか】(AIT-92)
     OpenSearch が止まっている間、OpenSearch を読む EP-01・02・09・10・11・12 が 503 `unavailable`

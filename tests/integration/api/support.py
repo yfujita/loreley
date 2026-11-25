@@ -5,7 +5,8 @@
   - `document_id` の**独立実装**(api・Crawler・Indexer のコードは import しない。実装の誤りを
     テストが同じ誤りで見逃さないため)
   - Admin API の HTTP クライアント(`AdminApi`。14 エンドポイントと `/healthz`)
-  - OpenSearch を直接読む検証ヘルパ(`OpenSearchProbe`。書き込みは前提作りの 2 つだけ)
+  - OpenSearch を直接読む検証ヘルパ(`OpenSearchProbe`。書き込みは前提作りの 2 つだけで、
+    任意のリクエストを送る口は持たない)
   - 検索対象のディレクトリを `source_id` ごとに作る `SourceDirectory`
   - 応答の検査(`expect_json`・`expect_error`)と、待ち(`poll_until` と各待ちヘルパ)
   - 障害系だけが使う `ComposeControl`(`docker compose stop/start`。許可リストとプロジェクトを固定)
@@ -51,6 +52,15 @@ DELETIONS_INDEX = os.environ.get("LORELEY_DELETIONS_INDEX_NAME", "loreley-deleti
 JOBS_INDEX = os.environ.get("LORELEY_JOBS_INDEX_NAME", "loreley-jobs")
 SOURCES_INDEX = os.environ.get("LORELEY_SOURCES_INDEX_NAME", "loreley-sources")
 MAINTENANCE_RECORD_ID = "maintenance"
+# opensearch-init が作る 4 つの索引(検索インデックスは実体名。エイリアスは `SEARCH_INDEX`)。
+EXPECTED_INDEX_NAMES = frozenset(
+    {
+        "loreley-documents-000001",
+        "loreley-deletions",
+        "loreley-jobs",
+        "loreley-sources",
+    }
+)
 
 # --- 検索対象のディレクトリ ---
 # ホスト側は compose の `CRAWLER_DOCUMENTS_DIR`(スクリプトが export する)と同じ場所。
@@ -268,18 +278,21 @@ def wait_for_source_detail(
     )
 
 
+def find_source_row(listing: dict[str, Any], source_id: str) -> dict[str, Any] | None:
+    """EP-01 の応答から、`source_id` の行を探す(なければ None)。"""
+    return next((item for item in listing["items"] if item["source_id"] == source_id), None)
+
+
 def wait_for_source_row(
     api: "AdminApi", source_id: str, is_ready: Callable[[dict[str, Any]], bool], *, what: str
 ) -> dict[str, Any]:
     """EP-01 の `source_id` の行が `is_ready` を満たすまで待って返す(検索で読むので遅れる)。"""
-
-    def row_of(listing: dict[str, Any]) -> dict[str, Any] | None:
-        return next((item for item in listing["items"] if item["source_id"] == source_id), None)
-
     listing = wait_for_source_listing(
-        api, lambda body: (row := row_of(body)) is not None and is_ready(row), what=what
+        api,
+        lambda body: (row := find_source_row(body, source_id)) is not None and is_ready(row),
+        what=what,
     )
-    row = row_of(listing)
+    row = find_source_row(listing, source_id)
     assert row is not None
     return row
 
@@ -506,9 +519,6 @@ class OpenSearchProbe:
 
     def __exit__(self, *exc_info: object) -> None:
         self.close()
-
-    def request(self, method: str, path: str, **kwargs: Any) -> httpx.Response:
-        return self._http.request(method, path, **kwargs)
 
     def refresh(self, index: str) -> None:
         response = self._http.post(f"/{index}/_refresh")

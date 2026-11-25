@@ -50,6 +50,10 @@ export LORELEY_JOBS_INDEX_NAME="loreley-jobs"
 export LORELEY_SOURCES_INDEX_NAME="loreley-sources"
 export LORELEY_DELETIONS_INDEX_NAME="loreley-deletions"
 export LORELEY_SEARCH_INDEX_ALIAS="loreley-documents"
+# Crawler と api に同じ変数から渡る値(cron のタイムゾーン・受付途中のロックの猶予)も、シェルや
+# deploy/compose/.env の値に左右されないよう、compose の既定値で固定する。
+export LORELEY_CRON_TIMEZONE="UTC"
+export LORELEY_ADMITTING_LOCK_GRACE_SECONDS=60
 readonly POLL_INTERVAL_SECS=3
 readonly LOG_TAIL_LINES=100
 readonly MIN_MAX_MAP_COUNT=262144

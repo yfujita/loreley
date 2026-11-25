@@ -14,7 +14,7 @@
 扱うシナリオ: AIT-01
 """
 
-from support import AdminApi, expect_json, parse_instant
+from support import EXPECTED_INDEX_NAMES, AdminApi, expect_json, parse_instant
 
 # スクリプト(scripts/run-api-integration-test.sh)が `LORELEY_CRON_TIMEZONE` に渡す値。Crawler と api に
 # 同じ変数から届くこと(HO-43)を、EP-14 の値で確かめる。
@@ -33,14 +33,6 @@ DASHBOARD_COMPONENT_IDS = [
 ]
 # 確認用の URL を設定していない任意コンポーネント。compose は設定しないので `not_configured` になる。
 NOT_CONFIGURED_COMPONENT_IDS = ["opensearch-dashboards", "embedding", "llm"]
-
-# opensearch-init が作る 4 つの索引(検索インデックスは実体名。エイリアスは `loreley-documents`)。
-EXPECTED_INDEX_NAMES = {
-    "loreley-documents-000001",
-    "loreley-deletions",
-    "loreley-jobs",
-    "loreley-sources",
-}
 
 
 def test_healthz_returns_ok_without_checking_other_components(api: AdminApi) -> None:

@@ -21,14 +21,14 @@ Admin API の単体テストは、OpenSearch・Crawler・Indexer を fake やロ
 | --- | --- |
 | Docker | Docker と docker compose v2(確認した版: compose v2.3.3)。デーモンが起動していること |
 | uv | 必要(確認した版: uv 0.13.8)。`tests/integration/api/uv.lock` で依存(`pytest`・`httpx`。dev に `ruff`)を固定している。依存を変えたら、`tests/integration/api` で `uv lock` を実行して更新する |
-| メモリ | Docker に**約 4GB 以上**を推奨(5 サービスを同時に起動する)。ほかの重いコンテナを同時に動かさない。メモリ使用量は測定していない |
+| メモリ | Docker に**約 4GB 以上**を推奨(4 サービスが常駐する。`opensearch-init` は完了後に終了する)。この IT での Docker VM のメモリは**未記録**(既存の結合テストは約 3.8GiB で成功した)。ほかの重いコンテナを同時に動かさない。メモリ使用量は測定していない |
 | ポート | ホストの `9200`(OpenSearch)・`8000`(Indexer)・`8001`(Crawler)・`8080`(api)が空いていること。すべて `127.0.0.1` だけに publish する。**スクリプトは 4 つのポートに固定**し、`deploy/compose/.env` の値では変えられない(テストがこの 4 つに接続する)。手動で別のポートにしたときだけ、`LORELEY_IT_OPENSEARCH_URL`・`LORELEY_IT_INDEXER_URL`・`LORELEY_IT_CRAWLER_URL`・`LORELEY_IT_API_URL` でテストの接続先を合わせる |
 | 索引名 | スクリプトは `LORELEY_JOBS_INDEX_NAME`・`LORELEY_SOURCES_INDEX_NAME`・`LORELEY_DELETIONS_INDEX_NAME`・`LORELEY_SEARCH_INDEX_ALIAS` を既定値(`loreley-jobs`・`loreley-sources`・`loreley-deletions`・`loreley-documents`)に固定する。手動で起動して索引名を変えたときは、**同じ環境変数を pytest にも渡す**(未指定は既定値) |
 | ネットワーク | 初回は、ベースイメージ・OpenSearch のイメージ・Python の依存を取得し、`apps/api`・`apps/crawler`・`apps/indexer` をビルドする |
 
 Linux の `vm.max_map_count` と SELinux(bind mount のラベル)は未確認(`deploy/compose/README.md` の前提を参照)。
 
-**Crawler・Indexer の結合テストと同時に実行できない**: 3 つの結合テストは、compose のプロジェクト名(`loreley-it`)とホストのポート(9200・8000。Crawler・api のテストは 8001 も)が同じため、同時には実行できない(事前確認がポート使用中で中止する)。どちらかを終えて `down -v` してから、もう一方を実行する。テスト用の上書き(`compose.test.yaml`)もそれぞれ別で、重ねない。
+**Crawler・Indexer の結合テストと同時に実行できない**: 3 つの結合テストは、compose のプロジェクト名(`loreley-it`)とホストのポート(9200・8000。Crawler・api のテストは 8001 も)が同じため、同時には実行できない(事前確認が、残っている `loreley-it` のコンテナ、またはポート使用中で中止する)。3 本のうち 1 本を終えて `down -v` してから、別の 1 本を実行する。テスト用の上書き(`compose.test.yaml`)もそれぞれ別で、重ねない。
 
 **ポート 9200 を別のアプリ(Fess など)が使っている場合**: スクリプトは事前確認で中止し、使用中の相手を表示する(止めはしない)。
 
@@ -82,8 +82,10 @@ scripts/run-api-integration-test.sh -k "test_30 or test_40"   # 複数ファイ�
 
 テストを繰り返し実行するときなど、スクリプトを使わずに起動と pytest を分ける手順。リポジトリのルートで実行する。
 
+> **未確認**: この手順は、スクリプトと同じコマンドを書き出したもので、**通しの実行はしていない**。スクリプト経由の実行だけを確認した。
+
 ```sh
-# 1. 検索対象のディレクトリを作る(Docker に作らせると root 所有になりうる)
+# 1. 検索対象のディレクトリを作る(Docker に作らせると root 所有になりうる(想定。未確認))
 mkdir -p tests/integration/api/data && chmod 755 tests/integration/api/data
 
 # 2. 起動(`--wait` は使わない。CRAWLER_DOCUMENTS_DIR は絶対パスで渡す。
@@ -105,15 +107,16 @@ docker compose -p loreley-it -f deploy/compose/compose.yaml -f tests/integration
 rm -rf tests/integration/api/data
 ```
 
-- **`up` のときに `CRAWLER_DOCUMENTS_DIR` を渡さないと、compose の既定が mount され、テストが `data/` に置いた文書を Crawler が読めず、失敗する**。`ps`・`down` では不要
+- **`up` のときに `CRAWLER_DOCUMENTS_DIR` を渡さないと、compose の既定(`./documents`)が mount されるため、テストが `data/` に置いた文書を Crawler が読めず、失敗するはず**(想定。未確認)。`ps`・`down` では不要(想定。未確認)
 - ノード ID で 1 テストだけ実行したいときは、この手順で pytest を直接実行する(例: `... pytest "tests/integration/api/test_20_crawl.py::<テスト名>"`)
 - テストは `compose.test.yaml` の値(原本の上限 64 KiB、Crawler のポーリング間隔 10 秒など)を前提にしている。`deploy/compose/compose.yaml` だけで起動したスタックに向けて実行しない
 - スタックが起動していないと、pytest は接続できなかった理由と起動手順を表示して、終了コード 2 で中止する
-- 手動の手順 5 は、手順 1〜4 を実行した場合の後始末。スクリプトの後始末と同じ
+- 手動の手順 5 は、手順 1〜4 を実行した場合の後始末。スクリプトの後始末と同じコマンド(スクリプトの読解による)
 
 ## 結果の見方
 
 - 失敗したテストの詳細は、`results/` のログの `FAILURES` の節にある。スタックの状態は、同じ実行の最後に出る `docker compose ps -a` と各サービスのログの末尾(異常終了のとき)を見る。`--keep` で残したスタックなら、`docker compose -p loreley-it -f deploy/compose/compose.yaml -f tests/integration/api/compose.test.yaml logs api`(`crawler`・`indexer` も同様)で全体を見られる
+- `--keep` で残したスタックに対して pytest を繰り返すと、テストが作るソース(`it-` で始まる。削除しない)が積み上がる。`support.py` の `OpenSearchProbe` は、ソースの全件を 1 回の検索(上限 100 件)で読み、上限に達するとアサートで失敗する(AIT-30 の全行照合など)。**100 件に達する前に、`down -v` でスタックごと作り直す**
 - 窓を見逃したときのテスト(AIT-20・50・60)は、見逃したことが分かるメッセージで失敗する。待ちが上限を超えたときは、最後に観測した状態が付く
 - 障害系は、設計が複数の値を許す箇所の実測値を `[observed]` 付きで出力する(`-rP` でログに残る)
 - 実行結果の記録は [docs/v0.x/test-results/admin-api-integration.md](../../../docs/v0.x/test-results/admin-api-integration.md)
@@ -128,30 +131,30 @@ rm -rf tests/integration/api/data
 | AIT-10 | `test_10_sources.py` | 3・4・1・2 | 登録 201(`loreley-sources` に `ttl`(秒)・`ratio_threshold`(割合)へ変換して保存)、同内容の再送 200、内容違いは 409 `source_already_exists`、EP-02 の初期状態、更新、EP-01 の昇順 |
 | AIT-11 | `test_10_sources.py`(3 テスト) | 3・4 | 実 Connector の違反(相対 `root`・未知項目)が 400 `config_invalid`。`field`・`reason`・`detail`・`crawler_message` が付き、保存されない(EP-03・04) |
 | AIT-12 | `test_10_sources.py` | 2・4・5・6・8・11 | 未登録ソースへの操作: EP-04・05・06 は 404 `source_config_not_found`、EP-02・11 は 404、EP-08 は 200 `released=false` |
-| AIT-20 | `test_20_crawl.py` | 6・10・2・9・5・8・1 | クロール起動(202)→ `running` を観測。実行中: EP-02 `held_crawl`、EP-09 の実行中ジョブ、EP-06 再送・EP-05 は 409 `lock_held`、EP-08 は 409 `lock_in_use`。終了後: EP-10 `succeeded`・登録件数・削除結果、EP-02・01 の更新。OpenSearch のジョブ記録と突き合わせる |
+| AIT-20 | `test_20_crawl.py` | 6・10・2・9・5・8・1 | クロール起動(202)→ `running` を観測。実行中: EP-02 `held_crawl`、EP-06 再送・EP-05 は 409 `lock_held`、EP-08 は 409 `lock_in_use`(ID 指定で読むロックと 409 を先に確認し、検索で読む EP-02 の最終クロールと EP-09 の実行中ジョブは反映を待って後に確認)。終了後: EP-10 `succeeded`・登録件数・削除結果、EP-02・01 の更新。実行中の 409 で再送した `force_delete=true` が走行中のジョブに適用されていないこと(EP-10 の `force_delete`・`rewrite_mode` が `false`)。OpenSearch のジョブ記録と突き合わせる |
 | AIT-21 | `test_20_crawl.py` | 6・10・1 | `force_delete=true`・`rewrite_mode=true` の中継。クロール A(4 件)→ 2 件削除 → 通常のクロール B は割合ルールで削除が止まる → `force_delete=true` のクロール C で削除される。TTL は実時間で待つ(約 55 秒) |
-| AIT-30 | `test_30_queries.py` | 1 | EP-01 の全行の `last_crawl`・`last_completed_at`・`document_count` を、OpenSearch 直読みの独立計算と照合(2 回・1 回・0 回クロールした 3 ソースと、それまでの全ソース)。`source_id` 昇順 |
+| AIT-30 | `test_30_queries.py` | 1 | EP-01 の全行の `last_crawl`・`last_completed_at`・`document_count` を、OpenSearch 直読みの独立計算と照合(2 回・1 回・0 回クロールした 3 ソースと、クロールしない登録だけのソースで補って登録ソースの総数を 12 件以上にした状態の全ソース。`terms` 集計の既定 `size`(10)を超える行数で全行が返ることを `len(rows) > 10` で確認する)。`source_id` 昇順 |
 | AIT-31 | `test_30_queries.py` | 9・10 | `source_id`・`status` の絞り込みと `total`、`sort=queued_at`/`-queued_at` の順序逆転、範囲外ページは `items=[]`、`window_limit=10000`、`latest_for_source` |
 | AIT-32 | `test_30_queries.py` | 12 | EP-12 の `indices`・`shards`・`nodes`・`cluster` を `_cat/*`・`_cluster/health` の直読みと照合 |
-| AIT-40 | `test_40_documents.py` | 11・10・1 | 通常の md・壊れた PDF 26・上限超過 2 を 1 回クロール。`tab_counts`・`document_count`、`extract_failed` のページング(25 件 + 1 件、重複なし)、既定・昇順の並びと同順位の `document_id` 昇順、`oversize` の項目、EP-10 の件数 |
+| AIT-40 | `test_40_documents.py` | 11・10・1 | 通常の md・壊れた PDF 26・上限超過 2 を 1 回クロール。`tab_counts`・`document_count`、`extract_failed` のページング(25 件 + 1 件、重複なし)、既定・昇順の並びと同順位の `document_id` 昇順、`oversize` の項目(各行の `external_id` を独立実装でハッシュした値が `document_id` と一致することを含む)、EP-10 の件数 |
 | AIT-41 | `test_40_documents.py` | 11 | スキップ記録 2 件(OpenSearch へ直接書き込み)の `existence`(`existing`・`new`)が `ids` クエリで決まる。`tab_counts.skipped` |
 | AIT-50 | `test_50_cancel_and_lock.py` | 6・7・9・10・2 | 実行待ちのジョブは 200 で取消。実行中のジョブ(終了通知の送信開始後)は 202 で受け付けられ `cancelled`、`cancel_after_finish_notice`・警告 `polling_aborted` が付く。終端のジョブの再取消は 409 `job_already_finished` |
 | AIT-51 | `test_50_cancel_and_lock.py` | 2・6・8 | 孤児ロック(OpenSearch へ直接書き込み)が EP-02 で `orphan`、EP-06 は 409 `lock_held`、EP-08 で解放(`released=true`・`failed_job_id=null`)、再送は `released=false`、解放後のクロールが成功する |
-| AIT-60 | `test_60_source_deletion.py` | 5・7・6・1・2・10・11・8 | 別ソースのクロール実行中にソース削除(EP-05)を起動: 実行待ちの間は EP-02 `held_delete`、EP-06 は 409 `lock_held`、削除ジョブの取消は 409 `job_not_cancellable`、EP-08 は 409 `lock_in_use`。完了後に対象ソースの文書・記録・設定が消え、別ソースは残る |
+| AIT-60 | `test_60_source_deletion.py` | 5・7・6・1・2・10・11・8 | 別ソースのクロール実行中にソース削除(EP-05)を起動: 実行待ちの間は EP-02 `held_delete`、EP-06 は 409 `lock_held`、削除ジョブの取消は 409 `job_not_cancellable`、EP-08 は 409 `lock_in_use`。完了後に対象ソースの文書・記録・設定が消え、別ソースは残る。対象ソースの過去のクロールのジョブと削除ジョブは、削除後も EP-10 で読め `loreley-jobs` に残る(スキップ記録の削除は、スキップ記録を作れないため未検証) |
 | AIT-90 | `test_90_component_failures.py` | 全 | Crawler 停止: EP-13 の `crawler` が `abnormal`。EP-03〜08 は 503 `crawler_unreachable`、他の EP は 200。復旧後にクロールが成功する |
-| AIT-91 | `test_90_component_failures.py` | 全 | Indexer 停止: EP-13 の `indexer` が `abnormal`、読み取りの EP は 200。停止中に始めたクロールとソース削除は Crawler 側で `failed`(部分失敗)、`deleting` の状態の見え方。復旧後の再実行で完了する |
+| AIT-91 | `test_90_component_failures.py` | 全 | Indexer 停止: EP-13 の `indexer` が `abnormal`、読み取りの EP は 200。停止中に始めたクロールとソース削除は Crawler 側で `failed`・`failure_reason=indexer_unavailable`(`failure_detail` は「Indexer が応答しない」を含む)になる(部分失敗)。クロールのロックは解放され EP-02 の `last_crawl` がそのジョブになる。削除は `deleting` の状態の見え方を確認する。復旧後の再実行で完了する |
 | AIT-92 | `test_90_component_failures.py` | 全 | OpenSearch 停止: 読み取りの EP は 503 `unavailable`、EP-13 の `opensearch` が `abnormal`、EP-14 と `/healthz` は 200、EP-06 は 503。復旧後に 4 サービスが healthy になり、読み取りとクロールが戻る |
 
 ## テスト設計上の注意
 
 - **データの分離**: `source_id` はテストごとに作る(`it-` で始まり、半角英数字・`-` だけ。フィクスチャ `source_id`)。テストはデータ(OpenSearch 上のソース・文書・記録)を**削除しない**(削除を確認する AIT-60・AIT-91 を除く)。後始末はスタックごと `down -v` で消すことに任せている。**開発用のスタックに向けて実行しない**
-- **窓への依存(AIT-20・50・60)**: 実行中のジョブを観測・操作できるのは、ジョブがロックを持つ間だけ。Crawler は終了通知の直後に Indexer の削除結果を 1 回読み、その後ポーリング間隔ごとに読むため、ロックを持つ時間はほぼその間隔になる。そこで `compose.test.yaml` で Crawler のポーリング間隔を **10 秒**(Crawler IT は 2 秒)に、Indexer の削除ワーカーの走査間隔を **5 秒**(既定 2 秒)にして、HTTP 数回の操作(1 秒未満)が収まる窓を作っている。クロール 1 回は約 10〜12 秒かかる。操作の前に `running`(AIT-50 は `finish_notice.send_started_at` も)を観測し、窓を見逃したときは、見逃したことが分かるメッセージで失敗する。極端に遅い環境では失敗しうる。値を変えるときは、`compose.test.yaml` のコメントと `support.py` の待ちの定数も確認する
-- **検索で読む EP の反映遅れ**: EP-01・09・11、EP-02 の最終クロール・文書数は、書き込みの反映が最大約 1 秒遅れる(設計 AAA-P-6)。期待する状態になるまで、間隔 0.3 秒・上限 10 秒でポーリングしてから確認する(アサートの値は曲げない)。ID 指定で読む EP-10 とロックは即時
+- **窓への依存(AIT-20・50・60)**: 実行中のジョブを観測・操作できるのは、ジョブがロックを持つ間だけ。Crawler は終了通知の直後に Indexer の削除結果を 1 回読み、その後ポーリング間隔ごとに読むため、ロックを持つ時間はほぼその間隔になる。そこで `compose.test.yaml` で Crawler のポーリング間隔を **10 秒**(Crawler IT は 2 秒)にして、HTTP 数回の操作(1 秒未満)が収まる窓を作っている。Indexer の削除ワーカーの走査間隔は **5 秒**(既定 2 秒、Crawler IT は 1 秒)にしている。これは、Crawler の最初の確認までに Indexer の削除が終わって窓が閉じる競合に備える保険で、実測では削除ワーカーは終了通知の受理で起床し、`crawl_started_at` から削除判定の開始まで 0.4〜1.1 秒だった(走査間隔を待たない)。5 秒にした効果は未検証で、値を変えたときは再検証が要る。クロール 1 回は約 10〜12 秒かかる。操作の前に `running`(AIT-50 は `finish_notice.send_started_at` も)を観測し、窓を見逃したときは、見逃したことが分かるメッセージで失敗する。極端に遅い環境では失敗しうる。値を変えるときは、`compose.test.yaml` のコメントと `support.py` の待ちの定数も確認する
+- **検索で読む EP の反映遅れ**: EP-01・09・11、EP-02 の最終クロール・最終完了時刻(`last_completed_at`)・文書数は、検索で読むので、書き込みの反映が遅れうる。設計(AAA-P-6)は、遅れを**最大約 1 秒と推測**している(`refresh_interval` が既定の 1 秒のはずという推測)。この IT では、少なくとも 1 回の取りこぼし(EP-03 直後の EP-01 でソースが見えない)を観測したが、**最大遅延は測っておらず、`refresh_interval` の設定値も読んでいない**(結果文書 4.4・5.3)。ID 指定で読む EP-10 のジョブ本体とロックは即時。待ちの方針: **確認する値は、読む EP ごとに待ち条件に含める**(間隔 0.3 秒・上限 10 秒でポーリングしてから確認する。アサートの値は曲げない)。AIT-20 の不安定さ(結果文書 4.6 の 4 回目の失敗)は、この条件の不足(`last_completed_at` と文書数を待ち条件に入れていなかった)だった。EP-10 の `latest_for_source`・`rerunnable`(再実行の可否)、EP-02 の `delete_job` は、テストのコメントでは検索の結果から導くとされ、これらも待ち条件に含めている
 - **OpenSearch への直接書き込みは前提作りだけ**: 次の 2 か所に限る。判定は Admin API と実 Crawler の応答で行う。形式は crawler-architecture 3.3・5.1 と `infra/opensearch/schema/jobs.json` に合わせている。**Crawler・Indexer の内部の記録形式に依存する**(形式が変わるとテストが壊れ、変更に気づける)
   - AIT-51: 孤児ロック(終端ジョブの `job_id`、2 時間前の `acquired_at`)。Crawler は起動時の回復で自分のロックを消すため、実 Crawler には孤児ロックを作らせられない
   - AIT-41: スキップ記録 2 件。取得の権限エラーを macOS の bind mount で確実に作れないため。Crawler が書いた記録との形式の照合(AAPI-U-7)は未検証
 - **TTL は実時間で待つ**: AIT-21 は `last_seen_at` を書き換えず、ttl 15 秒のソースで実際に期限切れになるまで待つ(Admin API の `/healthz` の `Date` ヘッダを現在時刻に使い、ホストの時計のずれを避ける)
-- **実行中はホスト(Mac など)をスリープさせない**: 実行中にホストが止まるとコンテナも止まり、Crawler のロックのリースが切れて `lock_lost`(`lease_expired`)でクロールが失敗する(2026-11-25 に 1 回観測。結果文書 4.6)。Mac では `caffeinate -i scripts/run-api-integration-test.sh` のように実行するとよい
+- **実行中はホスト(Mac など)をスリープさせない**: 実行中にホストが止まるとコンテナも止まり、Crawler のロックのリースが切れて `lock_lost`(`lease_expired`)でクロールが失敗する、と推定している。2026-11-25 に、AIT-60 が `lock_lost`(`lease_expired`)で失敗した実行が 1 回あった。**原因はスリープと推定**(スリープの記録はない)。根拠は、pytest の経過が 318.78 秒なのに実行全体の壁時計が約 1 時間 42 分で、Crawler のログが約 1 時間 38 分途切れていたこと(結果文書 4.6)。Mac では `caffeinate -i scripts/run-api-integration-test.sh` のように実行するとよい。`caffeinate -i` 付きの 4 回(結果文書 4.6 の 3〜6 回目)では `lock_lost` は出ていない
 - **待ちは上限つきのポーリング**(`support.py` の `poll_until`): ジョブの終了 90 秒、`running` の観測 30 秒(間隔 0.2 秒)、ロックの解放 30 秒、アイドル待ち 120 秒、サービスの復旧 300 秒、検索の反映 10 秒。`sleep` に頼らない
 - **テスト間の独立**: `conftest.py` が各テストの前後で、実行中・実行待ちのジョブが 0 になるのを待つ(Job Runner は直列で、前のテストのジョブが次の窓を乱すため)。障害系は最後のファイル(`test_90_*`)に集め、止める区間の外でだけこの待ちが動く
 - **api は検索対象の文書を mount しない**: Crawler だけが `tests/integration/api/data` を `:ro` で `/data/documents` に mount する。EP-13 の `web` を `normal` にするため、api には `fixtures/web/index.html` だけのディレクトリを `/app/web` に mount する(Web UI の成果物は api のイメージに含まれない)
@@ -182,6 +185,7 @@ rm -rf tests/integration/api/data
 - EP-09 の複数ページ(26 件以上のジョブが必要)、10,000 件の窓、一部シャード障害、複数ノードの `cat.*`・`relocating`
 - `stalled=true`・`lease_expired` などのロック状態、同時実行上限・期限後のスレッド(AAA-U-7・10)、`ClientDisconnect`
 - 入れ子のマウント・`root_path`(BAPI-U-2)、AAPI-U-7(Crawler が書いたスキップ記録の `existence`)、`summary_pending`(LLM 要約の実装後)
+- EP-07 の、終了通知の送信前の実行中取消(`cancel_after_finish_notice=false`。登録途中は `partial=true`)、ソース削除でのスキップ記録の削除(AIT-60)
 
 ## ファイル構成
 

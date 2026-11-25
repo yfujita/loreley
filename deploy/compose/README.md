@@ -5,9 +5,9 @@ OpenSearch・Indexer・Crawler・api を起動する compose 構成(MVP)。`comp
 > **確認状況**: 特記がない限り、次の環境で実機確認した事実だけを書いている。「未確認」「想定(未確認)」と書いた箇所は、実機で確認していない。
 >
 > - 確認環境: macOS(x86_64)、Docker 20.10.13(Docker Desktop。VM のメモリ約 3.8GiB、CPU 2)、docker compose v2.3.3
-> - 結合テスト(`tests/integration/indexer`・`tests/integration/crawler`)は、この構成を専用のプロジェクト名 `loreley-it` で起動して実行する。手順と結果は [tests/integration/indexer/README.md](../../tests/integration/indexer/README.md)・[tests/integration/crawler/README.md](../../tests/integration/crawler/README.md) を参照
+> - 結合テスト(`tests/integration/indexer`・`tests/integration/crawler`・`tests/integration/api`)は、この構成を専用のプロジェクト名 `loreley-it` で起動して実行する。手順と結果は [tests/integration/indexer/README.md](../../tests/integration/indexer/README.md)・[tests/integration/crawler/README.md](../../tests/integration/crawler/README.md)・[tests/integration/api/README.md](../../tests/integration/api/README.md) を参照
 > - `crawler` サービス(2026-11-16 に追加)の確認は、Crawler の結合テストの手動起動と一括スクリプトによる(結果は [crawler-integration.md](../../docs/v0.x/test-results/crawler-integration.md))。`docker compose up -d --build`(サービス名なし)を `.env` の設定なしで直接実行した確認は未実施
-> - `api` サービス(2026-11-25 に追加)の確認は、`docker compose config` による環境変数の展開と publish 先の確認、および Admin API の結合テストの一括スクリプトによる(結果は [admin-api-integration.md](../../docs/v0.x/test-results/admin-api-integration.md))。ただし結合テストは `web` の mount(`tests/integration/api/fixtures/web`)を付けて実行しており、mount なしで `web` が `abnormal` になることの実機確認は未実施
+> - `api` サービス(2026-11-25 に追加)の確認は、`docker compose config` による環境変数の展開と publish 先の確認、および Admin API の結合テストの一括スクリプトによる(結果は [admin-api-integration.md](../../docs/v0.x/test-results/admin-api-integration.md))。ただし結合テストは `web` の mount(`tests/integration/api/fixtures/web`)を付けて実行しており、mount なしで `web` が `abnormal` になることの実機確認は未実施。`docker compose up -d --build`(サービス名なし)を `api` を含めて直接実行した確認も未実施(結合テストのスクリプトは、サービス名を指定して起動する)
 
 ## 構成
 
@@ -91,7 +91,7 @@ docker compose down -v                # 停止してデータ(名前付きボリ
 - **healthcheck**: イメージの `HEALTHCHECK`(`GET /healthz`、`start-period` 180 秒)をそのまま使う。Crawler は起動時の回復(OpenSearch への読み書き)が終わるまで HTTP を開かないため、healthy まで時間がかかりうる。結合テスト用の上書き(`tests/integration/crawler/compose.test.yaml`)で `interval` と `start_period` だけを指定しても、イメージの `test` は保持された(`docker inspect` で確認)ので、`compose.yaml` に `test` は書いていない
 - **停止**: `stop_grace_period: 30s`(Crawler の設計の目安。Docker の既定 10 秒では足りないことがある)。実行中のジョブがある状態での `docker stop` の所要時間は**未実施**
 - **検索対象のディレクトリ(`CRAWLER_DOCUMENTS_DIR`)**: ホスト側のパスを、コンテナ内の `/data/documents` に **`:ro`** で mount する。データソース設定の `connector_config.root` には、**コンテナ内のパス**(例 `/data/documents/<source_id>`)を書く。Crawler は uid 10001 で動くので、ファイルは others が読める権限(ディレクトリは実行権限も)にする。注意点:
-  - **未指定だと `./documents`(`deploy/compose/documents`)が mount され、無ければ `up` のときに自動作成される**(`.gitignore` には入れていない)。パスを打ち間違えても、`up` は失敗せず、空のディレクトリが mount されて、クロールは 0 件列挙になる(コードと compose の読解による。実機では未確認)。Crawler を使うときは、`.env` か環境変数で、存在するディレクトリを指定する。結合テストでは、スクリプトが `tests/integration/crawler/data` の絶対パスを渡す
+  - **未指定だと `./documents`(`deploy/compose/documents`)が mount され、無ければ `up` のときに自動作成される**(`.gitignore` には入れていない)。パスを打ち間違えても、`up` は失敗せず、空のディレクトリが mount されて、クロールは 0 件列挙になる(コードと compose の読解による。実機では未確認)。Crawler を使うときは、`.env` か環境変数で、存在するディレクトリを指定する。結合テストでは、スクリプトが `tests/integration/crawler/data`(api の結合テストは `tests/integration/api/data`)の絶対パスを渡す
   - **`:ro` が守るのはホスト側のファイル**(Crawler が書き換えない)。FileSystem Connector の `root` はコンテナ内の任意の絶対パスを受け付け、`/data/documents` 配下に制限されない(コードからの推測。実行は未確認)。設定を登録できる者は、コンテナ内の読める範囲を列挙対象にできる(Crawler API は認証なしのため、本番用の compose はホストに公開しない。次節)
   - **パスに `:` を含むと使えない**(短縮形の `ホスト側:コンテナ側:ro` の区切りと衝突するため。実機では未確認)
   - 相対パスは、`compose.yaml` のあるディレクトリ(`deploy/compose`)が基準になる。結合テストのスクリプトは絶対パスで渡す
@@ -104,10 +104,12 @@ docker compose down -v                # 停止してデータ(名前付きボリ
 - **接続先**: OpenSearch・Crawler・Indexer へは、内部ネットワークのサービス名(`http://opensearch:9200`・`http://crawler:8001`・`http://indexer:8000`)で接続する。api が Crawler を呼ぶので、Crawler をホストに公開する必要はない
 - **索引名**: `sources`・`jobs` は Crawler と、`deletions` は Indexer と同じ変数から渡す(上の表)。検索インデックスは、エイリアスを渡す。実体名(`opensearch-init` の `SEARCH_INDEX_NAME`)は渡さない。再インデックスでエイリアスを付け替えたあとに、古い索引を読まないため
 - **Crawler と同じ値で渡す設定**: cron のタイムゾーンと受付途中のロックの猶予は、1 つの変数から Crawler と api の両方に渡す(上の表)。api は Crawler の値を読めないので、この変数で揃える
-- **`LORELEY_API_OPENAPI_ENABLED` は渡さない**: 既定(無効)のまま。`/openapi.json` は公開されない
+- **`LORELEY_API_OPENAPI_ENABLED` は渡さない**: 既定(無効)のまま。`/api/admin/v1/openapi.json` は公開されない(結合テストの AIT-01 で 404 を確認)
 - **検索対象のディレクトリは mount しない**: `:ro` で mount するのは `crawler` だけ
 - **`web` が `abnormal` に見える(既知。未対応)**: api の状態確認は、`LORELEY_API_WEB_DIST_DIR`(既定 `/app/web`)直下の `index.html` が読めるかで `web` を判定する。現在の `apps/api` のイメージは Web UI のビルド成果物を含まない(`apps/api/Dockerfile` の冒頭に明記。HO-36 は未対応)ため、この compose で起動した api は、`web` を `abnormal` と報告する(コードと Dockerfile の読解による)。api 自身や他のコンポーネントの異常ではない
-- **起動直後の見え方**(設計書 `api-base-design-v0.1.md` の 6 章・9.2 の HO-45): Indexer は起動時の整理が終わるまで接続を拒否するように見え、Crawler は起動時の回復が終わるまで接続できない(最大約 3 分。イメージの `--start-period` 180 秒に基づく値で、設計書も仮値としている)。このあいだ、api の状態確認ではその 2 つが異常に見え、Crawler への操作は 503 になりうる。回復すれば自動で応じる(再起動は要らない)。Crawler・Indexer が停止している間も、読み取りの API は OpenSearch だけで応答する(設計書の記述。Admin API の結合テストの Crawler 停止・Indexer 停止の区間(AIT-90・91)で、この compose での実機確認を行った。結果は [admin-api-integration.md](../../docs/v0.x/test-results/admin-api-integration.md))
+- **起動直後の見え方**(設計書 `api-base-design-v0.1.md` の 6 章・9.2 の HO-45)
+  - 設計書の記述(**実機未確認**): Indexer は起動時の整理が終わるまで接続を拒否するように見え、Crawler は起動時の回復が終わるまで接続できない(最大約 3 分。イメージの `--start-period` 180 秒に基づく値で、設計書も仮値としている)。このあいだ、api の状態確認ではその 2 つが異常に見え、Crawler への操作は 503 になりうる。回復すれば自動で応じる(再起動は要らない)。結合テストはすべてのサービスが healthy になってから始めるので、この起動直後の見え方は確認していない
+  - 実機確認したこと: Crawler・Indexer を停止している間も、読み取りの API は OpenSearch だけで応答する(Admin API の結合テストの AIT-90・91。この compose での確認。結果は [admin-api-integration.md](../../docs/v0.x/test-results/admin-api-integration.md))
 - **認証がない・公開範囲**: 次の「ループバックのみ公開する理由」を読むこと。**`API_HOST_PORT` はホスト側のポート番号を変えるだけで、バインド先は変わらない**。`ports` を `0.0.0.0` や、ホストを省いた書き方に変えない
 
 ## ループバックのみ公開する理由

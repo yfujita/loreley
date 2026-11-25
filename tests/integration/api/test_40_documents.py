@@ -78,11 +78,12 @@ def test_review_tabs_count_page_and_order_the_extract_failed_and_oversize_docume
     - 既定の並び(`-last_seen_at`)は、直読みの `last_seen_at` の降順で、同じ時刻は `document_id` の
       昇順(B 2.1。1 回のクロールの文書は `last_seen_at` が同じなので、同順位の規則が効く)。
       `sort=last_seen_at` は昇順でも同順位は `document_id` の昇順。`items_per_page=50` は 26 件を
-      同じ順で 1 ページに返す。各行の `external_id`・`mime_type`(`application/pdf`)・`size`・`title`・
-      日時は、検索インデックスの値と同じ。
+      同じ順で 1 ページに返す。各行の `external_id` は、独立実装でハッシュした値が行の `document_id` に
+      一致し、`mime_type`(`application/pdf`)・`size`・`title`・日時は、検索インデックスの値と同じ。
     - `oversize` タブは 2 件で、既定の並び(`-last_detected_at`、同順位は `document_id` の昇順)。
-      各行の `external_id`・`detected_by`・`size`・日時・`last_job_id` は、`loreley-jobs` の原本サイズ
-      超過記録と同じで、`last_job_id` はこのクロール。`skipped`・`summary_pending` は 0 件。
+      各行の `external_id` は、独立実装でハッシュした値が行の `document_id` に一致し、`detected_by`・
+      `size`・日時・`last_job_id` は、`loreley-jobs` の原本サイズ超過記録と同じで、`last_job_id` は
+      このクロール。`skipped`・`summary_pending` は 0 件。
     - EP-10: `registration` の `enumerated_count=31`・`created_count=29`・`oversize_count=2`・
       `error_count=26`・`skipped_count=0`(抽出失敗と原本サイズ超過はジョブの状態に影響しない。
       crawler-architecture 4.2・7.7)。
@@ -135,20 +136,27 @@ def test_review_tabs_count_page_and_order_the_extract_failed_and_oversize_docume
         f"{sorted(last_seen_values)}"
     )
 
-    # tab_counts・document_count(検索で読むので、反映を待つ)
-    first_page = wait_for_document_list(
-        api,
-        source_id,
-        lambda body: body["total"] == BROKEN_PDF_COUNT and body["document_count"] == document_count,
-        what="EP-11 counting the extract_failed documents and the registered documents",
-        tab="extract_failed",
-    )
-    assert first_page["tab_counts"] == {
+    # tab_counts・document_count(4 つのタブの件数は別々の検索で読むので、全部が揃うまで待つ)
+    expected_tab_counts = {
         "skipped": 0,
         "extract_failed": BROKEN_PDF_COUNT,
         "oversize": OVERSIZE_FILE_COUNT,
         "summary_pending": 0,
-    }, f"the counts of the 4 tabs must match the 4 kinds of documents: {first_page['tab_counts']}"
+    }
+    first_page = wait_for_document_list(
+        api,
+        source_id,
+        lambda body: (
+            body["total"] == BROKEN_PDF_COUNT
+            and body["document_count"] == document_count
+            and body["tab_counts"] == expected_tab_counts
+        ),
+        what="EP-11 counting the 4 tabs, the extract_failed documents and the registered documents",
+        tab="extract_failed",
+    )
+    assert first_page["tab_counts"] == expected_tab_counts, (
+        f"the counts of the 4 tabs must match the 4 kinds of documents: {first_page['tab_counts']}"
+    )
     assert first_page["unavailable"] == {}, f"nothing may be unavailable: {first_page}"
     row = wait_for_source_row(
         api,
@@ -201,7 +209,9 @@ def test_review_tabs_count_page_and_order_the_extract_failed_and_oversize_docume
     # 行の項目は検索インデックスの値と同じ
     for item in all_in_one_page["items"]:
         stored = failed_hits[item["document_id"]]
-        assert item["external_id"] in broken_paths, f"external_id: {item}"
+        assert registered_source.document_id_of(item["external_id"]) == item["document_id"], (
+            f"document_id must be the independent hash of external_id: {item}"
+        )
         assert item["mime_type"] == "application/pdf" == stored["mime_type"], f"mime_type: {item}"
         assert item["size"] == stored["size"], f"size must be stored one: {item}"
         assert item["title"] == stored["title"], f"title must be the stored one: {item}"
@@ -225,7 +235,9 @@ def test_review_tabs_count_page_and_order_the_extract_failed_and_oversize_docume
     )
     for item in oversize["items"]:
         stored = oversize_records[item["document_id"]]
-        assert item["external_id"] in oversize_paths, f"external_id: {item}"
+        assert registered_source.document_id_of(item["external_id"]) == item["document_id"], (
+            f"document_id must be the independent hash of external_id: {item}"
+        )
         assert (item["detected_by"], item["size"], item["last_job_id"]) == (
             stored["detected_by"],
             stored["size"],

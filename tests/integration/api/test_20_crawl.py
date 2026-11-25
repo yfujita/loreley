@@ -71,7 +71,8 @@ def test_crawl_holds_the_lock_while_running_and_updates_the_states_when_finished
     前提: 登録済みのソースに md ファイル 3 つ。
     手順:
       1. EP-06 を呼ぶ(202)。EP-10 で `running` を観測する。
-      2. 実行中に、EP-02・EP-09(`status=active`)・EP-06(`force_delete=true` つきで再送)・EP-05・EP-08 を呼ぶ。
+      2. 実行中に、EP-02(ロック)・EP-06(`force_delete=true` つきで再送)・EP-05・EP-08 を呼び、続いて
+         検索の反映を待ちながら EP-02(最終クロール)・EP-09(`status=active`)を読む。
       3. ジョブの終了とロックの解放を待つ。
       4. EP-10・EP-02・EP-01 を読み、`loreley-jobs`・検索インデックスと突き合わせる。
 
@@ -86,8 +87,9 @@ def test_crawl_holds_the_lock_while_running_and_updates_the_states_when_finished
       `lock_state=held_crawl`。4.3)。
     - 手順 4(終了後): EP-10 は `succeeded`・`registration` が 3 件作成(`phase=final`)・
       `deletion.confirmation=confirmed`・削除結果は `deleted`(削除 0 件)・`latest_for_source=true`・
-      `rerunnable=false`(`not_failed`)・`stalled=false`・`cancellable=false`。`loreley-jobs` の
-      ジョブ記録と同じ値(状態・登録件数)。EP-02 は `lock.state=none`・`last_crawl`・
+      `rerunnable=false`(`not_failed`)・`stalled=false`・`cancellable=false`・`force_delete=false`・
+      `rewrite_mode=false`(実行中の 409 で再送した `force_delete=true` は、走行中のジョブに適用されない)。
+      `loreley-jobs` のジョブ記録と同じ値(状態・登録件数)。EP-02 は `lock.state=none`・`last_crawl`・
       `last_completed_at`(ジョブの `finished_at`)・`index.document_count=3`。EP-01 のこの行は、
       同じ `last_crawl`・`document_count=3`。件数は検索インデックスを直接読んだ値と一致する。
 
@@ -119,8 +121,20 @@ def test_crawl_holds_the_lock_while_running_and_updates_the_states_when_finished
     _assert_held_by_the_running_crawl(api, source_id, job_id)
 
     # 3. 終了とロックの解放を待つ
-    job = wait_for_job_terminal(api, job_id)
+    wait_for_job_terminal(api, job_id)
     wait_for_lock_released(opensearch, source_id)
+    # ジョブ本体(EP-10)は ID 指定で即時に読めるが、`latest_for_source`・`rerunnable` は検索の結果から
+    # 導くので、反映(最大約 1 秒)を待つ
+    job = poll_until(
+        lambda: expect_json(api.get_job(job_id), 200),
+        lambda body: (
+            (body["latest_for_source"], body["rerunnable"], body["rerun_blocked_reason"])
+            == (True, False, "not_failed")
+        ),
+        timeout_secs=READ_LAG_TIMEOUT_SECONDS,
+        poll_interval_secs=READ_LAG_POLL_INTERVAL_SECONDS,
+        what="EP-10 marking the finished crawl as the latest and not rerunnable",
+    )
 
     # 4. 終了後の EP-10
     assert job["status"] == "succeeded", (
@@ -136,6 +150,10 @@ def test_crawl_holds_the_lock_while_running_and_updates_the_states_when_finished
         "not_failed",
     ), f"the latest succeeded job is not rerunnable: {job}"
     assert job["cancel_after_finish_notice"] is False, f"nothing was cancelled: {job}"
+    # 実行中に送った 409 の再送(`force_delete=true`)は、走行中のジョブに適用されていない
+    assert (job["force_delete"], job["rewrite_mode"]) == (False, False), (
+        f"the options of the rejected resend must not reach the running job: {job}"
+    )
     assert job["warnings"] == [], f"no warning is expected: {job['warnings']}"
     registration = job["registration"]
     assert registration == {
@@ -329,36 +347,18 @@ def test_force_delete_and_rewrite_mode_reach_the_indexer_and_delete_what_the_rat
 
 
 def _assert_held_by_the_running_crawl(api: AdminApi, source_id: str, job_id: str) -> None:
-    """実行中のジョブがロックを持つ間の、EP-02・09 の状態と、EP-06・05・08 の 409(窓の中で呼ぶ)。"""
-    # ロックは ID 指定の読み取り(即時に見える)で、最終クロールと一覧は検索(反映が最大約 1 秒遅れる)
-    detail = wait_for_source_detail(
-        api,
-        source_id,
-        lambda body: body["last_crawl"] is not None and body["last_crawl"]["status"] == "running",
-        what="EP-02 showing the running crawl",
-    )
+    """実行中のジョブがロックを持つ間の、EP-02・09 の状態と、EP-06・05・08 の 409(窓の中で呼ぶ)。
+
+    ID 指定で読むロックと、それに基づく 409 を先に確かめる(即時に見えるので、窓の早い時点で済む)。
+    反映の待ちがある検索系(EP-02 の最終クロール、EP-09)は後に回す。
+    """
+    detail = expect_json(api.get_source(source_id), 200)
     assert detail["lock"]["state"] == "held_crawl", f"the lock must be held by the crawl: {detail}"
     assert (detail["lock"]["job"]["job_id"], detail["lock"]["job"]["status"]) == (
         job_id,
         "running",
     ), f"the lock must point to the running job: {detail['lock']}"
     assert detail["lock"]["acquired_at"] is not None, f"acquired_at must be set: {detail['lock']}"
-    assert detail["last_crawl"]["job_id"] == job_id, f"last_crawl must be this job: {detail}"
-
-    active = poll_until(
-        lambda: expect_json(api.list_jobs(status="active", source_id=source_id), 200),
-        lambda body: [item["status"] for item in body["items"]] == ["running"],
-        timeout_secs=READ_LAG_TIMEOUT_SECONDS,
-        poll_interval_secs=READ_LAG_POLL_INTERVAL_SECONDS,
-        what="EP-09 listing the running job",
-    )
-    assert [item["job_id"] for item in active["items"]] == [job_id], (
-        f"EP-09 must list only the running job: {active['items']}"
-    )
-    item = active["items"][0]
-    assert (item["status"], item["stalled"], item["cancellable"]) == ("running", False, True), (
-        f"a running job within its lease is cancellable and not stalled: {item}"
-    )
 
     crawl_conflict = expect_error(
         api.start_crawl(source_id, {"force_delete": True}),
@@ -388,6 +388,32 @@ def _assert_held_by_the_running_crawl(api: AdminApi, source_id: str, job_id: str
         api.release_lock(source_id), 409, "lock_in_use", expected_retryable=False
     )
     _assert_existing_job(release_conflict["details"], job_id)
+
+    # 最終クロールと一覧は検索で読む(反映が最大約 1 秒遅れる)ので、期待する状態まで待つ
+    last_crawl_detail = wait_for_source_detail(
+        api,
+        source_id,
+        lambda body: body["last_crawl"] is not None and body["last_crawl"]["status"] == "running",
+        what="EP-02 showing the running crawl",
+    )
+    assert last_crawl_detail["last_crawl"]["job_id"] == job_id, (
+        f"last_crawl must be this job: {last_crawl_detail}"
+    )
+
+    active = poll_until(
+        lambda: expect_json(api.list_jobs(status="active", source_id=source_id), 200),
+        lambda body: [item["status"] for item in body["items"]] == ["running"],
+        timeout_secs=READ_LAG_TIMEOUT_SECONDS,
+        poll_interval_secs=READ_LAG_POLL_INTERVAL_SECONDS,
+        what="EP-09 listing the running job",
+    )
+    assert [item["job_id"] for item in active["items"]] == [job_id], (
+        f"EP-09 must list only the running job: {active['items']}"
+    )
+    item = active["items"][0]
+    assert (item["status"], item["stalled"], item["cancellable"]) == ("running", False, True), (
+        f"a running job within its lease is cancellable and not stalled: {item}"
+    )
 
 
 def _assert_existing_job(details: dict[str, Any], job_id: str) -> None:

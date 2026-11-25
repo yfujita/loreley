@@ -24,6 +24,8 @@
 データについて:
     AIT-30・31 は、読み取りだけを行うので、モジュールで 1 回作った 3 つのソースを共有する
     (2 回クロール・1 回クロール・0 回クロール)。クロールの時間(1 回約 11 秒)を節約するため。
+    AIT-30 は、登録ソースの総数が `terms` 集計の既定の `size`(10)を超えた状態を作るため、足りない分は
+    クロールしない(登録だけの)ソースで補う。
 """
 
 from collections.abc import Iterator
@@ -35,6 +37,7 @@ import pytest
 
 from support import (
     DELETIONS_INDEX,
+    EXPECTED_INDEX_NAMES,
     JOBS_INDEX,
     READ_LAG_POLL_INTERVAL_SECONDS,
     READ_LAG_TIMEOUT_SECONDS,
@@ -53,18 +56,15 @@ from support import (
     wait_for_job_list,
 )
 
-# `loreley-documents` の実体名(エイリアスの背後)を含む、opensearch-init が作る 4 つの索引(AIT-01 と同じ)。
-EXPECTED_INDEX_NAMES = {
-    "loreley-documents-000001",
-    "loreley-deletions",
-    "loreley-jobs",
-    "loreley-sources",
-}
 # EP-12 の `indices[]` の並び(状態の悪い順 → 名前の昇順。admin-api 7.1)。
 _INDEX_STATUS_RANK = {"red": 0, "yellow": 1, "green": 2}
 _SHARD_ROLE_BY_PRIREP = {"p": "primary", "r": "replica"}
 _JOB_BRIEF_DATE_KEYS = ("queued_at", "started_at", "finished_at")
 _COMPLETED_STATUSES = ("succeeded", "partially_succeeded")
+# AIT-30 の時点の登録ソースの総数の下限。`terms` 集計の既定の `size`(10)を超え、`size` が足りないと
+# 11 件目以降の行の値が欠ける(`last_crawl` が null・件数 0 になる)状態を作る。
+MIN_REGISTERED_SOURCES = 12
+TERMS_DEFAULT_SIZE = 10
 
 
 @dataclass(frozen=True)
@@ -83,7 +83,11 @@ class CrawledSources:
 
 @pytest.fixture(scope="module")
 def crawled_sources(api: AdminApi, opensearch: OpenSearchProbe) -> Iterator[CrawledSources]:
-    """2 回・1 回・0 回クロールしたソースを作る(2 回目は md を 1 件足して、文書数を変える)。"""
+    """2 回・1 回・0 回クロールしたソースを作る(2 回目は md を 1 件足して、文書数を変える)。
+
+    登録ソースの総数が `MIN_REGISTERED_SOURCES` に満たなければ、クロールしないソースを登録して補う
+    (EP-01 の `terms` 集計が、既定の `size` を超える件数でも全行を返すことを AIT-30 が確かめるため)。
+    """
     twice = SourceDirectory(unique_id("q-twice"))
     once = SourceDirectory(unique_id("q-once"))
     never = SourceDirectory(unique_id("q-never"))
@@ -92,6 +96,10 @@ def crawled_sources(api: AdminApi, opensearch: OpenSearchProbe) -> Iterator[Craw
         for directory in directories:
             directory.create()
             register_source(api, directory)
+        shortfall = MIN_REGISTERED_SOURCES - len(opensearch.source_config_records())
+        for _ in range(max(shortfall, 0)):
+            # クロールしないので、ディレクトリは作らない(ジョブも文書もない行になる)
+            register_source(api, SourceDirectory(unique_id("q-registered-only")))
         twice.write("t1.md", b"# t1\n\ntext of t1\n")
         twice.write("t2.md", b"# t2\n\ntext of t2\n")
         once.write("o1.md", b"# o1\n\ntext of o1\n")
@@ -126,7 +134,8 @@ def test_source_listing_matches_the_rows_computed_independently_from_opensearch(
 
     【前提と手順】
     前提: 2 回クロールしたソース(2 回目で文書が 3 件に増える)、1 回クロールしたソース、一度もクロール
-    していないソースと、それまでのテストが作ったすべてのソース。ジョブはすべて終端(conftest が待つ)。
+    していないソースと、それまでのテストが作ったすべてのソース。登録ソースの総数は 12 件以上(足りない分は
+    クロールしない登録だけのソース。`terms` の既定 `size` 10 を超える)。ジョブはすべて終端(conftest が待つ)。
     手順: EP-01 を呼ぶ。`loreley-sources`・`loreley-jobs`・検索インデックスを直接読んで行ごとの期待値を
     計算し、一致するまで(反映の遅れの分だけ)待つ。
 
@@ -138,11 +147,11 @@ def test_source_listing_matches_the_rows_computed_independently_from_opensearch(
     - 2 回クロールしたソース: `last_crawl` は 2 回目のジョブ(`terms` 集計の `top_hits` が最新を選ぶ)、
       `last_completed_at` はその `finished_at`、文書数は 3。1 回: そのジョブ、文書数 2。未クロール:
       `last_crawl`・`last_completed_at` は `null`、文書数 0。
-    - 最上位の `unavailable` は `{}`。
+    - 行数は 10 を超え(`terms` の既定 `size` を超える件数でも、全行が返る)、最上位の `unavailable` は `{}`。
 
     【単体テストでは確認できず実機で確認する点】
-    実 OpenSearch での `terms` 集計の `size`(ソース数)・`top_hits` の並び・`max` 集計の値(エポック
-    ミリ秒から日時への変換)・件数の集計が、全行で独立計算と一致すること(AAA-U-1)。
+    実 OpenSearch での `terms` 集計の `size`(ソース数。10 を超える件数)・`top_hits` の並び・`max` 集計の
+    値(エポックミリ秒から日時への変換)・件数の集計が、全行で独立計算と一致すること(AAA-U-1)。
     """
 
     def snapshot() -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
@@ -162,6 +171,11 @@ def test_source_listing_matches_the_rows_computed_independently_from_opensearch(
     )
 
     assert listing["unavailable"] == {}, f"the top-level unavailable must be empty: {listing}"
+    # 全行が独立計算と一致しても、行数が `terms` の既定 size 以下では、size の不足を見逃す
+    assert len(actual_rows) > TERMS_DEFAULT_SIZE, (
+        f"more than {TERMS_DEFAULT_SIZE} sources must be listed to cover the terms size: "
+        f"{len(actual_rows)}"
+    )
     source_ids = [row["source_id"] for row in actual_rows]
     assert source_ids == sorted(source_ids), (
         f"EP-01 must list sources in ascending order: {source_ids}"
@@ -248,15 +262,33 @@ def test_job_list_filters_sorts_pages_and_marks_the_latest_job(
             f"a finished job is neither stalled nor cancellable: {item}"
         )
 
-    descending = expect_json(api.list_jobs(source_id=twice_id, sort="-queued_at"), 200)
-    ascending = expect_json(api.list_jobs(source_id=twice_id, sort="queued_at"), 200)
+    descending = wait_for_job_list(
+        api,
+        lambda body: [item["job_id"] for item in body["items"]] == [second_job_id, first_job_id],
+        what="EP-09 listing the 2 jobs newest first with sort=-queued_at",
+        source_id=twice_id,
+        sort="-queued_at",
+    )
+    ascending = wait_for_job_list(
+        api,
+        lambda body: [item["job_id"] for item in body["items"]] == [first_job_id, second_job_id],
+        what="EP-09 listing the 2 jobs oldest first with sort=queued_at",
+        source_id=twice_id,
+        sort="queued_at",
+    )
     assert [item["job_id"] for item in descending["items"]] == [second_job_id, first_job_id]
     assert [item["job_id"] for item in ascending["items"]] == [first_job_id, second_job_id], (
         f"sort=queued_at must reverse the order: {ascending['items']}"
     )
 
     # status の絞り込み
-    succeeded = expect_json(api.list_jobs(source_id=twice_id, status="succeeded"), 200)
+    succeeded = wait_for_job_list(
+        api,
+        lambda body: body["total"] == 2,
+        what="EP-09 counting the 2 succeeded jobs",
+        source_id=twice_id,
+        status="succeeded",
+    )
     assert succeeded["total"] == 2, f"both crawls succeeded: {succeeded}"
     for status in ("failed", "active"):
         none_of_status = expect_json(api.list_jobs(source_id=twice_id, status=status), 200)
@@ -265,7 +297,13 @@ def test_job_list_filters_sorts_pages_and_marks_the_latest_job(
         )
 
     # 範囲外のページ
-    beyond_last_page = expect_json(api.list_jobs(source_id=twice_id, page=2), 200)
+    beyond_last_page = wait_for_job_list(
+        api,
+        lambda body: body["total"] == 2,
+        what="EP-09 counting the 2 jobs on a page past the end",
+        source_id=twice_id,
+        page=2,
+    )
     assert (beyond_last_page["items"], beyond_last_page["total"], beyond_last_page["page"]) == (
         [],
         2,
