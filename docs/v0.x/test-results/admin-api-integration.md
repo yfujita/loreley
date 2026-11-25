@@ -206,7 +206,7 @@ AIT-20 の修正後のコードで、クリーンな状態から 2 回連続で�
 - **EP-07 の、終了通知の送信前の実行中取消**(`cancel_after_finish_notice=false`。登録途中は `partial=true`): AIT-50 は、実行待ちの取消と、終了通知の送信後の実行中の取消だけ
 - **ソース削除でのスキップ記録の削除**(crawler-architecture 8.1): AIT-60 の対象ソースにはスキップ記録がない(実 Crawler にスキップを起こさせられない。AIT-41 と同じ理由)。文書・原本サイズ超過記録・削除記録・設定の削除と、ジョブ記録が残ることは確認した
 - **`--keep` でスタックを残したままの pytest の繰り返し**: テストが作るソースは削除されず積み上がり、`support.py` の `OpenSearchProbe` のソース全件読み(上限 100 件)に達すると失敗しうる。繰り返すときは、100 件に達する前にスタックを作り直す(README に記載。この上限に達した実行はない。推測)
-- `terms` の `size` が既定(10)を大きく超える規模(数百件以上。api 側の取得上限 `MAX_SOURCES`=10,000 付近。`apps/api/src/loreley_api/infrastructure/opensearch/ports.py:26`。`size` に取得対象のソース数を渡す箇所は `apps/api/src/loreley_api/infrastructure/opensearch/queries.py:111`・`:223`)、`mget`・`msearch` の応答の形の専用の確認、スレッド間共有(AAA-U-2)、`max_result_window` の設定値そのもの(AAA-U-3)
+- `terms` の `size` が既定(10)を大きく超える規模(AIT-30 の下限は 11 件ちょうどなので、`size` が 10 以外の固定値(20・50 など)に退行した場合も検出できない。数百件以上。api 側の取得上限 `MAX_SOURCES`=10,000 付近。`apps/api/src/loreley_api/infrastructure/opensearch/ports.py:26`。`size` に取得対象のソース数を渡す箇所は `apps/api/src/loreley_api/infrastructure/opensearch/queries.py:111`・`:223`)、`mget`・`msearch` の応答の形の専用の確認、スレッド間共有(AAA-U-2)、`max_result_window` の設定値そのもの(AAA-U-3)
 - 起動直後に Crawler が回復中(最大約 3 分。HO-45)の間の api の見え方(IT は全サービスが healthy になるのを待ってから始める)。`web` の成果物を mount しないときの EP-13(`deploy/compose/README.md` の「`web` が `abnormal` に見える」注記は、コードの読解による。実機は未確認のまま)
 - `OPENAPI_ENABLED=true` のときの動作、認証・CSRF(スコープ外)
 - 受付途中の猶予(`LORELEY_ADMITTING_LOCK_GRACE_SECONDS`)の Crawler と api での実効の一致(HO-44。`docker compose config` で同じ変数から渡ることは確認済み。ずれたときの表示と操作の食い違いは IT で確認していない)
