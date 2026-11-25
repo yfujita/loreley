@@ -9,7 +9,7 @@
 #   読み取り専用で mount する。Indexer だけを起動したいときは、サービス名を指定する:
 #   docker compose up -d --build opensearch opensearch-init indexer
 #   api は opensearch と opensearch-init だけを待つ(crawler・indexer が落ちていても起動する)。
-#   起動直後は、crawler・indexer が接続できるようになるまで、api の画面の状態は「異常」に見える。
+#   起動直後は、crawler・indexer が接続できるようになるまで、api の画面の状態は「異常」に見える(設計書の記述。実機未確認)。
 # 停止(データは残す): docker compose down
 # 停止(データも消す): docker compose down -v
 #
