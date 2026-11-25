@@ -196,3 +196,50 @@ OpenSearch と opensearch-py の更新(タスク `20261113_upgrade_opensearch`)�
 
 - 所要時間の延びの原因(上記)。
 - 4.3 の「未実施」の項目は、変わらず未実施。
+
+## 10. 実行スクリプトの安全性の統一と排他ロック(再実行の記録。2026-11-26)
+
+タスク `20261125_harden_it_run_scripts` で、Crawler・Indexer・api の実行スクリプト 3 本を、同じ安全性の方針に揃え、共通の排他ロックで同時実行を拒否するようにした。そのうえで Indexer の結合テストを再実行した。1〜9 章の結果は、履歴としてそのまま残す。
+
+変更した資材(いずれも**未コミット**。基準コミットは `96a9b52`):
+
+- `scripts/lib/it-common.sh`(新規): 3 本の実行スクリプトの共通処理(排他ロック・事前確認・起動と待機・後始末)
+- `scripts/run-indexer-integration-test.sh`: 共通ファイルへ移行。次を追加・変更した
+  - テストの接続先 URL(`LORELEY_IT_{OPENSEARCH,INDEXER}_URL`)の固定
+  - 事前確認の追加: `loreley-it` のコンテナ・名前付きボリュームの残りの検出(`docker ps -a`・`docker volume ls` が失敗したときも中止)、ポート使用中の相手の表示
+  - 後始末(`down -v`)に失敗したときの終了コード 11
+  - 排他ロック
+- `scripts/run-crawler-integration-test.sh`・`scripts/run-api-integration-test.sh`: 同じく共通ファイルへ移行([crawler-integration.md](crawler-integration.md) の 9 章)
+
+| 項目 | 内容 |
+| --- | --- |
+| 実施日・実施者 | 2026-11-26。Claude Code(メインエージェント)。ユーザー指示のもとで実施 |
+| 実施した時点のコード | 基準コミット `96a9b52` の作業ツリー(上の変更は未コミット) |
+| ホスト・実行方法 | macOS。`caffeinate -i` を付け、`scripts/run-indexer-integration-test.sh`(uv 経由の既定起動)を実行した。環境(実行後に同じホストで確認): macOS 15.8.3(x86_64)・Docker 20.10.13・compose v2.3.3・uv 0.13.8 |
+
+### 10.1 全件実行の結果
+
+**40 passed in 17.19s**、終了コード 0(スクリプト全体で 93 秒)。実行後にコンテナ・ボリューム・ロックなし。`skipped`・`deselected`・`xfailed`・`warnings` の行なし。ログ: `tests/integration/indexer/results/pytest-20261126-042111.log`。他プロジェクトのコンテナ・ボリューム(`opensearch-opensearch-1` など)は、各実行の前後で変化がなかった。
+
+### 10.2 この IT に関わる検証
+
+| 検証 | 結果 |
+| --- | --- |
+| 後始末の失敗(終了コード 11)と URL の固定 | `docker compose down` だけを失敗させる偽の `docker` と、`LORELEY_IT_{OPENSEARCH,INDEXER,CRAWLER,API}_URL=http://127.0.0.1:9999` を指定し、`-k test_01` で実行。`4 passed, 36 deselected`、終了コード **11**。スタック(コンテナ 3・ボリューム 1)が残り、ロックは解除された。URL の上書きは効かなかった |
+| 残ったコンテナの検出(新規) | 上の状態のまま Indexer を実行すると、終了コード 1 で「前回の loreley-it スタックのコンテナが残っています」と、残ったコンテナ 3 件の一覧を表示して中止。コンテナ ID は不変 |
+| 残ったボリュームの検出(新規) | 本物の `docker compose down`(`-v` なし)でコンテナだけを消してから Indexer を実行すると、終了コード 1 で「loreley-it のデータボリュームが残っています」を表示して中止。ボリュームは残った。その後 `down -v --remove-orphans` で片付けた |
+| `--keep` | `--keep -k test_01` で終了コード 0。ロックは解除され、スタック(コンテナ 3・ボリューム 1)が残り、表示された後始末のコマンドで片付いた |
+| TERM(実スタック) | 起動の待機中(コンテナができた後)に、ロックの `owner` の PID へ TERM を送り、終了コード **143**。`down -v` が実行され、コンテナ・ボリューム・ロックは残らなかった |
+| INT | 偽の `docker`(`docker info` を待たせる)で起動した実行(スタックなし)に INT(Ctrl-C 相当)を送り、終了コード 130、ロックなし |
+| 同時実行の拒否 | 1 本目に Crawler の全件を実行中、2 本目として Indexer を起動し、終了コード **1** で保持者(Crawler の PID・スクリプト名)を表示した。2 本目の前後で、コンテナ ID・ボリューム・`StartedAt` は不変で、`docker events` に破壊的な操作(destroy・die・kill・stop・remove)はなかった。先発が Indexer の場合に後発の api が中止する場合も、先発のロックは残った。ロック取得の競合(Crawler と Indexer を同時に起動)10 回で、毎回ちょうど 1 本が中止した |
+| 事前確認の中止(スタックは作らない) | 偽の `docker` で、`docker ps -a` の失敗・`docker volume ls` の失敗は終了コード 1。ポート 9200・8000 をそれぞれ占有すると、いずれも終了コード 1 で、占有している相手(`lsof` の結果)を表示し、`compose up` は呼ばれない。8001・8080 が使用中でも、Indexer は中止しない(確認の対象でない) |
+| `--help`・引数エラー | `--help` は終了コード 0 でロックを作らない。`LORELEY_IT_WAIT_TIMEOUT_SECS=abc`、空白だけの `LORELEY_IT_PYTEST_CMD` は終了コード 1 でロックを作らない |
+| 旧スクリプト(`96a9b52`)との比較 | 偽の `docker` を使い、通常・`--keep`・`down` の失敗・uv の失敗・`-k foo -x` で、旧・新の終了コードと docker・uv の呼び出しを比べた。終了コードは一致し、意図した差は `down` 失敗時の終了コード(旧 0 → 新 11)と、`LORELEY_IT_*_URL` 2 つの追加、残骸確認(`docker ps -a`・`docker volume ls`)の追加だけ |
+
+### 10.3 静的検査と未実施
+
+- `bash -n`(`/bin/bash` 3.2.57 でも): 4 ファイル(`scripts/lib/it-common.sh` と実行スクリプト 3 本)すべて OK
+- **`shellcheck` は未実施**(ホストに無い。4.4 の「未再現」のまま)
+- ロックの解除に失敗したときに終了コード 11 になる経路は、`scripts/lib/it-common.sh` を `source` した関数レベルの確認(ロックの親ディレクトリを書き込み不可にして解除を失敗させた)だけで、スクリプトを通した実機の再現はしていない
+- Linux ホストは未確認のまま
+- 既知のリスク: ロックの `mkdir` が成功してから `lock_acquired` を立てるまでの間にシグナルを受けると、ロックが残る(残った場合は手動で解除する)

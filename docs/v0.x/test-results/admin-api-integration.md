@@ -243,3 +243,47 @@ scripts/run-api-integration-test.sh --keep -k test_30   # 反復用。終了後�
   - HO-45(起動直後の見え方): `deploy/compose/README.md` に、設計書の記述(実機未確認)と実機確認したことを分けて記載済み(P1 とレビュー対応)。**実機で確認したのは、Crawler・Indexer の停止中も読み取りの EP が OpenSearch だけで応答すること**(AIT-90・91)。**起動直後の見え方(回復中の接続拒否など)は未検証**(IT は全サービスの healthy を待ってから始める。7 章)
 - **据え置き**: `apps/api/Dockerfile` の冒頭近くの古いコメント(「現時点の `api` は基盤だけで、Web UI の配信(`/app/web`)は含めない。」)。HO-36(Web の成果物)で Dockerfile に触るときに直す(0021 C)。本タスクでは Dockerfile に触れていない
 - **スクリプトの重複**: Indexer・Crawler・api の 3 つの実行スクリプトが重複している(共通化は未対応。Crawler の IT の記録の負債と同じ)
+
+## 10. 実行スクリプトの安全性の統一と排他ロック(再実行の記録。2026-11-26)
+
+タスク `20261125_harden_it_run_scripts` で、Crawler・Indexer・api の実行スクリプト 3 本を、api の実行スクリプトと同じ安全性の方針に揃え、共通の排他ロックで同時実行を拒否するようにした。そのうえで api の結合テストを再実行した。1〜9 章の結果は、履歴としてそのまま残す。
+
+変更した資材(いずれも**未コミット**。基準コミットは `96a9b52`):
+
+- `scripts/lib/it-common.sh`(新規): 3 本の実行スクリプトの共通処理(排他ロック・事前確認・起動と待機・後始末)。9 章で未対応としていた「スクリプトの重複」を解消した
+- `scripts/run-api-integration-test.sh`: 共通ファイルへ移行。事前確認と後始末の方針は変えず、排他ロックを追加し、ロックの解除に失敗したときも終了コード 11 にした
+- `scripts/run-crawler-integration-test.sh`・`scripts/run-indexer-integration-test.sh`: 同じく共通ファイルへ移行し、api と同じ方針に揃えた([crawler-integration.md](crawler-integration.md) の 9 章、[indexer-integration.md](indexer-integration.md) の 10 章)
+
+| 項目 | 内容 |
+| --- | --- |
+| 実施日・実施者 | 2026-11-26。Claude Code(メインエージェント)。ユーザー指示のもとで実施 |
+| 実施した時点のコード | 基準コミット `96a9b52` の作業ツリー(上の変更は未コミット) |
+| ホスト・実行方法 | macOS。`caffeinate -i` を付け、`scripts/run-api-integration-test.sh` を実行した。環境(実行後に同じホストで確認): macOS 15.8.3(x86_64)・Docker 20.10.13・compose v2.3.3・uv 0.13.8 |
+
+### 10.1 全件実行の結果
+
+**23 passed in 423.90s (0:07:03)**、終了コード 0(スクリプト全体で 512 秒)。実行後にコンテナ・ボリューム・`data/`・ロックなし。`skipped`・`deselected`・`xfailed`・`warnings` の行なし。障害系(AIT-90〜92)も skip されずに通った(`LORELEY_IT_ALLOW_COMPOSE_CONTROL=1` が、共通化後のスクリプトから渡っている)。ログ: `tests/integration/api/results/pytest-20261126-042255.log`。他プロジェクトのコンテナ・ボリューム(`opensearch-opensearch-1` など)は、各実行の前後で変化がなかった。
+
+### 10.2 この IT に関わる検証
+
+4.5 で「実機で動かしていない経路」としていたものは、api の実スタックでは確認していない。次の表のとおり、偽の `docker`、または Crawler・Indexer の実スタックで確認した。
+
+| 検証 | 結果 |
+| --- | --- |
+| 同時実行の拒否 | 1 本目に Crawler の全件を実行中、2 本目として api を起動し、終了コード **1** で保持者(Crawler の PID・スクリプト名)を表示した(Indexer・Crawler の後発も同じ)。2 本目の前後で、コンテナ ID・ボリューム・`StartedAt` は不変で、`docker events` に破壊的な操作(destroy・die・kill・stop・remove)はなかった。先発が Indexer の場合に後発の api が中止する場合も、先発のロックは残った |
+| 事前確認の中止(スタックは作らない) | 偽の `docker` で、`docker ps -a` の失敗・`docker volume ls` の失敗は、どちらも終了コード 1 で何も作られず、ロックも残らない。空でない `data/`(`canary.txt`)と `chmod 000` の `data/` は終了コード 1 で、`data/` は残る。ポート 9200・8000・8001・8080 をそれぞれ占有すると、いずれも終了コード 1 で、占有している相手(`lsof` の結果)を表示し、`compose up` は呼ばれない |
+| 残ったコンテナ・ボリュームの検出 | 共通の関数を、Indexer の実スタックで確認した(上の [indexer-integration.md](indexer-integration.md) 10.2)。api のスクリプトで、残ったコンテナ・ボリュームを実スタックで再現する検証は行っていない |
+| 後始末の失敗(終了コード 11) | 偽の `docker` を使った旧(`96a9b52`)・新の比較で、`down` の失敗は旧・新とも 11(api は旧スクリプトから 11 だった)。実スタックでの `down` の失敗は、Crawler・Indexer で確認した。api の実スタックでは行っていない |
+| シグナル | TERM: 偽の `docker`(`docker info` を待たせる)で起動した api に送り、終了コード 143、ロックなし。実スタックでの TERM は、Indexer で確認した(終了コード 143、`down -v` 後に残骸なし)。INT は Indexer を先発にして確認した(終了コード 130、ロックなし)。api の実スタックでの INT・TERM は行っていない |
+| `--keep` | 偽の `docker` を使った旧・新の比較(`--keep` のケース)で、終了コードが旧・新で一致した。実スタックでの `--keep` は、Crawler・Indexer で確認した。api の実スタックでは行っていない |
+| 残ったロック | `kill -9` で残したロックは自動では解除されず、次の実行(Crawler)が終了コード 1 で保持者の PID・開始時刻・スクリプト名と手動解除の手順を表示し、何も消さなかった。手動で解除した後は実行できた |
+| `--help`・引数エラー | `--help` は終了コード 0 でロックを作らない。`LORELEY_IT_WAIT_TIMEOUT_SECS=abc` は終了コード 1 でロックを作らない |
+| 旧スクリプト(`96a9b52`)との比較 | 偽の `docker` を使い、通常・`--keep`・`down` の失敗・uv の失敗・`-k foo -x` で、旧・新の終了コードと docker・uv の呼び出しを比べた。api は、終了コード・docker の呼び出し・pytest の引数(`-v -rP -k foo -x`)がすべて一致した |
+
+### 10.3 静的検査と未実施
+
+- `bash -n`(`/bin/bash` 3.2.57 でも): 4 ファイル(`scripts/lib/it-common.sh` と実行スクリプト 3 本)すべて OK
+- **`shellcheck` は未実施**(ホストに無い。4.5 のとおり)
+- ロックの解除に失敗したときに終了コード 11 になる経路は、`scripts/lib/it-common.sh` を `source` した関数レベルの確認(ロックの親ディレクトリを書き込み不可にして解除を失敗させた)だけで、スクリプトを通した実機の再現はしていない
+- 待機の上限超過(終了コード 10)の実機での再確認は、今回の記録に含まれない(4.5 のまま未再現)
+- 既知のリスク: ロックの `mkdir` が成功してから `lock_acquired` を立てるまでの間にシグナルを受けると、ロックが残る(残った場合は手動で解除する)
