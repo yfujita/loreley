@@ -3,18 +3,18 @@
 ## 基本情報
 
 - 状態: in_progress
-- 現在工程: P5 完了、レビューフェーズ(code-reviewer・test-reviewer・document-reviewer 並列)
+- 現在工程: レビュー指摘対応中(コード: code-implementer、文書: document-writer)
 - 最終更新: 2026-11-25
-- 最新作業記録: 0009-p5-final-check-and-docs.md
+- 最新作業記録: 0010-review-results.md
 - ブランチ: `feature/create-it-for-admin-api`、比較基準 SHA `55dce2f`
 
 ## 現在の状況
 
-プラン(0002)承認済み。P1(0004)〜P5(0009)完了。api IT は修正後 2 回連続で 23 件全成功、apps/api 単体テスト 3423 passed、既存 Crawler IT 14・Indexer IT 40 成功。次はレビューフェーズ。
+プラン(0002)承認済み。P1〜P5 完了。レビュー(code/test/document)は Critical なし。Important(test 2・document 7)と Suggestion に対応中(方針は 0010)。
 
 ## 次のアクション
 
-1. レビューフェーズ(指摘対応を含む)
+1. 指摘対応 → api IT 連続 2 回 → 再レビュー
 2. タスクレビュー(task-reviewer)→ 完了報告・PR(ユーザー確認)
 
 ## 未解決事項
