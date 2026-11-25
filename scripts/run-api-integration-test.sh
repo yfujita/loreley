@@ -14,6 +14,7 @@
 #   pytest の終了コード(0=全成功。1〜5 は pytest の定義どおり)
 #   1  引数・事前確認の失敗(pytest の終了コードと重なるが、事前確認の失敗は標準エラー出力に出る)
 #   10 スタックの起動失敗(待機の上限超過・コンテナの異常終了を含む)
+#   11 pytest は成功したが、後始末(`down -v`・data/ の削除)に失敗した(テスト失敗のときは pytest の終了コードを優先)
 #   130/143 Ctrl-C(INT)/TERM で中断
 #
 # 環境変数:
@@ -22,7 +23,8 @@
 #                                   ただし、下の「固定する値」(ポート・索引名・cron のタイムゾーン)は上書きされる。
 #
 # 固定する値(テストが前提にする):
-#   ホスト側ポート 9200・8000・8001・8080、索引名 4 つ(既定値)、LORELEY_CRON_TIMEZONE=Asia/Tokyo
+#   ホスト側ポート 9200・8000・8001・8080、テストの接続先 URL(LORELEY_IT_{OPENSEARCH,INDEXER,CRAWLER,API}_URL を
+#   上のポートの 127.0.0.1 に)、索引名 4 つ(既定値)、LORELEY_CRON_TIMEZONE=Asia/Tokyo
 #   (Crawler と api に同じ変数から届くことを AIT-01 が確かめる)、LORELEY_IT_ALLOW_COMPOSE_CONTROL=1
 #   (障害系のテストが `docker compose -p loreley-it stop/start` を実行してよいことの許可。AIT-90〜92)。
 #
@@ -51,6 +53,13 @@ export OPENSEARCH_HOST_PORT="$OPENSEARCH_PORT"
 export INDEXER_HOST_PORT="$INDEXER_PORT"
 export CRAWLER_HOST_PORT="$CRAWLER_PORT"
 export API_HOST_PORT="$API_PORT"
+# テストの接続先も、compose が publish するポートに固定する。固定しないと、シェルに残った
+# LORELEY_IT_*_URL が、ソース登録・削除やクロール起動、OpenSearch への直接書き込みを、このスクリプトが
+# 起動したのとは別の環境に向けてしまう(pytest を直接実行するときだけ、環境変数で変えられる)。
+export LORELEY_IT_OPENSEARCH_URL="http://127.0.0.1:${OPENSEARCH_PORT}"
+export LORELEY_IT_INDEXER_URL="http://127.0.0.1:${INDEXER_PORT}"
+export LORELEY_IT_CRAWLER_URL="http://127.0.0.1:${CRAWLER_PORT}"
+export LORELEY_IT_API_URL="http://127.0.0.1:${API_PORT}"
 # 索引名も同じ理由で固定する。テストは 4 つの索引(ジョブ・データソース設定・削除記録・検索エイリアス)を
 # 読むので、シェルや deploy/compose/.env で別の名前にされていると、スタックだけが別の索引を使って、
 # テストが失敗する。
@@ -68,6 +77,7 @@ readonly LOG_TAIL_LINES=100
 readonly MIN_MAX_MAP_COUNT=262144
 readonly EXIT_USAGE_OR_PREREQUISITE=1
 readonly EXIT_STARTUP_FAILED=10
+readonly EXIT_CLEANUP_FAILED=11
 
 root_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$root_dir"
@@ -182,7 +192,11 @@ check_ports_are_free() {
 # ポートが空いていても、残骸があると新しいスタックと名前やボリュームが衝突する。
 check_no_leftover_stack() {
   local leftover_containers
-  leftover_containers="$(docker ps -a --filter "label=com.docker.compose.project=${PROJECT_NAME}" --format '{{.Names}} ({{.Status}})')"
+  # `||` の文脈では set -e が効かないので、docker の失敗(空の出力と区別できない)は明示的に止める。
+  leftover_containers="$(docker ps -a --filter "label=com.docker.compose.project=${PROJECT_NAME}" --format '{{.Names}} ({{.Status}})')" || {
+    error "docker ps に失敗しました。残骸の有無を確認できないため中止します。"
+    return 1
+  }
   if [ -n "$leftover_containers" ]; then
     error "前回の ${PROJECT_NAME} スタックのコンテナが残っています:"
     while IFS= read -r line; do
@@ -214,10 +228,18 @@ check_no_leftover_data() {
     return 1
   fi
   # ディレクトリがあって空でないとき(存在しない、または空なら問題ない)。
-  if [ -n "$(ls -A "$documents_dir" 2>/dev/null)" ]; then
-    error "${documents_dir} が空ではありません(このスクリプトは終了時にディレクトリごと削除します)。"
-    error "  残したいファイルなら別の場所へ移し、不要なら削除してから再実行してください: rm -rf '${documents_dir}'"
-    return 1
+  # 存在しないことと、一覧を取れないこと(権限など)を区別し、後者は安全側に倒して中止する。
+  if [ -e "$documents_dir" ] || [ -L "$documents_dir" ]; then
+    local documents_listing
+    documents_listing="$(ls -A "$documents_dir")" || {
+      error "${documents_dir} の内容を確認できませんでした(権限など)。削除してよいか判断できないため中止します。"
+      return 1
+    }
+    if [ -n "$documents_listing" ]; then
+      error "${documents_dir} が空ではありません(このスクリプトは終了時にディレクトリごと削除します)。"
+      error "  残したいファイルなら別の場所へ移し、不要なら削除してから再実行してください: rm -rf '${documents_dir}'"
+      return 1
+    fi
   fi
 }
 
@@ -273,9 +295,12 @@ print_diagnostics() {
 }
 
 # EXIT で必ず呼ばれる(INT/TERM も下の trap が exit に変換するので、ここを通る)。
-# 終了コードは、後始末のコマンドの結果に左右されないよう最初に控えて、最後にそのまま返す。
+# 終了コードは最初に控える。テストや起動が失敗していたら、その終了コードをそのまま返す(後始末の結果で
+# 隠さない)。成功していたのに後始末に失敗したときは、EXIT_CLEANUP_FAILED を返す(CI でテスト用リソースの
+# 残りを成功と扱わないため)。
 cleanup() {
   local exit_status=$?
+  local cleanup_failed=false
   trap - EXIT INT TERM
   set +e
 
@@ -292,6 +317,7 @@ cleanup() {
     local compose_down_succeeded=true
     if ! compose down -v --remove-orphans; then
       compose_down_succeeded=false
+      cleanup_failed=true
       error "後始末に失敗しました。手動で上のコマンドを実行してください。"
     fi
     # コンテナを消したあとに削除する(:ro の mount 元を、使われている間に消さない)。
@@ -300,11 +326,16 @@ cleanup() {
     if [ "$compose_down_succeeded" = true ]; then
       info "検索対象のディレクトリを削除します(${documents_dir})。"
       if ! rm -rf "${documents_dir:?}"; then
+        cleanup_failed=true
         error "${documents_dir} を削除できませんでした。手動で削除してください。"
       fi
     else
       error "コンテナが残っている可能性があるため、${documents_dir} は削除しませんでした。コンテナを止めてから、手動で rm -rf '${documents_dir}' を実行してください。"
     fi
+  fi
+  if [ "$exit_status" -eq 0 ] && [ "$cleanup_failed" = true ]; then
+    error "テストは成功しましたが、後始末に失敗したため、終了コード ${EXIT_CLEANUP_FAILED} で終了します。"
+    exit "$EXIT_CLEANUP_FAILED"
   fi
   exit "$exit_status"
 }

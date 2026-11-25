@@ -22,7 +22,7 @@ Admin API の単体テストは、OpenSearch・Crawler・Indexer を fake やロ
 | Docker | Docker と docker compose v2(確認した版: compose v2.3.3)。デーモンが起動していること |
 | uv | 必要(確認した版: uv 0.13.8)。`tests/integration/api/uv.lock` で依存(`pytest`・`httpx`。dev に `ruff`)を固定している。依存を変えたら、`tests/integration/api` で `uv lock` を実行して更新する |
 | メモリ | Docker に**約 4GB 以上**を推奨(4 サービスが常駐する。`opensearch-init` は完了後に終了する)。この IT での Docker VM のメモリは**未記録**(既存の結合テストは約 3.8GiB で成功した)。ほかの重いコンテナを同時に動かさない。メモリ使用量は測定していない |
-| ポート | ホストの `9200`(OpenSearch)・`8000`(Indexer)・`8001`(Crawler)・`8080`(api)が空いていること。すべて `127.0.0.1` だけに publish する。**スクリプトは 4 つのポートに固定**し、`deploy/compose/.env` の値では変えられない(テストがこの 4 つに接続する)。手動で別のポートにしたときだけ、`LORELEY_IT_OPENSEARCH_URL`・`LORELEY_IT_INDEXER_URL`・`LORELEY_IT_CRAWLER_URL`・`LORELEY_IT_API_URL` でテストの接続先を合わせる |
+| ポート | ホストの `9200`(OpenSearch)・`8000`(Indexer)・`8001`(Crawler)・`8080`(api)が空いていること。すべて `127.0.0.1` だけに publish する。**スクリプトは 4 つのポートと、テストの接続先 URL(`LORELEY_IT_*_URL`)をこの 4 つに固定**し、`deploy/compose/.env` やシェルに残った環境変数の値では変えられない(別の環境に書き込まないため)。pytest を直接実行して別のポートにしたときだけ、`LORELEY_IT_OPENSEARCH_URL`・`LORELEY_IT_INDEXER_URL`・`LORELEY_IT_CRAWLER_URL`・`LORELEY_IT_API_URL` でテストの接続先を合わせる |
 | 索引名 | スクリプトは `LORELEY_JOBS_INDEX_NAME`・`LORELEY_SOURCES_INDEX_NAME`・`LORELEY_DELETIONS_INDEX_NAME`・`LORELEY_SEARCH_INDEX_ALIAS` を既定値(`loreley-jobs`・`loreley-sources`・`loreley-deletions`・`loreley-documents`)に固定する。手動で起動して索引名を変えたときは、**同じ環境変数を pytest にも渡す**(未指定は既定値) |
 | ネットワーク | 初回は、ベースイメージ・OpenSearch のイメージ・Python の依存を取得し、`apps/api`・`apps/crawler`・`apps/indexer` をビルドする |
 
@@ -61,6 +61,7 @@ scripts/run-api-integration-test.sh -k "test_30 or test_40"   # 複数ファイ�
 | 1 | pytest のテスト失敗、**または**引数・事前確認の失敗(Docker・uv が無い、ポート使用中、前回の `loreley-it` の残りなど)。事前確認の失敗は標準エラー出力に理由が出るので区別できる |
 | 2〜5 | pytest の終了コードのまま(2=中断。スタックに接続できない・メンテナンスフラグが残っている・`data/` がない、4=pytest の使い方の誤り、5=該当テストなし) |
 | 10 | スタックの起動失敗(`up` の失敗、待機の上限超過、コンテナの異常終了) |
+| 11 | テストは成功したが、後始末(`down -v`・`data/` の削除)に失敗した。テスト失敗のときは、後始末に失敗しても pytest の終了コードのまま。後始末に失敗したら、標準エラー出力の手順で手動で消す |
 | 130 / 143 | Ctrl-C(INT)/ TERM で中断(どちらも後始末まで行う) |
 
 #### 環境変数
@@ -175,7 +176,7 @@ rm -rf tests/integration/api/data
 
 - `tests/integration/api/data/` は、Crawler に `:ro` で mount する検索対象の文書の置き場(コンテナ内 `/data/documents`)。**`.gitignore` 済み**。テストは `data/<source_id>/` を作って文書を置き、テストの終了後に削除する(`support.py` の `SourceDirectory`)。ファイルは 0644、ディレクトリは 0755(Crawler は uid 10001 で動くため)
 - スクリプトは、起動前に `data/` を作って `chmod 755` し、終了時に `compose down -v --remove-orphans` のあとで削除する(使用中の mount 元を消さないため)。`compose down` が失敗したときは、コンテナが残っている可能性があるので `data/` を**削除せず**、手動で消すよう案内する。`--keep` のときはスタックと `data/` を残し、後始末のコマンドを表示する
-- **事前確認で中止する条件**(何も消さず終了コード 1。スタックにもボリュームにも `data/` にも触れない): (1) `loreley-it` のコンテナの残り(停止中を含む)、(2) `loreley-it` の名前付きボリュームの残り、(3) 空でない `data/`、(4) ホストのポート 9200・8000・8001・8080 の使用中。終了時の `down -v` と `rm -rf` が、前回 `down`(`-v` なし)で止めただけのボリュームや、利用者が `data/` に置いたファイルを消さないため。ポートの使用中は、使っている Docker コンテナと `lsof` の結果を表示する(止めはしない)
+- **事前確認で中止する条件**(何も消さず終了コード 1。スタックにもボリュームにも `data/` にも触れない): (1) `loreley-it` のコンテナの残り(停止中を含む。`docker ps` が失敗して確認できないときも中止)、(2) `loreley-it` の名前付きボリュームの残り、(3) 空でない `data/`(権限などで内容を確認できないときも中止)、(4) ホストのポート 9200・8000・8001・8080 の使用中。終了時の `down -v` と `rm -rf` が、前回 `down`(`-v` なし)で止めただけのボリュームや、利用者が `data/` に置いたファイルを消さないため。ポートの使用中は、使っている Docker コンテナと `lsof` の結果を表示する(止めはしない)
 - メンテナンスフラグが残ったとき(`loreley-jobs` の `maintenance` 文書。中断した実行の後)は、次の実行が conftest で終了コード 2 になる。スタックごと作り直す(`down -v --remove-orphans`)か、`curl -X DELETE http://127.0.0.1:9200/loreley-jobs/_doc/maintenance` で消す。この IT のテスト自身はメンテナンスフラグを書かないので、通常は残らない
 
 ## 未実施(スコープ外)
