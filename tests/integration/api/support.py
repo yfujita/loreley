@@ -26,7 +26,8 @@ import unicodedata
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any
 
@@ -73,6 +74,16 @@ LOCK_POLL_INTERVAL_SECONDS = 0.2
 # 終わる長さにする(ポーリング上限 120 秒より短く、ジョブ待ちより長い)。
 IDLE_WAIT_TIMEOUT_SECONDS = 120.0
 IDLE_POLL_INTERVAL_SECONDS = 0.5
+# 検索(`search`・`msearch`)で読む EP(EP-01・09・11 と、EP-02 の最終クロール・文書数)は、書き込みの
+# 反映が最大約 1 秒遅れる(OpenSearch の refresh。admin-api-architecture AAA-P-6。Admin API は
+# refresh を呼ばない)。反映を待つ上限と間隔。
+READ_LAG_TIMEOUT_SECONDS = 10.0
+READ_LAG_POLL_INTERVAL_SECONDS = 0.3
+# TTL の経過を待つ。経過の判定は秒単位(HTTP の `Date`)なので、余裕を足して、判定の直後の削除で
+# 確実に期限切れになるようにする。上限は、TTL に足す分(最初の確認までの遅れ)。
+EXPIRY_MARGIN_SECONDS = 2.0
+EXPIRY_WAIT_EXTRA_SECONDS = 30.0
+EXPIRY_POLL_INTERVAL_SECONDS = 1.0
 # 停止したサービスが再び healthy になるまで。OpenSearch の停止後は、Crawler・Indexer が
 # 接続できるようになるまで最大約 3 分かかる(起動時の回復)。
 SERVICE_RECOVERY_TIMEOUT_SECONDS = 300.0
@@ -220,6 +231,48 @@ def wait_for_lock_released(opensearch: "OpenSearchProbe", source_id: str) -> Non
     )
 
 
+def wait_for_source_listing(
+    api: "AdminApi", is_ready: Callable[[dict[str, Any]], bool], *, what: str
+) -> dict[str, Any]:
+    """EP-01 の応答が `is_ready` を満たすまで待つ(検索で読むため、書き込みの反映が遅れる)。"""
+    return poll_until(
+        lambda: expect_json(api.list_sources(), 200),
+        is_ready,
+        timeout_secs=READ_LAG_TIMEOUT_SECONDS,
+        poll_interval_secs=READ_LAG_POLL_INTERVAL_SECONDS,
+        what=what,
+    )
+
+
+def wait_for_source_detail(
+    api: "AdminApi", source_id: str, is_ready: Callable[[dict[str, Any]], bool], *, what: str
+) -> dict[str, Any]:
+    """EP-02 の応答が `is_ready` を満たすまで待つ(最終クロール・文書数は検索で読むため遅れる)。"""
+    return poll_until(
+        lambda: expect_json(api.get_source(source_id), 200),
+        is_ready,
+        timeout_secs=READ_LAG_TIMEOUT_SECONDS,
+        poll_interval_secs=READ_LAG_POLL_INTERVAL_SECONDS,
+        what=what,
+    )
+
+
+def wait_until_expired(api: "AdminApi", last_seen_at: datetime, ttl_seconds: int) -> None:
+    """`last_seen_at + TTL` が過ぎるまで待つ(実時間が過ぎるのを待つ。上限つきのポーリング)。
+
+    現在時刻は api の応答の `Date` から読む。`last_seen_at` を決めた Crawler・判定する Indexer と
+    同じ Docker の時計なので、ホストの時計がずれていても結果が変わらない。
+    """
+    expiry_at = last_seen_at + timedelta(seconds=ttl_seconds + EXPIRY_MARGIN_SECONDS)
+    poll_until(
+        api.server_now,
+        lambda now: now > expiry_at,
+        timeout_secs=ttl_seconds + EXPIRY_WAIT_EXTRA_SECONDS,
+        poll_interval_secs=EXPIRY_POLL_INTERVAL_SECONDS,
+        what=f"the TTL ({ttl_seconds}s) of last_seen_at={last_seen_at.isoformat()} passing",
+    )
+
+
 def wait_for_idle(api: "AdminApi") -> dict[str, Any]:
     """実行中・実行待ちのジョブが 0 になるのを待つ(EP-09 `status=active` の `total`)。
 
@@ -248,6 +301,11 @@ class AdminApi:
 
     def healthz(self) -> httpx.Response:
         return self._client.get("/healthz")
+
+    def server_now(self) -> datetime:
+        """api の時計での現在時刻(`/healthz` の応答の `Date`。秒単位)。"""
+        response = self._client.get("/healthz")
+        return parsedate_to_datetime(response.headers["date"])
 
     def openapi_json(self) -> httpx.Response:
         """`OPENAPI_ENABLED` が既定(無効)のとき 404 になる。"""
@@ -497,6 +555,27 @@ def source_settings(directory: SourceDirectory, **overrides: Any) -> dict[str, A
 def register_source(api: AdminApi, directory: SourceDirectory, **overrides: Any) -> dict[str, Any]:
     """データソースを EP-03 で登録し、201 を確認する。応答本文(保存された設定)を返す。"""
     return dict(expect_json(api.register_source(source_settings(directory, **overrides)), 201))
+
+
+def run_crawl(
+    api: AdminApi,
+    opensearch: OpenSearchProbe,
+    source_id: str,
+    body: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """EP-06 でクロールを起動し、`succeeded` で終わり、ロックが解放されるまで待つ。
+
+    EP-10 のジョブ詳細を返す。`succeeded` 以外で終わったときは、原因が分かるよう理由つきで失敗させる
+    (クロールの失敗を確かめるテストは、これを使わず自分で待つ)。
+    """
+    accepted = expect_json(api.start_crawl(source_id, body), 202)
+    job = wait_for_job_terminal(api, accepted["job_id"])
+    assert job["status"] == "succeeded", (
+        f"the crawl of {source_id} must succeed: status={job['status']} "
+        f"failure_reason={job['failure_reason']} failure_detail={job['failure_detail']}"
+    )
+    wait_for_lock_released(opensearch, source_id)
+    return job
 
 
 # --- 障害系: コンポーネントの停止と起動 ---
