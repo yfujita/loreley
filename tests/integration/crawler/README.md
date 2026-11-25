@@ -62,7 +62,7 @@ scripts/run-crawler-integration-test.sh -k oversize      # 名前に oversize �
 | --- | --- | --- |
 | `LORELEY_IT_WAIT_TIMEOUT_SECS` | `300` | 起動後の待機の上限(秒)。1 以上の整数 |
 
-`OPENSEARCH_VERSION`・`OPENSEARCH_HEAP_SIZE`・`CRAWLER_LOG_LEVEL` などの compose の変数は、そのまま compose に渡る(`deploy/compose/.env.example`)。ただしホスト側ポートと `CRAWLER_DOCUMENTS_DIR` はスクリプトが固定する。
+`OPENSEARCH_VERSION`・`OPENSEARCH_HEAP_SIZE`・`CRAWLER_LOG_LEVEL` などの compose の変数は、そのまま compose に渡る(`deploy/compose/.env.example`)。ただしホスト側ポートと `CRAWLER_DOCUMENTS_DIR` はスクリプトが固定する。あわせて、Crawler と api に同じ変数から渡る `LORELEY_CRON_TIMEZONE=UTC`・`LORELEY_ADMITTING_LOCK_GRACE_SECONDS=60`(compose の既定値)も固定し、シェルや `deploy/compose/.env` の値に左右されないようにしている(この Crawler の IT に、この 2 変数を使うテストはない)。
 
 ### 手動で実行する(スタックを起動して pytest を直接実行する)
 

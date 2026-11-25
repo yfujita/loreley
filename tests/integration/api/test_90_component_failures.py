@@ -289,8 +289,21 @@ def test_indexer_down_keeps_the_api_alive_and_fails_the_crawl_and_the_deletion_u
 
         # 3. (a) 停止中に始めたクロール
         crawl_job_id = expect_json(api.start_crawl(crawl_source.source_id), 202)["job_id"]
-        crawl_job = wait_for_job_terminal(api, crawl_job_id)
+        wait_for_job_terminal(api, crawl_job_id)
         wait_for_lock_released(opensearch, crawl_source.source_id)
+        # `latest_for_source` は検索で読むので、ジョブが最新と見えるまで待ってから断定する。
+        # `rerunnable` はそれから導かれる(最新の失敗した `crawl` だけが再実行できる。B 2.9)。
+        crawl_job = poll_until(
+            lambda: expect_json(api.get_job(crawl_job_id), 200),
+            lambda job: (
+                job["latest_for_source"] is True
+                and job["rerunnable"] is True
+                and job["rerun_blocked_reason"] is None
+            ),
+            timeout_secs=READ_LAG_TIMEOUT_SECONDS,
+            poll_interval_secs=READ_LAG_POLL_INTERVAL_SECONDS,
+            what="EP-10 marking the failed crawl as the latest and rerunnable",
+        )
         observed(
             "AIT-91 (a) crawl job",
             {
@@ -303,6 +316,9 @@ def test_indexer_down_keeps_the_api_alive_and_fails_the_crawl_and_the_deletion_u
         assert crawl_job["status"] == "failed", f"the crawl cannot reach the Indexer: {crawl_job}"
         assert crawl_job["failure_reason"] == "indexer_unavailable", (
             f"the failure must be told as indexer_unavailable: {crawl_job}"
+        )
+        assert crawl_job["failure_detail"] is not None, (
+            f"a failed job must carry failure_detail: {crawl_job}"
         )
         assert "Indexer が応答しない" in crawl_job["failure_detail"], (
             f"failure_detail must say the Indexer did not respond: {crawl_job}"
@@ -343,6 +359,9 @@ def test_indexer_down_keeps_the_api_alive_and_fails_the_crawl_and_the_deletion_u
         )
         assert delete_job["failure_reason"] == "indexer_unavailable", (
             f"the failure must be told as indexer_unavailable: {delete_job}"
+        )
+        assert delete_job["failure_detail"] is not None, (
+            f"a failed job must carry failure_detail: {delete_job}"
         )
         assert "Indexer が応答しない" in delete_job["failure_detail"], (
             f"failure_detail must say the Indexer did not respond: {delete_job}"

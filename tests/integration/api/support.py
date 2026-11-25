@@ -575,6 +575,26 @@ class OpenSearchProbe:
         }
         return self.search(JOBS_INDEX, query)
 
+    def source_ids_with_crawl_jobs(self) -> set[str]:
+        """`crawl` のジョブ記録を 1 件以上持つ `source_id`(削除済みのソースの分も含む)。"""
+        self.refresh(JOBS_INDEX)
+        body = {
+            "size": 0,
+            "query": {
+                "bool": {
+                    "filter": [{"term": {"record_type": "job"}}, {"term": {"job_type": "crawl"}}]
+                }
+            },
+            "aggs": {"by_source": {"terms": {"field": "source_id", "size": self.SEARCH_PAGE_SIZE}}},
+        }
+        response = self._http.post(f"/{JOBS_INDEX}/_search", json=body)
+        assert response.status_code == 200, f"aggregate jobs failed: {response.text[:300]}"
+        by_source = response.json()["aggregations"]["by_source"]
+        assert by_source["sum_other_doc_count"] == 0, (
+            f"more than {self.SEARCH_PAGE_SIZE} sources have crawl jobs; the aggregation is cut off"
+        )
+        return {str(bucket["key"]) for bucket in by_source["buckets"]}
+
     def oversize_records(self, source_id: str) -> list[dict[str, Any]]:
         """`source_id` の原本サイズ超過記録(ID は `oversize-{source_id}-{document_id}`)。"""
         query = {

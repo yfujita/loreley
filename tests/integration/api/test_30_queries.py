@@ -24,8 +24,11 @@
 データについて:
     AIT-30・31 は、読み取りだけを行うので、モジュールで 1 回作った 3 つのソースを共有する
     (2 回クロール・1 回クロール・0 回クロール)。クロールの時間(1 回約 11 秒)を節約するため。
-    AIT-30 は、登録ソースの総数が `terms` 集計の既定の `size`(10)を超えた状態を作るため、足りない分は
-    クロールしない(登録だけの)ソースで補う。
+    EP-01 の `terms` 集計(`loreley-jobs` と検索インデックスの `source_id` 別)は、バケットを作る
+    ソース(ジョブ記録・文書を持つソース)の件数だけが `size` の影響を受ける。登録しただけでクロール
+    していないソースは、バケットを作らないので、`size` が足りなくても行の値は変わらない。そのため
+    AIT-30 は、ジョブ記録と文書を持つ登録済みのソースが `terms` の既定の `size`(10)を超える状態を作り、
+    足りない分は md 1 件のソースを実際にクロールして補う。
 """
 
 from collections.abc import Iterator
@@ -61,10 +64,11 @@ _INDEX_STATUS_RANK = {"red": 0, "yellow": 1, "green": 2}
 _SHARD_ROLE_BY_PRIREP = {"p": "primary", "r": "replica"}
 _JOB_BRIEF_DATE_KEYS = ("queued_at", "started_at", "finished_at")
 _COMPLETED_STATUSES = ("succeeded", "partially_succeeded")
-# AIT-30 の時点の登録ソースの総数の下限。`terms` 集計の既定の `size`(10)を超え、`size` が足りないと
-# 11 件目以降の行の値が欠ける(`last_crawl` が null・件数 0 になる)状態を作る。
-MIN_REGISTERED_SOURCES = 12
 TERMS_DEFAULT_SIZE = 10
+# AIT-30 の時点で、ジョブ記録(`crawl`)と文書を持つ登録済みのソースの件数の下限。`terms` 集計の既定の
+# `size`(10)を超えるので、`size` が足りないと 11 件目以降のソースの `last_crawl`・`document_count`
+# の値が欠ける(null・0 になる)。
+MIN_SOURCES_WITH_JOBS = TERMS_DEFAULT_SIZE + 1
 
 
 @dataclass(frozen=True)
@@ -85,21 +89,19 @@ class CrawledSources:
 def crawled_sources(api: AdminApi, opensearch: OpenSearchProbe) -> Iterator[CrawledSources]:
     """2 回・1 回・0 回クロールしたソースを作る(2 回目は md を 1 件足して、文書数を変える)。
 
-    登録ソースの総数が `MIN_REGISTERED_SOURCES` に満たなければ、クロールしないソースを登録して補う
-    (EP-01 の `terms` 集計が、既定の `size` を超える件数でも全行を返すことを AIT-30 が確かめるため)。
+    ジョブ記録(`crawl`)と文書を持つ登録済みのソースが `MIN_SOURCES_WITH_JOBS` に満たなければ、
+    md 1 件のソースを登録して実際にクロールし、補う(EP-01 の `terms` 集計が、既定の `size` を超える
+    件数でも全行の値を返すことを AIT-30 が確かめるため。登録だけのソースはバケットを作らず、補いに
+    ならない)。
     """
     twice = SourceDirectory(unique_id("q-twice"))
     once = SourceDirectory(unique_id("q-once"))
     never = SourceDirectory(unique_id("q-never"))
-    directories = (twice, once, never)
+    directories = [twice, once, never]
     try:
         for directory in directories:
             directory.create()
             register_source(api, directory)
-        shortfall = MIN_REGISTERED_SOURCES - len(opensearch.source_config_records())
-        for _ in range(max(shortfall, 0)):
-            # クロールしないので、ディレクトリは作らない(ジョブも文書もない行になる)
-            register_source(api, SourceDirectory(unique_id("q-registered-only")))
         twice.write("t1.md", b"# t1\n\ntext of t1\n")
         twice.write("t2.md", b"# t2\n\ntext of t2\n")
         once.write("o1.md", b"# o1\n\ntext of o1\n")
@@ -109,6 +111,17 @@ def crawled_sources(api: AdminApi, opensearch: OpenSearchProbe) -> Iterator[Craw
         twice.write("t3.md", b"# t3\n\ntext of t3\n")
         second = run_crawl(api, opensearch, twice.source_id)
         only = run_crawl(api, opensearch, once.source_id)
+
+        shortfall = MIN_SOURCES_WITH_JOBS - len(
+            _registered_sources_with_jobs_and_documents(opensearch)
+        )
+        for number in range(max(shortfall, 0)):
+            filler = SourceDirectory(unique_id("q-filler"))
+            directories.append(filler)
+            filler.create()
+            register_source(api, filler)
+            filler.write("f1.md", f"# f1\n\ntext of filler {number}\n".encode())
+            run_crawl(api, opensearch, filler.source_id)
         yield CrawledSources(
             crawled_twice=twice,
             first_job_id=first["job_id"],
@@ -134,8 +147,9 @@ def test_source_listing_matches_the_rows_computed_independently_from_opensearch(
 
     【前提と手順】
     前提: 2 回クロールしたソース(2 回目で文書が 3 件に増える)、1 回クロールしたソース、一度もクロール
-    していないソースと、それまでのテストが作ったすべてのソース。登録ソースの総数は 12 件以上(足りない分は
-    クロールしない登録だけのソース。`terms` の既定 `size` 10 を超える)。ジョブはすべて終端(conftest が待つ)。
+    していないソースと、それまでのテストが作ったすべてのソース。ジョブ記録(`crawl`)と文書を持つ登録済みの
+    ソースは 11 件以上(足りない分は、md 1 件のソースを実際にクロールして補う。`terms` の既定 `size` 10 を
+    超える)。ジョブはすべて終端(conftest が待つ)。
     手順: EP-01 を呼ぶ。`loreley-sources`・`loreley-jobs`・検索インデックスを直接読んで行ごとの期待値を
     計算し、一致するまで(反映の遅れの分だけ)待つ。
 
@@ -147,11 +161,14 @@ def test_source_listing_matches_the_rows_computed_independently_from_opensearch(
     - 2 回クロールしたソース: `last_crawl` は 2 回目のジョブ(`terms` 集計の `top_hits` が最新を選ぶ)、
       `last_completed_at` はその `finished_at`、文書数は 3。1 回: そのジョブ、文書数 2。未クロール:
       `last_crawl`・`last_completed_at` は `null`、文書数 0。
-    - 行数は 10 を超え(`terms` の既定 `size` を超える件数でも、全行が返る)、最上位の `unavailable` は `{}`。
+    - `last_crawl` が null でない行と、`document_count` が 0 より大きい行が、どちらも 10 を超える
+      (独立計算側でも、ジョブを持つソースは 11 件以上)。`terms` の既定 `size` を超える件数のソースが
+      バケットを作っても、全行の値が欠けない。最上位の `unavailable` は `{}`。
 
     【単体テストでは確認できず実機で確認する点】
-    実 OpenSearch での `terms` 集計の `size`(ソース数。10 を超える件数)・`top_hits` の並び・`max` 集計の
-    値(エポックミリ秒から日時への変換)・件数の集計が、全行で独立計算と一致すること(AAA-U-1)。
+    実 OpenSearch での `terms` 集計の `size`(ジョブ・文書を持つソース数。10 を超える件数。`size` が
+    足りないと、11 件目以降のソースの `last_crawl`・`document_count` の値が欠ける)・`top_hits` の並び・
+    `max` 集計の値(エポックミリ秒から日時への変換)・件数の集計が、全行で独立計算と一致すること(AAA-U-1)。
     """
 
     def snapshot() -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
@@ -162,7 +179,7 @@ def test_source_listing_matches_the_rows_computed_independently_from_opensearch(
         ]
         return [_listed_source_row(item) for item in listing["items"]], expected_rows, listing
 
-    actual_rows, _, listing = poll_until(
+    actual_rows, expected_rows, listing = poll_until(
         snapshot,
         lambda state: state[0] == state[1],
         timeout_secs=READ_LAG_TIMEOUT_SECONDS,
@@ -171,10 +188,29 @@ def test_source_listing_matches_the_rows_computed_independently_from_opensearch(
     )
 
     assert listing["unavailable"] == {}, f"the top-level unavailable must be empty: {listing}"
-    # 全行が独立計算と一致しても、行数が `terms` の既定 size 以下では、size の不足を見逃す
-    assert len(actual_rows) > TERMS_DEFAULT_SIZE, (
-        f"more than {TERMS_DEFAULT_SIZE} sources must be listed to cover the terms size: "
-        f"{len(actual_rows)}"
+    # 全行が独立計算と一致しても、ジョブ・文書を持つソースが `terms` の既定 size 以下では、size の
+    # 不足を見逃す(size が不足すると、バケットのないソースの `last_crawl`・`document_count` が欠ける)。
+    # 件数は独立計算側(OpenSearch の直読み)でも確かめ、api の応答と並べて結果ログに残す。
+    expected_with_jobs = sum(1 for row in expected_rows if row["last_crawl"] is not None)
+    expected_with_documents = sum(1 for row in expected_rows if row["document_count"] > 0)
+    listed_with_jobs = sum(1 for row in actual_rows if row["last_crawl"] is not None)
+    listed_with_documents = sum(1 for row in actual_rows if row["document_count"] > 0)
+    print(
+        f"[observed] AIT-30 rows={len(actual_rows)} "
+        f"with last_crawl: expected={expected_with_jobs} listed={listed_with_jobs}, "
+        f"with documents: expected={expected_with_documents} listed={listed_with_documents}"
+    )
+    assert expected_with_jobs > TERMS_DEFAULT_SIZE, (
+        f"the independent computation must see more than {TERMS_DEFAULT_SIZE} sources with "
+        f"jobs to cover the terms size: {expected_with_jobs}"
+    )
+    assert listed_with_jobs > TERMS_DEFAULT_SIZE, (
+        f"more than {TERMS_DEFAULT_SIZE} rows must have last_crawl (the jobs terms size): "
+        f"{listed_with_jobs}"
+    )
+    assert listed_with_documents > TERMS_DEFAULT_SIZE, (
+        f"more than {TERMS_DEFAULT_SIZE} rows must have documents (the documents terms size): "
+        f"{listed_with_documents}"
     )
     source_ids = [row["source_id"] for row in actual_rows]
     assert source_ids == sorted(source_ids), (
@@ -405,6 +441,20 @@ def test_opensearch_cluster_matches_the_direct_cat_and_health_reads(
 
 
 # --- AIT-30: 行ごとの期待値の独立計算 ---
+
+
+def _registered_sources_with_jobs_and_documents(opensearch: OpenSearchProbe) -> set[str]:
+    """`crawl` のジョブ記録と文書の両方を持つ、登録済みの `source_id`(OpenSearch の直読み)。
+
+    EP-01 の `terms` 集計は登録済みのソースだけを対象にする。削除済みのソースのジョブ記録は残るが、
+    行にならないので数えない。
+    """
+    registered_ids = {config["_id"] for config in opensearch.source_config_records()}
+    return {
+        source_id
+        for source_id in opensearch.source_ids_with_crawl_jobs() & registered_ids
+        if opensearch.count_source_documents(source_id) > 0
+    }
 
 
 def _expected_source_row(opensearch: OpenSearchProbe, config: dict[str, Any]) -> dict[str, Any]:
