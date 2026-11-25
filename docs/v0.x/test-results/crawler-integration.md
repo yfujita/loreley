@@ -225,3 +225,49 @@ PR #3 のレビューの指摘 1〜3 に対応した(指摘 4 のインデック
 - 未対応: Indexer 用スクリプト(`run-indexer-integration-test.sh`)は同じプロジェクト名・ボリュームで `down -v` するが、残骸検出は入れていない(今回は Crawler 用のみ。スクリプトの重複の負債と同じ扱い)。
 - 未対応: Connector が許可するルートディレクトリを制限する仕組み(将来の課題)。
 - 未確認: Linux ホスト、`shellcheck`(未導入)。
+
+## 9. 実行スクリプトの安全性の統一と排他ロック(再実行の記録。2026-11-26)
+
+タスク `20261125_harden_it_run_scripts` で、Crawler・Indexer・api の実行スクリプト 3 本を、同じ安全性の方針に揃え、共通の排他ロックで同時実行を拒否するようにした。そのうえで Crawler の結合テストを再実行した。1〜8 章の結果は、履歴としてそのまま残す。
+
+変更した資材(いずれも**未コミット**。基準コミットは `96a9b52`):
+
+- `scripts/lib/it-common.sh`(新規): 3 本の実行スクリプトの共通処理(排他ロック・事前確認・起動と待機・後始末)。6 章の「負債」(8 章でも言及)としていた「スクリプトの重複」を解消した
+- `scripts/run-crawler-integration-test.sh`: 共通ファイルへ移行。テストの接続先 URL(`LORELEY_IT_{OPENSEARCH,INDEXER,CRAWLER}_URL`)の固定、`docker ps -a` が失敗したときの中止、`data/` の存在確認と一覧取得の分離、後始末に失敗したときの終了コード 11、排他ロックの追加
+- `scripts/run-indexer-integration-test.sh`・`scripts/run-api-integration-test.sh`: 同じく共通ファイルへ移行(Indexer には 8 章で未対応としていた残骸検出を追加。詳細は [indexer-integration.md](indexer-integration.md) の 10 章)
+
+| 項目 | 内容 |
+| --- | --- |
+| 実施日・実施者 | 2026-11-26。Claude Code(メインエージェント)。ユーザー指示のもとで実施 |
+| 実施した時点のコード | 基準コミット `96a9b52` の作業ツリー(上の変更は未コミット) |
+| ホスト・実行方法 | macOS。`caffeinate -i` を付け、`scripts/run-crawler-integration-test.sh` を実行した。環境(実行後に同じホストで確認): macOS 15.8.3(x86_64)・Docker 20.10.13・compose v2.3.3・uv 0.13.8 |
+
+### 9.1 全件実行の結果
+
+| 実行 | 結果 | ログ |
+| --- | --- | --- |
+| 正式な記録(同時実行の拒否の検証で 1 本目として実行) | **14 passed in 36.99s**、終了コード 0。実行後にコンテナ・ボリューム・`data/`・ロックなし。`skipped`・`deselected`・`xfailed`・`warnings` の行なし | `tests/integration/crawler/results/pytest-20261126-041916.log` |
+| 検証手順の誤りで意図せず実行された回 | 14 passed in 37.90s、終了コード 0 | `pytest-20261126-040531.log` |
+
+他プロジェクトのコンテナ・ボリューム(`opensearch-opensearch-1` など)は、各実行の前後で変化がなかった。
+
+### 9.2 この IT に関わる検証
+
+| 検証 | 結果 |
+| --- | --- |
+| 後始末の失敗(終了コード 11)と URL の固定 | `docker compose down` だけを失敗させる偽の `docker` と、`LORELEY_IT_{OPENSEARCH,INDEXER,CRAWLER,API}_URL=http://127.0.0.1:9999` を指定し、`-k test_01_startup` で実行。`4 passed, 10 deselected`、終了コード **11**。コンテナ・ボリューム・`data/` は残り、`data/` を削除しなかった旨(コンテナが残っている可能性があるため)を表示し、ロックは解除された。URL を 9999 にしても成功した(スクリプトが固定したため) |
+| `--keep` | `--keep -k test_01_startup` で終了コード 0。ロックは解除され、スタックと `data/` が残った。片付ける前の再実行は「コンテナが残っています」で終了コード 1(中止)。表示された後始末のコマンドをそのまま実行して、コンテナ・ボリューム・`data/` がすべて消えた |
+| 同時実行の拒否 | 1 本目に Crawler の全件を実行し、スタックの準備ができた後に、2 本目として Indexer・Crawler・api を順に起動した。3 本とも終了コード **1** で、保持者(`script=run-crawler-integration-test` と PID)を表示した。2 本目の前後で、コンテナ ID・ボリューム・各コンテナの `StartedAt` は不変で、`docker events` はヘルスチェックの `exec_*` の 5 行だけ(destroy・die・kill・stop・remove なし)。1 本目は終了コード 0 |
+| 事前確認の中止(スタックは作らない) | 偽の `docker` で、`docker ps -a` の失敗・`docker volume ls` の失敗は終了コード 1(「docker ps に失敗しました」「docker volume ls に失敗しました」)。`data/` を `chmod 000` にすると終了コード 1(「内容を確認できませんでした」)で `data/` は残る。空でない `data/`(`canary.txt`)は終了コード 1 で canary が残る。ポート 9200・8000・8001 をそれぞれ占有すると、いずれも終了コード 1 で、`compose up` は呼ばれない。ポート占有以外は、終了後にロックが残らないことも確認した |
+| 残ったロック | 偽の `docker`(`docker info` を待たせる)で起動して `kill -9`。ロックが残り、次の Crawler の実行は終了コード 1 で、保持者の PID(kill したものと一致)・開始時刻・スクリプト名、`ps -p`・`rm -rf` の手順を表示し、何も消さなかった。手動で `rm -rf` した後は、ロックを取って実行できた |
+| `--help`・引数エラー | `--help` は終了コード 0 でロックを作らない。`LORELEY_IT_WAIT_TIMEOUT_SECS=abc`・`=0` は終了コード 1 でロックを作らない |
+| 旧スクリプト(`96a9b52`)との比較 | 偽の `docker` を使い、通常・`--keep`・`down` の失敗・uv の失敗・`-k foo -x` で、旧・新の終了コードと docker・uv の呼び出しを比べた。終了コードは一致し、意図した差は `down` 失敗時の終了コード(旧 0 → 新 11)と、`LORELEY_IT_*_URL` 3 つの追加だけ |
+
+### 9.3 静的検査と未実施
+
+- `bash -n`(`/bin/bash` 3.2.57 でも): 4 ファイル(`scripts/lib/it-common.sh` と実行スクリプト 3 本)すべて OK
+- **`shellcheck` は未実施**(ホストに無い。8 章の「未確認」のまま)
+- ロックの解除に失敗したときに終了コード 11 になる経路は、`scripts/lib/it-common.sh` を `source` した関数レベルの確認(ロックの親ディレクトリを書き込み不可にして解除を失敗させた)だけで、スクリプトを通した実機の再現はしていない
+- Linux ホストは未確認のまま
+- Crawler の実スタックでの INT・TERM は行っていない(共通の関数は、Indexer の実スタックで TERM、偽の `docker` で INT・TERM を確認した)
+- 既知のリスク: ロックの `mkdir` が成功してから `lock_acquired` を立てるまでの間にシグナルを受けると、ロックが残る(残った場合は手動で解除する)

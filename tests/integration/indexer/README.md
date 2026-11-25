@@ -4,6 +4,7 @@ compose で起動した**実 OpenSearch と実 Indexer**に対して、ホスト
 
 > **確認状況**: 実行結果(passed 件数・所要時間・環境)は [docs/v0.x/test-results/indexer-integration.md](../../../docs/v0.x/test-results/indexer-integration.md) に書く。この文書には書かない。
 > **uv 経由の既定起動は確認済み**(uv 0.13.8。スクリプトを 2 回連続で実行し、どちらも 40 passed。結果記録 4.2 の ④⑤)。`tests/integration/indexer/uv.lock` で依存を固定している。macOS(x86_64)・Docker 20.10.13・compose v2.3.3 でのみ確認した。
+> 2026-11-26 に、実行スクリプトを共通化し排他ロックなどを入れた版で再実行し、40 passed(終了コード 0、実行後の残骸なし。同環境。詳細は結果文書の 10 章)。
 
 ## 目的
 
@@ -42,16 +43,19 @@ scripts/run-indexer-integration-test.sh -k deletion      # 名前に deletion �
 - `--keep` と `-h` 以外の引数は、そのまま pytest に渡る。**絞り込みには `-k` を使う**。ファイルやノード ID(`ファイル::テスト名`)をパス引数で渡しても、既定のコマンドの末尾に `tests/integration/indexer` があるため絞られず、全テストが走る(`LORELEY_IT_PYTEST_CMD` で既定のコマンドを置き換えたときは別)。ノード ID で 1 テストを指定したいときは、「手動で実行する」の手順で pytest を直接実行する
 - スクリプトは、`docker compose -p loreley-it -f deploy/compose/compose.yaml -f tests/integration/indexer/compose.test.yaml up -d --build` で起動する。**`up --wait` は使わず**、`docker compose ps` 相当の確認を 3 秒間隔で繰り返して、`opensearch`・`indexer` が healthy、`opensearch-init` が Exited(0) になるのを待つ(compose v2.3.3 では `--wait` が戻らないため。`deploy/compose/README.md` を参照)
 - 異常終了したときは、`docker compose ps -a` と各サービスのログの末尾 100 行を表示してから、後始末する
-- ホスト側のポートは、スクリプトが 9200・8000 に固定する(`deploy/compose/.env` で変えていても上書きする)
+- ホスト側のポートは、スクリプトが 9200・8000 に固定する(`deploy/compose/.env` で変えていても上書きする)。テストの接続先 URL(`LORELEY_IT_OPENSEARCH_URL`・`LORELEY_IT_INDEXER_URL`)も、この 2 つの `127.0.0.1` に固定する(シェルに残った値は無視する。pytest を直接実行するときだけ、環境変数で変えられる)
+- 排他ロックを取ったあと、起動前に次のどれかに当てはまると、原因と対処を出して**何も消さず終了コード 1 で中止**する(スタックにもボリュームにも触れない): (1) `loreley-it` の前回のコンテナの残り(停止中を含む)、(2) 名前付きボリュームの残り、(3) ホストのポート 9200・8000 の使用中(使っている Docker コンテナと `lsof` の結果を表示する。止めはしない)。`docker ps -a`・`docker volume ls` が失敗して残りを確認できないときも、安全側に倒して中止する。終了時の `down -v` が、前回 `docker compose down`(`-v` なし)で止めただけのボリュームなど、利用者のデータを消さないため
+- 別の結合テストが実行中のときも、排他ロックで中止する(後述の「結合テスト同士は同時に実行できない」)
 
 #### 終了コード
 
 | コード | 意味 |
 | --- | --- |
 | 0 | 全テスト成功 |
-| 1 | pytest のテスト失敗、**または**引数・事前確認の失敗(Docker・uv が無い、ポート使用中など)。事前確認の失敗は標準エラー出力に理由が出るので区別できる |
+| 1 | pytest のテスト失敗、**または**引数・事前確認の失敗(Docker・uv が無い、ポート使用中、前回の `loreley-it` の残りなど)、**または**ロックを取れなかった(別の結合テストが実行中、残ったロック、`TMPDIR` にロックを作れない場合)。事前確認・ロックの失敗は標準エラー出力に理由が出るので区別できる |
 | 2〜5 | pytest の終了コードのまま(2=中断・スタックに接続できない、5=該当テストなし) |
 | 10 | スタックの起動失敗(`up` の失敗、待機の上限超過、コンテナの異常終了)。実機で確認したのは `up` の失敗と待機の上限超過。**コンテナの異常終了(init の非 0 終了、unhealthy・restarting)の判定は、コードの確認のみで実機では再現していない** |
+| 11 | テストは成功したが、後始末(`down -v`・ロックの解除)に失敗した。テスト失敗のときは、後始末に失敗しても pytest の終了コードのまま。後始末に失敗したら、標準エラー出力の手順で手動で消す |
 | 130 / 143 | Ctrl-C(INT)/ TERM で中断(どちらも後始末まで行う) |
 
 #### 環境変数
@@ -61,7 +65,7 @@ scripts/run-indexer-integration-test.sh -k deletion      # 名前に deletion �
 | `LORELEY_IT_WAIT_TIMEOUT_SECS` | `300` | 起動後の待機の上限(秒)。1 以上の整数 |
 | `LORELEY_IT_PYTEST_CMD` | `uv run --project tests/integration/indexer pytest tests/integration/indexer -v` | pytest を起動するコマンド全体の置き換え(空白区切り。スクリプトの引数はこの後ろに付く)。**uv が使えない環境で、用意済みの venv の pytest を使うための逃げ道**で、通常は指定しない。指定すると uv の事前確認を省略する |
 
-`OPENSEARCH_VERSION`・`OPENSEARCH_HEAP_SIZE`・`INDEXER_LOG_LEVEL` などの compose の変数は、そのまま compose に渡る(`deploy/compose/.env.example`)。
+`OPENSEARCH_VERSION`・`OPENSEARCH_HEAP_SIZE`・`INDEXER_LOG_LEVEL` などの compose の変数は、そのまま compose に渡る(`deploy/compose/.env.example`)。ただしホスト側ポート・テストの接続先 URL(`LORELEY_IT_{OPENSEARCH,INDEXER}_URL`)・削除記録と検索エイリアスの索引名はスクリプトが固定する。
 
 ### 手動で実行する(スタックを起動して pytest を直接実行する)
 
@@ -83,7 +87,7 @@ docker compose -p loreley-it -f deploy/compose/compose.yaml -f tests/integration
 ```
 
 - テストは `compose.test.yaml` の値(Indexer の原本上限 64 KiB、削除のバッチ・ページ 2 件、走査間隔 1 秒)を前提にしている。`deploy/compose/compose.yaml` だけで起動したスタックに向けて実行しない(IT-14・IT-31 などが前提を満たさず失敗する)
-- ホスト側のポートを `.env` で変えている場合は、テストの接続先を環境変数 `LORELEY_IT_OPENSEARCH_URL`・`LORELEY_IT_INDEXER_URL` で合わせる(既定は `http://127.0.0.1:9200`・`http://127.0.0.1:8000`)。スクリプトを使う場合は不要
+- ホスト側のポートを `.env` で変えている場合は、テストの接続先を環境変数 `LORELEY_IT_OPENSEARCH_URL`・`LORELEY_IT_INDEXER_URL` で合わせる(既定は `http://127.0.0.1:9200`・`http://127.0.0.1:8000`)。スクリプトを使う場合は、ポートも URL も固定されるので不要
 - スタックが起動していないと、pytest は接続できなかった理由と起動手順を表示して、終了コード 2 で中止する
 
 ### 専用プロジェクトで実行し、開発用スタックと分ける
@@ -92,8 +96,17 @@ docker compose -p loreley-it -f deploy/compose/compose.yaml -f tests/integration
 
 - テストは、後始末として、作成したデータ(ソース・文書・記録)を**削除しない**(IT-41・IT-42 のように削除 API を確認するものを除く)。後始末はスタックごと `down -v` で消すことに任せている。**開発用のスタックに向けて実行しない**(テストのデータが残る)
 - IT-41 は、検索インデックスの `refresh_interval` を一時的に変更し、終了時に戻す(失敗しても戻す)
-- ホストの `9200`・`8000` を開発用スタックが使っていると、スクリプトは事前確認で中止する
-- Crawler の結合テスト(`scripts/run-crawler-integration-test.sh`)・api の結合テスト(`scripts/run-api-integration-test.sh`)とは、プロジェクト名(`loreley-it`)とホストのポート(9200・8000)が同じため、同時には実行できない。どちらかを終えて `down -v` してから、もう一方を実行する
+- ホストの `9200`・`8000` を開発用スタックが使っていると、スクリプトは事前確認で中止し、使用中の相手を表示する(止めはしない)
+
+### 結合テスト同士は同時に実行できない(排他ロック)
+
+Crawler の結合テスト(`scripts/run-crawler-integration-test.sh`)・api の結合テスト(`scripts/run-api-integration-test.sh`)とは、**プロジェクト名(`loreley-it`)とホストのポート(9200・8000)が同じ**ため、同時には実行できない。3 本のスクリプトは**排他ロック**で同時実行を拒否する。どれかを終えてから、別の 1 本を実行する。
+
+- 後から起動した側は、**何も消さずに終了コード 1 で中止**し、ロックの保持者の PID・開始時刻・スクリプト名を表示する
+- ロックは `${TMPDIR:-/tmp}/loreley-it.lock`(ディレクトリ)。リポジトリの外に置くため、別の clone・worktree で起動した実行とも排他される。事前確認の直前に取り、通常終了・INT・TERM・`--keep` のときも終了時に解除する(`--help` と引数エラーでは作らない)。`--keep` で残したスタックはロックでは守られず、次の実行は事前確認(コンテナの残り)で中止する
+- **SIGKILL・電源断などで残ったロックは、自動では解除されない**。次の実行が終了コード 1 で中止し、保持者の PID と解除の手順を表示するので、`ps -p <PID>` で保持者が動いていないことを確かめてから、表示される手順(`rm -rf '<ロックのパス>'`)で手動で解除する
+- **実行中のロックを誤って手動で解除すると、排他が破れる**。別の実行がロックを取り直したあとに先発が終わると、先発は保持者の PID が自分と違うため、そのロックを消さずに警告を出すだけで終わる
+- 排他されないもの: `TMPDIR` が実行ごとに異なる環境(macOS の別ユーザーなど)から起動した実行、pytest や `docker compose` を手で直接実行した場合
 
 ### シナリオ ID でテストを選べない
 
@@ -184,3 +197,5 @@ arch U-31(実機確認が必要な点)のうち、このテストで確認した
 | `test_*.py` | シナリオ別のテスト(上の表) |
 | `samples/` | 固定のサンプル文書 |
 | `results/` | スクリプトの実行ログ(`.gitignore` 済み) |
+
+このディレクトリの外の `scripts/lib/it-common.sh` は、3 本の実行スクリプト(`scripts/run-{api,crawler,indexer}-integration-test.sh`)の共通処理(排他ロック・事前確認・起動と待機・後始末)。
