@@ -24,7 +24,8 @@ import subprocess
 import time
 import unicodedata
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from email.utils import parsedate_to_datetime
@@ -88,6 +89,10 @@ EXPIRY_POLL_INTERVAL_SECONDS = 1.0
 # 接続できるようになるまで最大約 3 分かかる(起動時の回復)。
 SERVICE_RECOVERY_TIMEOUT_SECONDS = 300.0
 SERVICE_RECOVERY_POLL_INTERVAL_SECONDS = 2.0
+# コンテナが healthy になった後、Admin API から見て各コンポーネントが `normal` に戻るまで(api が
+# 接続を張り直す分)。
+COMPONENT_RECOVERY_TIMEOUT_SECONDS = 60.0
+COMPONENT_RECOVERY_POLL_INTERVAL_SECONDS = 1.0
 
 TERMINAL_JOB_STATUSES = frozenset({"succeeded", "partially_succeeded", "failed", "cancelled"})
 
@@ -369,6 +374,31 @@ def wait_for_idle(api: "AdminApi") -> dict[str, Any]:
         timeout_secs=IDLE_WAIT_TIMEOUT_SECONDS,
         poll_interval_secs=IDLE_POLL_INTERVAL_SECONDS,
         what="no running or queued jobs",
+    )
+
+
+def fetch_component_states(api: "AdminApi") -> dict[str, dict[str, Any]]:
+    """EP-13 の `components[]` を、`id` で引ける形にして返す(各要素は `state`・`reason` など)。"""
+    body = expect_json(api.dashboard(), 200)
+    return {component["id"]: component for component in body["components"]}
+
+
+def wait_for_components_normal(
+    api: "AdminApi", component_ids: Iterable[str]
+) -> dict[str, dict[str, Any]]:
+    """EP-13 で、指定したコンポーネントがすべて `normal` になるのを待つ(上限つき)。
+
+    コンテナが healthy でも、api の接続の張り直しなどで、少しの間 `abnormal` に見えることがある。
+    """
+    expected_ids = tuple(component_ids)
+    return poll_until(
+        lambda: fetch_component_states(api),
+        lambda states: all(
+            states[component_id]["state"] == "normal" for component_id in expected_ids
+        ),
+        timeout_secs=COMPONENT_RECOVERY_TIMEOUT_SECONDS,
+        poll_interval_secs=COMPONENT_RECOVERY_POLL_INTERVAL_SECONDS,
+        what=f"EP-13 showing {', '.join(expected_ids)} as normal",
     )
 
 
@@ -775,6 +805,13 @@ COMPOSE_FILES = (
 )
 # 障害系が止めてよいサービス。api は止めない(テストの対象)。opensearch-init は使い捨て。
 CONTROLLABLE_SERVICES = frozenset({"crawler", "indexer", "opensearch"})
+# サービスを起動し直した後に、healthy になるのを待つサービス。OpenSearch の停止は、これに依存する
+# Crawler・Indexer と、読み取りに使う api の見え方にも影響するので、4 つが揃うまで待つ。
+SERVICES_TO_AWAIT_AFTER_START = {
+    "crawler": ("crawler",),
+    "indexer": ("indexer",),
+    "opensearch": ("opensearch", "indexer", "crawler", "api"),
+}
 CONTROLLABLE_ACTIONS = frozenset({"stop", "start"})
 # 障害系を許可する環境変数。スクリプトが export する(手動で pytest を直接実行したときに、意図せず
 # コンテナを止めないため)。
@@ -804,11 +841,15 @@ def build_compose_command(action: str, service: str) -> list[str]:
         raise ValueError(
             f"compose action {action!r} is not allowed: {sorted(CONTROLLABLE_ACTIONS)}"
         )
+    require_controllable_service(service)
+    return [*_compose_base_command(), action, service]
+
+
+def require_controllable_service(service: str) -> None:
     if service not in CONTROLLABLE_SERVICES:
         raise ValueError(
             f"compose service {service!r} is not allowed: {sorted(CONTROLLABLE_SERVICES)}"
         )
-    return [*_compose_base_command(), action, service]
 
 
 class ComposeControl:
@@ -816,8 +857,25 @@ class ComposeControl:
 
     操作できるのはプロジェクト `loreley-it` の `crawler`・`indexer`・`opensearch` の `stop`・`start`
     だけ(`build_compose_command`)。開発用スタックや他のプロジェクトのコンテナには触れない。
-    テストは、止めたら必ず `finally` で `start` し、`wait_healthy` で戻るのを確認する。
+    テストは、止める区間を `stopped`(with 文)で囲む。区間を抜けるとき(テストの失敗を含む)に、
+    必ず `start` して、healthy に戻るのを上限つきで確認する。
     """
+
+    @contextmanager
+    def stopped(self, service: str) -> Iterator[None]:
+        """`service` を止めた状態にする区間。抜けるときに、必ず起動し直して healthy まで待つ。
+
+        停止の途中で失敗したとき(コンテナだけが止まっていて、コマンドがタイムアウトした場合など)も
+        復旧する。起動済みのサービスに `start` を呼んでも害はない。復旧に失敗したときは、後続の
+        テストが壊れた状態で走らないよう、例外にする(上限は `SERVICE_RECOVERY_TIMEOUT_SECONDS`)。
+        """
+        require_controllable_service(service)
+        try:
+            self.stop(service)
+            yield
+        finally:
+            self.start(service)
+            self.wait_all_healthy(SERVICES_TO_AWAIT_AFTER_START[service])
 
     def stop(self, service: str) -> None:
         self._run(build_compose_command("stop", service), service)
@@ -836,6 +894,14 @@ class ComposeControl:
             poll_interval_secs=SERVICE_RECOVERY_POLL_INTERVAL_SECONDS,
             what=f"{service} becoming healthy",
         )
+
+    def wait_all_healthy(
+        self, services: Iterable[str], *, timeout_secs: float = SERVICE_RECOVERY_TIMEOUT_SECONDS
+    ) -> None:
+        """すべてのサービスが healthy になるのを待つ。上限(`timeout_secs`)は全体で 1 つ。"""
+        deadline = time.monotonic() + timeout_secs
+        for service in services:
+            self.wait_healthy(service, timeout_secs=max(deadline - time.monotonic(), 0.0))
 
     def _run(self, command: list[str], service: str) -> None:
         # 操作の前に、プロジェクトにコンテナが実在することを確認する(別の名前を指す事故を避ける)。
