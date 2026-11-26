@@ -4,7 +4,7 @@ import 'vuetify/styles'
 
 import { createApp } from 'vue'
 /* eslint-disable no-restricted-imports --
-  フェーズ 3 で main.ts を作り直す(E 4.1)までの暫定。スキャフォールドのままでは R13・R15 に反する。 */
+  フェーズ 3 で main.ts を作り直す(E 4.1)までの暫定。スキャフォールドのままでは R13(createVuetify は setupVuetify.ts だけ)と、設計 2.4(main.ts は admin/app だけを import する)に反する。 */
 import { createVuetify } from 'vuetify'
 
 import App from '@/admin/app/App.vue'

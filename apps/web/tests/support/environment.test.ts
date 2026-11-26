@@ -4,7 +4,10 @@ import { describe, expect, it, vi } from 'vitest'
 import { h } from 'vue'
 import { VDataTableServer, VDialog, VNavigationDrawer } from 'vuetify/components'
 
+// 公開口(`@/admin/api`)が client と SDK を再 export したら、そこからの import に切り替え、disable を外す(フェーズ 2)。
+// eslint-disable-next-line no-restricted-imports -- 公開口が client を再 export するまでの暫定(R2)
 import { client } from '../../src/admin/api/generated/client.gen'
+// eslint-disable-next-line no-restricted-imports -- 同上。SDK は公開口に出さない予定なので、フェーズ 2 でテストの組み立てを見直す
 import { getMeta } from '../../src/admin/api/generated/sdk.gen'
 import { mountInLayout } from './mount'
 
@@ -46,19 +49,27 @@ describe('jsdom 上の Vuetify', () => {
     })
 
     expect(wrapper.find('nav').text()).toBe('ナビ')
-    // html() は js-beautify を使う(overrides で glob 14・minimatch 11 に上げた依存の動作確認)。
+  })
+
+  // html() は js-beautify を使う。overrides で glob 14・minimatch 11 に上げた依存が壊れていないことの確認。
+  it('wrapper.html() が使える', async () => {
+    const { wrapper } = await mountInLayout(VNavigationDrawer, {
+      slots: { default: () => 'ナビ' },
+    })
+
     expect(wrapper.html()).toContain('ナビ')
   })
 })
 
 describe('相対 baseUrl', () => {
-  it('jsdom の Request は相対 URL を解決しない(setup が絶対 URL に差し替える理由)', () => {
+  it('jsdom 環境でも Request は Node(undici)のもので、相対 URL を解決しない(setup が絶対 URL に差し替える理由)', () => {
     expect(() => new Request('/api/admin/v1/meta')).toThrow(TypeError)
   })
 
   it('生成クライアントの baseUrl は /api/admin/v1(setup の差し替え前の値)', async () => {
     // setup が差し替えたクライアントとは別の、生成直後のインスタンスを読み込む。
     vi.resetModules()
+    // eslint-disable-next-line no-restricted-syntax -- 生成直後のインスタンスが要るため。公開口が再 export したら見直す(R2)
     const { client: freshClient } = await import('../../src/admin/api/generated/client.gen')
 
     expect(freshClient.getConfig().baseUrl).toBe('/api/admin/v1')

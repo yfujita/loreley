@@ -5,7 +5,8 @@ import { afterEach } from 'vitest'
 // 相対 `baseUrl` の生成クライアントは、jsdom 環境の `Request` が相対 URL を解決しないため、
 // そのままでは `TypeError` を黙って返す(FARC-U-9)。テストの間だけ絶対 URL に差し替える。
 // 本番用の `client.ts` にはテスト用の形を持たせない。
-// 公開口(`@/admin/api`)が `client` を再 export したら、そこからの import に切り替える(フェーズ 2)。
+// 公開口(`@/admin/api`)が `client` を再 export したら、そこからの import に切り替え、この disable を外す(フェーズ 2)。
+// eslint-disable-next-line no-restricted-imports -- 公開口が client を再 export するまでの暫定(R2)
 import { client } from '../../src/admin/api/generated/client.gen'
 
 client.setConfig({ baseUrl: 'http://localhost/api/admin/v1' })

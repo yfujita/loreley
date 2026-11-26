@@ -6,7 +6,7 @@ set -eu
 
 cd "$(dirname "$0")/.."
 tmp_dir="$(mktemp -d)"
-trap 'rm -rf "$tmp_dir"' EXIT
+trap 'rm -rf "$tmp_dir"' EXIT INT TERM
 
 LORELEY_GEN_OUT="$tmp_dir" sh scripts/gen-api.sh
 

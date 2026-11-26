@@ -40,6 +40,9 @@ const ALL_FEATURES = FEATURES.map((name) => `feature-${name}`)
 const withChildren = (moduleName) => [moduleName, `${moduleName}/**`]
 
 const TEST_FILES = ['**/*.test.ts', 'tests/**/*.ts']
+const PARENT_RELATIVE_IMPORT = '(?:^|/)\\.\\.(?:/|$)'
+const SYNC_IMPORT_MESSAGE =
+  '動的 import() と import.meta.glob は使いません(ルートはすべて同期 import。FMOD-P-17)。'
 const GENERATED_DIR = 'src/admin/api/generated/'
 
 /**
@@ -56,6 +59,9 @@ const GENERATED_DIR = 'src/admin/api/generated/'
  * - allowHttp: fetch・XMLHttpRequest・@hey-api/*・文字列 '/api/admin/v1' を使ってよい(R3)
  * - allowMdiJs: @mdi/js を import してよい(R12)
  * - banVueFiles: `.vue` の import を禁止する(純粋なモジュール)
+ * - allowGenerated: 生成コード(`@/admin/api/**`)を import してよい(admin/api の中だけ)
+ * - rule: メッセージに出す依存ルールの番号(層の向きによる禁止の理由)
+ * - unclassified: どのゾーンにも属さないファイル(ファイルがあること自体を違反にする)
  */
 function buildRules(zone) {
   const {
@@ -70,6 +76,8 @@ function buildRules(zone) {
     allowMdiJs = false,
     banVueFiles = false,
     allowGenerated = false,
+    unclassified = false,
+    rule = '層の向き',
   } = zone
 
   const restrictedModules = ALL_MODULES.filter(
@@ -82,8 +90,7 @@ function buildRules(zone) {
   if (fullyRestricted.length > 0) {
     patterns.push({
       group: fullyRestricted.flatMap((name) => withChildren(MODULES[name])),
-      message:
-        '依存ルール(R1・R5〜R11・R15〜R17 と層の向き): このゾーンから import できないモジュールです。',
+      message: `依存ルール(${rule}): このゾーンから import できないモジュールです(設計 F 6 章。層の向きは 2.2)。`,
     })
   }
   // 配下の一部だけ許すモジュールは、否定のパターン(`!`)では書けない(親が除外されていると再許可されない)ので、
@@ -102,7 +109,8 @@ function buildRules(zone) {
     })
   }
   patterns.push({
-    regex: '^\\.\\./',
+    // `../x`・`./../x`・`..` のいずれも止める。
+    regex: PARENT_RELATIVE_IMPORT,
     message:
       '層をまたぐ相対 import を避けるため、親ディレクトリへの相対 import は禁止です。`@/` を使ってください。',
   })
@@ -112,11 +120,13 @@ function buildRules(zone) {
       message: '依存ルール(R5・R6): .vue は import できません。',
     })
   }
-  if (!allowGenerated) {
+  // 公開口(`@/admin/api`)以外の深い import は禁止する(生成コードを含む。R2・E 11.1)。
+  // api を丸ごと禁止するゾーンは、上のグループが掛かる(二重に報告しない)。
+  if (!allowGenerated && !fullyRestricted.includes('api')) {
     patterns.push({
-      group: withChildren('@/admin/api/generated'),
+      group: ['@/admin/api/**'],
       message:
-        '依存ルール(R2): 生成コードは admin/api/ の中だけで import します。外は @/admin/api(公開口)から。',
+        '依存ルール(R2): 生成コードなど admin/api/ の中身は、外から直接 import しません。公開口 @/admin/api から。',
     })
   }
   if (!allowHttp) {
@@ -234,15 +244,31 @@ function buildRules(zone) {
       },
     ]),
   ]
+  // 動的 import と import.meta.glob は使わない(ルートはすべて同期 import。FMOD-P-17)。
+  const syntaxRules = [
+    { selector: 'ImportExpression', message: SYNC_IMPORT_MESSAGE },
+    {
+      selector:
+        "CallExpression > MemberExpression.callee[object.type='MetaProperty'][property.name=/^glob(Eager)?$/]",
+      message: SYNC_IMPORT_MESSAGE,
+    },
+  ]
   if (!allowHttp) {
     const message =
       "依存ルール(R3): '/api/admin/v1' は admin/api/ と shared/api/ の中だけに書きます。"
-    rules['no-restricted-syntax'] = [
-      'error',
+    syntaxRules.push(
       { selector: 'Literal[value=/\\/api\\/admin\\/v1/]', message },
       { selector: 'TemplateElement[value.raw=/\\/api\\/admin\\/v1/]', message },
-    ]
+    )
   }
+  if (unclassified) {
+    syntaxRules.push({
+      selector: 'Program',
+      message:
+        'このファイルは eslint.config.js のどのゾーンにも属しません。新しいディレクトリ・ファイルは、依存ルールのゾーン(sourceZones)に足してください。',
+    })
+  }
+  rules['no-restricted-syntax'] = ['error', ...syntaxRules]
   return rules
 }
 
@@ -254,15 +280,29 @@ function buildTestRules() {
       {
         patterns: [
           {
-            group: withChildren('@/admin/api/generated'),
+            group: ['@/admin/api/**'],
             message:
-              '依存ルール(R2): テストでも生成コードを直接 import しません。型は @/admin/api(公開口)から。',
+              '依存ルール(R2): テストでも生成コードなど admin/api/ の中身を直接 import しません。型は @/admin/api(公開口)から。',
+          },
+          {
+            // `../../src/admin/api/generated/…` のような相対パスでの回避も止める。admin/api の中の `./generated` は対象外。
+            regex: '(?:^|/)admin/api/generated(?:/|$)',
+            message: '依存ルール(R2): テストでも生成コードを相対パスで直接 import しません。',
           },
           {
             group: ['@hey-api/*'],
             message: '依存ルール(R3): テストでも @hey-api/* を import しません。',
           },
         ],
+      },
+    ],
+    // 動的 import() は no-restricted-imports の対象外なので、生成コードへの直接 import だけ別に止める。
+    'no-restricted-syntax': [
+      'error',
+      {
+        selector: 'ImportExpression[source.value=/(^|\\/)admin\\/api\\//]',
+        message:
+          '依存ルール(R2): テストでも生成コードなど admin/api/ の中身を直接 import しません。',
       },
     ],
     // fetch の差し替え(globalThis.fetch = …)は呼び出しではないので、プロパティは検査しない。
@@ -284,12 +324,32 @@ function buildTestRules() {
  * ゾーン: ソースのファイルの集合と、その規則。`files` は互いに重ならないようにする。
  * `.vue` と `.ts` で vuetify の扱いが違うゾーン(R13)は、2 つに分ける。
  */
+// ゾーン名の先頭 → そのゾーンが他のモジュールを import できない理由の依存ルール番号(F 6 章)。
+const RULE_BY_ZONE = [
+  ['shared-', 'R1'],
+  ['admin-api', 'R17'],
+  ['admin-lib', 'R5'],
+  ['admin-queries', 'R6'],
+  ['admin-composables', 'R16'],
+  ['admin-components', 'R7'],
+  ['admin-templates', 'R7'],
+  ['admin-dialogs', 'R9'],
+  ['admin-shell', 'R10'],
+  ['admin-feature-', 'R8'],
+  ['admin-router', 'R11'],
+  ['admin-app', 'R15'],
+  ['main', 'R15'],
+]
+
 function sourceZone(name, files, spec, ignores = []) {
+  const rule = RULE_BY_ZONE.find(([prefix]) => name.startsWith(prefix))?.[1]
   return {
     name: `loreley/zone/${name}`,
     files,
     ignores: [...TEST_FILES, GENERATED_DIR + '**', ...ignores],
-    rules: buildRules(spec),
+    // ゾーンの所属を確認するテスト(dependencyRules.test.ts)が読む。重なると、印が複数付く。
+    settings: { [`loreley-zone:${name}`]: true },
+    rules: buildRules({ ...spec, rule }),
   }
 }
 
@@ -304,12 +364,6 @@ const vuetifyVueOnly = (name, dir, spec) => [
   sourceZone(`${name}-vue`, vueFiles(dir), { ...spec, vuetify: 'any' }),
   sourceZone(`${name}-ts`, tsFiles(dir), { ...spec, vuetify: 'types' }),
 ]
-
-const ROUTER_SPEC = (vuetify) => ({
-  allow: ['router', 'templates', 'components', ...ALL_FEATURES, ...BELOW_COMPONENTS],
-  allowTypeOnly: ['api'],
-  vuetify,
-})
 
 const sourceZones = [
   // ── 層 0: shared(R1: admin/・vue-router・vue-query・生成コードを import しない)
@@ -387,13 +441,16 @@ const sourceZones = [
   }),
 
   // ── 層 4: admin/dialogs(R9)・admin/shell(R10)
+  // 設計 1.2 の「主な入力」と R9・R10 に合わせて絞っている(dialogs は queries(書き込み)・components・api・lib、
+  // shell は composables・queries/meta・lib)。必要になったら、設計と照らして足す。
   ...vuetifyVueOnly('admin-dialogs', 'src/admin/dialogs', {
-    allow: ['dialogs', 'api', 'components', 'templates', ...BELOW_COMPONENTS],
+    allow: ['dialogs', 'api', 'components', 'lib', ...SHARED_MODULES],
     // R9: queries は mutations だけ。
     allowSubpaths: { queries: ['mutations'] },
   }),
   ...vuetifyVueOnly('admin-shell', 'src/admin/shell', {
-    allow: ['shell', 'api', 'components', 'templates', ...BELOW_COMPONENTS],
+    allow: ['shell', 'composables', 'lib', ...SHARED_MODULES],
+    // R10: queries は meta だけ。
     allowSubpaths: { queries: ['meta'] },
   }),
 
@@ -407,18 +464,18 @@ const sourceZones = [
         'components',
         'templates',
         'dialogs',
-        'shell',
         ...BELOW_COMPONENTS,
       ],
     }),
   ),
 
-  // ── 層 6: admin/router(R11: queries・shell・app を import しない)
-  // router の .vue(404 ページなど)は vuetify の部品を使ってよいが、.ts は vuetify を使わない。
-  sourceZone('admin-router-vue', vueFiles('src/admin/router'), ROUTER_SPEC('any')),
-  sourceZone('admin-router-ts', tsFiles('src/admin/router'), ROUTER_SPEC('none')),
+  // ── 層 6: admin/router(R11: features のページ・templates(404)・lib だけ。queries・shell・app は import しない)
+  // vuetify は R13 の列挙に無いので、.vue も含めて import しない(404 ページは shared/ui の部品を使う)。
+  sourceZone('admin-router', ['src/admin/router/**/*.{ts,vue}'], {
+    allow: ['router', 'templates', 'lib', ...ALL_FEATURES, ...SHARED_MODULES],
+  }),
 
-  // ── 層 7: admin/app(R4: vue-query は setupQuery.ts だけ。R13: createVuetify は setupVuetify.ts だけ)
+  // ── 層 7: admin/app(R4: vue-query は setupQuery.ts だけ。R13: vuetify・createVuetify は setupVuetify.ts だけ)
   sourceZone('admin-app-setup-vuetify', ['src/admin/app/setupVuetify.ts'], {
     allow: ALL_MODULES,
     vuetify: 'setup',
@@ -427,8 +484,7 @@ const sourceZones = [
     allow: ALL_MODULES,
     vueQuery: 'any',
   }),
-  sourceZone('admin-app-vue', vueFiles('src/admin/app'), { allow: ALL_MODULES, vuetify: 'any' }),
-  sourceZone('admin-app-ts', tsFiles('src/admin/app'), { allow: ALL_MODULES }, [
+  sourceZone('admin-app', ['src/admin/app/**/*.{ts,vue}'], { allow: ALL_MODULES }, [
     'src/admin/app/setupVuetify.ts',
     'src/admin/app/setupQuery.ts',
   ]),
@@ -439,6 +495,28 @@ const sourceZones = [
     vuetify: 'main',
   }),
 ]
+
+// どのゾーンにも属さない src のファイル(新しいディレクトリ・想定外の置き場所)は、最も厳しい規則(`allow: []`)を
+// 適用したうえで、ファイルがあること自体を違反にする。ゾーンを足し忘れても、検査の抜けにならない。
+// 意図的な例外: テスト・生成コード・型宣言(.d.ts)。
+const unclassifiedZone = {
+  name: 'loreley/zone/unclassified',
+  files: ['src/**/*.{ts,vue}'],
+  ignores: [
+    ...sourceZones.flatMap((zone) => zone.files),
+    ...TEST_FILES,
+    GENERATED_DIR + '**',
+    '**/*.d.ts',
+  ],
+  settings: { 'loreley-zone:unclassified': true },
+  rules: buildRules({
+    allow: [],
+    banVueRouter: true,
+    banVueFiles: true,
+    unclassified: true,
+    rule: '未所属',
+  }),
+}
 
 export default defineConfig([
   {
@@ -459,13 +537,17 @@ export default defineConfig([
     rules: {
       // 型検査(vue-tsc)が未定義の識別子を検出する。
       'no-undef': 'off',
+      // verbatimModuleSyntax: `import { type X } from '…'` は副作用 import(`import '…'`)として残る。
+      '@typescript-eslint/no-import-type-side-effects': 'error',
       'vue/multi-word-component-names': ['error', { ignores: ['App'] }],
     },
   },
   ...sourceZones,
+  unclassifiedZone,
   {
     name: 'loreley/zone/tests',
     files: TEST_FILES,
+    settings: { 'loreley-zone:tests': true },
     rules: buildTestRules(),
   },
   prettier,
