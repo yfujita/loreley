@@ -1,6 +1,6 @@
 # 結合テスト(Admin API)
 
-compose で起動した**実 OpenSearch・実 Indexer・実 Crawler・実 api(Admin API)**に対して、ホストの pytest から実行する結合テスト。テストは Admin API の HTTP(`127.0.0.1:8080`、`/api/admin/v1`)を呼び、必要に応じて OpenSearch を直接読んで期待値を独立に計算し、API の応答と突き合わせる。障害系では、`docker compose -p loreley-it stop/start` で Crawler・Indexer・OpenSearch を止めて戻す。
+compose で起動した**実 OpenSearch・実 Indexer・実 Crawler・実 api(Admin API)・実 web(Nginx)**に対して、ホストの pytest から実行する結合テスト。テストは Admin API の HTTP(`127.0.0.1:8080`、`/api/admin/v1`)を呼び、必要に応じて OpenSearch を直接読んで期待値を独立に計算し、API の応答と突き合わせる。障害系では、`docker compose -p loreley-it stop/start` で Crawler・Indexer・OpenSearch・web を止めて戻す。
 
 > **確認状況**: 実行結果(passed 件数・所要時間・環境・観測値)は [docs/v0.x/test-results/admin-api-integration.md](../../../docs/v0.x/test-results/admin-api-integration.md) に書く。この文書には書かない。
 > macOS(x86_64)・compose v2.3.3・uv 0.13.8 でのみ確認した。Linux ホストなどは未確認。
@@ -13,8 +13,8 @@ Admin API の単体テストは、OpenSearch・Crawler・Indexer を fake やロ
 - 実 Crawler への中継(登録・更新・クロール起動・ソース削除・取消・ロック解放)と、実 Crawler・Connector が返す応答の形
 - 実 OpenSearch に対するクエリ(集計・`top_hits`・`mget`・`msearch`・`ids`・並べ替え・`from`/`size`・`cat.*`)の妥当性。OpenSearch を直接読んだ独立計算の期待値と照合する
 - 実行中ジョブがロックを持つ間の状態(EP-02 の `lock`、EP-09 の実行中ジョブ、409 `lock_held`・`lock_in_use`)と、取消・ロック解放
-- compose が渡す共通変数・索引名・mount が api に届くこと
-- Crawler・Indexer・OpenSearch の停止中の応答(読み取りの継続・書き込みの失敗・部分失敗)と、復旧後の動作
+- compose が渡す共通変数・索引名・`web` の確認先 URL が api に届き、api が実 `web` の `/admin/` を確認できること
+- Crawler・Indexer・OpenSearch・web の停止中の応答(読み取りの継続・書き込みの失敗・部分失敗・EP-13 の `web` の異常)と、復旧後の動作
 
 ## 前提
 
@@ -22,14 +22,14 @@ Admin API の単体テストは、OpenSearch・Crawler・Indexer を fake やロ
 | --- | --- |
 | Docker | Docker と docker compose v2(確認した版: compose v2.3.3)。デーモンが起動していること |
 | uv | 必要(確認した版: uv 0.13.8)。`tests/integration/api/uv.lock` で依存(`pytest`・`httpx`。dev に `ruff`)を固定している。依存を変えたら、`tests/integration/api` で `uv lock` を実行して更新する |
-| メモリ | Docker に**約 4GB 以上**を推奨(4 サービスが常駐する。`opensearch-init` は完了後に終了する)。この IT での Docker VM のメモリは**未記録**(既存の結合テストは約 3.8GiB で成功した)。ほかの重いコンテナを同時に動かさない。メモリ使用量は測定していない |
-| ポート | ホストの `9200`(OpenSearch)・`8000`(Indexer)・`8001`(Crawler)・`8080`(api)が空いていること。すべて `127.0.0.1` だけに publish する。**スクリプトは 4 つのポートと、テストの接続先 URL(`LORELEY_IT_*_URL`)をこの 4 つに固定**し、`deploy/compose/.env` やシェルに残った環境変数の値では変えられない(別の環境に書き込まないため)。pytest を直接実行して別のポートにしたときだけ、`LORELEY_IT_OPENSEARCH_URL`・`LORELEY_IT_INDEXER_URL`・`LORELEY_IT_CRAWLER_URL`・`LORELEY_IT_API_URL` でテストの接続先を合わせる |
+| メモリ | Docker に**約 4GB 以上**を推奨(5 サービスが常駐する。`opensearch-init` は完了後に終了する)。この IT での Docker VM のメモリは**未記録**(既存の結合テストは約 3.8GiB で成功した)。ほかの重いコンテナを同時に動かさない。メモリ使用量は測定していない |
+| ポート | ホストの `9200`(OpenSearch)・`8000`(Indexer)・`8001`(Crawler)・`8080`(api)・`8090`(web)が空いていること。すべて `127.0.0.1` だけに publish する。テストが接続するのは `8090` を除く 4 つ。`8090` を固定するのは、compose のマージは `ports` を消せず、本番用の `compose.yaml` の `web` の publish が IT でも有効になるため(`api` の `8080` は `compose.test.yaml` だけが publish する)。**スクリプトは 5 つのポートと、テストの接続先 URL(`LORELEY_IT_*_URL`)を `8090` を除く 4 つに固定**し、`deploy/compose/.env` やシェルに残った環境変数の値では変えられない(別の環境に書き込まないため)。pytest を直接実行して別のポートにしたときだけ、`LORELEY_IT_OPENSEARCH_URL`・`LORELEY_IT_INDEXER_URL`・`LORELEY_IT_CRAWLER_URL`・`LORELEY_IT_API_URL` でテストの接続先を合わせる |
 | 索引名 | スクリプトは `LORELEY_JOBS_INDEX_NAME`・`LORELEY_SOURCES_INDEX_NAME`・`LORELEY_DELETIONS_INDEX_NAME`・`LORELEY_SEARCH_INDEX_ALIAS` を既定値(`loreley-jobs`・`loreley-sources`・`loreley-deletions`・`loreley-documents`)に固定する。手動で起動して索引名を変えたときは、**同じ環境変数を pytest にも渡す**(未指定は既定値) |
-| ネットワーク | 初回は、ベースイメージ・OpenSearch のイメージ・Python の依存を取得し、`apps/api`・`apps/crawler`・`apps/indexer` をビルドする |
+| ネットワーク | 初回は、ベースイメージ・OpenSearch のイメージ・Python の依存・npm の依存を取得し、`apps/api`・`apps/crawler`・`apps/indexer`・`apps/web` をビルドする。**`web` は実物のビルド(`apps/web` の Docker ビルド。npm レジストリへの接続が要る)が前提**で、IT はフロントエンドのビルドに依存する |
 
 Linux の `vm.max_map_count` と SELinux(bind mount のラベル)は未確認(`deploy/compose/README.md` の前提を参照)。
 
-**Crawler・Indexer の結合テストと同時に実行できない**: 3 つの結合テストは、compose のプロジェクト名(`loreley-it`)とホストのポート(9200・8000。Crawler・api のテストは 8001 も)が同じため、同時には実行できない。排他ロックで同時実行を拒否する(「実行方法」の「結合テスト同士は同時に実行できない」)。テスト用の上書き(`compose.test.yaml`)もそれぞれ別で、重ねない。
+**Crawler・Indexer の結合テストと同時に実行できない**: 3 つの結合テストは、compose のプロジェクト名(`loreley-it`)とホストのポート(9200・8000。Crawler・api のテストは 8001 も、api のテストは 8080・8090 も)が同じため、同時には実行できない。排他ロックで同時実行を拒否する(「実行方法」の「結合テスト同士は同時に実行できない」)。テスト用の上書き(`compose.test.yaml`)もそれぞれ別で、重ねない。
 
 **ポート 9200 を別のアプリ(Fess など)が使っている場合**: スクリプトは事前確認で中止し、使用中の相手を表示する(止めはしない)。
 
@@ -40,7 +40,7 @@ Linux の `vm.max_map_count` と SELinux(bind mount のラベル)は未確認(`d
 リポジトリのルートで、スクリプトを実行する。スタックの起動、起動の待機、pytest、後始末(`down -v` と `data/` の削除)までを行う。
 
 ```sh
-scripts/run-api-integration-test.sh                  # 全シナリオ(23 テスト)
+scripts/run-api-integration-test.sh                  # 全シナリオ(24 テスト)
 scripts/run-api-integration-test.sh --keep           # 終了後もスタックと data/ を残す(デバッグ用)
 scripts/run-api-integration-test.sh -k test_30       # 1 ファイルだけ(ファイル名の語で絞る)
 scripts/run-api-integration-test.sh -k "test_30 or test_40"   # 複数ファイル
@@ -48,11 +48,11 @@ scripts/run-api-integration-test.sh -k "test_30 or test_40"   # 複数ファイ�
 
 - `--keep` と `-h`/`--help` 以外の引数は、そのまま pytest に渡る。**絞り込みには `-k` を使う**。ファイルやノード ID(`ファイル::テスト名`)をパス引数で渡しても、既定のコマンドの末尾に `tests/integration/api` があるため絞られず、全テストが走る
 - シナリオ ID(`AIT-nn`)はテスト関数名に含まれない(ファイル冒頭の docstring にある)。`-k AIT-30` は **0 件になる**(終了コード 5)。ファイル名の語(`-k test_30`)かテスト名の語で選ぶ
-- スクリプトは `docker compose -p loreley-it -f deploy/compose/compose.yaml -f tests/integration/api/compose.test.yaml up -d --build opensearch opensearch-init indexer crawler api` で起動する。**`up --wait` は使わず**、3 秒間隔で状態を確認して、`opensearch`・`indexer`・`crawler`・`api` が healthy、`opensearch-init` が Exited(0) になるのを待つ(compose v2.3.3 では `--wait` が戻らないため)
+- スクリプトは `docker compose -p loreley-it -f deploy/compose/compose.yaml -f tests/integration/api/compose.test.yaml up -d --build opensearch opensearch-init indexer crawler api web` で起動する。**`up --wait` は使わず**、3 秒間隔で状態を確認して、`opensearch`・`indexer`・`crawler`・`api`・`web` が healthy、`opensearch-init` が Exited(0) になるのを待つ(compose v2.3.3 では `--wait` が戻らないため)
 - pytest の既定の引数は `-v -rP`(成功したテストの標準出力も表示する。障害系の観測値 `[observed]` がログに残る)
 - 出力は標準出力と `tests/integration/api/results/pytest-YYYYMMDD-HHMMSS.log` に残る(`.gitignore` 済み)
 - 異常終了したときは、`docker compose ps -a` と各サービスのログの末尾 100 行を表示してから、後始末する
-- 障害系(AIT-90〜92)は、スクリプトが `LORELEY_IT_ALLOW_COMPOSE_CONTROL=1` を渡したときだけ動く。pytest を直接実行したときは skip される(下の「障害系の安全策」)
+- 障害系(AIT-90〜93)は、スクリプトが `LORELEY_IT_ALLOW_COMPOSE_CONTROL=1` を渡したときだけ動く。pytest を直接実行したときは skip される(下の「障害系の安全策」)
 
 #### 終了コード
 
@@ -73,7 +73,7 @@ scripts/run-api-integration-test.sh -k "test_30 or test_40"   # 複数ファイ�
 
 `OPENSEARCH_VERSION`・`OPENSEARCH_HEAP_SIZE` などの compose の変数は、そのまま compose に渡る(`deploy/compose/.env.example`)。ただし次はスクリプトが固定し、上書きされない。
 
-- ホスト側ポート 4 つ(`OPENSEARCH_HOST_PORT`・`INDEXER_HOST_PORT`・`CRAWLER_HOST_PORT`・`API_HOST_PORT`)と索引名 4 つ
+- ホスト側ポート 5 つ(`OPENSEARCH_HOST_PORT`・`INDEXER_HOST_PORT`・`CRAWLER_HOST_PORT`・`API_HOST_PORT`・`WEB_HOST_PORT`)と索引名 4 つ
 - `LORELEY_CRON_TIMEZONE=Asia/Tokyo`: 既定(UTC)と違う値にして、共通変数が Crawler と api の両方に届くことを AIT-01(EP-14 の `cron_timezone`)で確かめる
 - `LORELEY_IT_ALLOW_COMPOSE_CONTROL=1`: 障害系の許可
 - `CRAWLER_DOCUMENTS_DIR`: `tests/integration/api/data` の絶対パス
@@ -94,9 +94,9 @@ mkdir -p tests/integration/api/data && chmod 755 tests/integration/api/data
 #    AIT-01 が cron のタイムゾーンを確かめるので LORELEY_CRON_TIMEZONE も渡す)
 CRAWLER_DOCUMENTS_DIR="$PWD/tests/integration/api/data" LORELEY_CRON_TIMEZONE=Asia/Tokyo \
   docker compose -p loreley-it -f deploy/compose/compose.yaml -f tests/integration/api/compose.test.yaml \
-  up -d --build opensearch opensearch-init indexer crawler api
+  up -d --build opensearch opensearch-init indexer crawler api web
 
-# 3. opensearch・indexer・crawler・api が healthy になるまで待つ(opensearch-init は Exited (0) になる)。
+# 3. opensearch・indexer・crawler・api・web が healthy になるまで待つ(opensearch-init は Exited (0) になる)。
 #    crawler は起動時の回復が終わるまで接続できない(healthcheck の start_period は 180 秒)
 docker compose -p loreley-it -f deploy/compose/compose.yaml -f tests/integration/api/compose.test.yaml ps
 
@@ -111,7 +111,7 @@ rm -rf tests/integration/api/data
 
 - **`up` のときに `CRAWLER_DOCUMENTS_DIR` を渡さないと、compose の既定(`./documents`)が mount されるため、テストが `data/` に置いた文書を Crawler が読めず、失敗するはず**(想定。未確認)。`ps`・`down` では不要(想定。未確認)
 - ノード ID で 1 テストだけ実行したいときは、この手順で pytest を直接実行する(例: `... pytest "tests/integration/api/test_20_crawl.py::<テスト名>"`)
-- テストは `compose.test.yaml` の値(原本の上限 64 KiB、Crawler のポーリング間隔 10 秒など)を前提にしている。`deploy/compose/compose.yaml` だけで起動したスタックに向けて実行しない
+- テストは `compose.test.yaml` の値(原本の上限 64 KiB、Crawler のポーリング間隔 10 秒、api の `127.0.0.1:8080` への publish など)を前提にしている。`deploy/compose/compose.yaml` だけで起動したスタックに向けて実行しない(本番用の `compose.yaml` は api を publish しない)
 - スタックが起動していないと、pytest は接続できなかった理由と起動手順を表示して、終了コード 2 で中止する
 - 手動の手順 5 は、手順 1〜4 を実行した場合の後始末。スクリプトの後始末と同じコマンド(スクリプトの読解による)
 
@@ -135,7 +135,7 @@ Crawler の結合テスト(`scripts/run-crawler-integration-test.sh`)・Indexer 
 
 ## シナリオ一覧
 
-各テストの docstring に、【何を確認するか】【前提と手順】【期待する結果とその根拠(設計書の章)】【単体テストでは確認できず実機で確認する点】がある。EP は `admin-api-v0.1.md` の通し番号(EP-01〜14)。全部で 23 テスト(AIT-11 のパラメータ 2 件を含む)。EP-01〜14 のすべてを、少なくとも 1 つのシナリオが実コンポーネント経由で呼ぶ。
+各テストの docstring に、【何を確認するか】【前提と手順】【期待する結果とその根拠(設計書の章)】【単体テストでは確認できず実機で確認する点】がある。EP は `admin-api-v0.1.md` の通し番号(EP-01〜14)。全部で 24 テスト(AIT-11 のパラメータ 2 件と AIT-93 を含む)。EP-01〜14 のすべてを、少なくとも 1 つのシナリオが実コンポーネント経由で呼ぶ。
 
 | ID | ファイル | EP | 何を確認するか |
 | --- | --- | --- | --- |
@@ -156,6 +156,7 @@ Crawler の結合テスト(`scripts/run-crawler-integration-test.sh`)・Indexer 
 | AIT-90 | `test_90_component_failures.py` | 全 | Crawler 停止: EP-13 の `crawler` が `abnormal`。EP-03〜08 は 503 `crawler_unreachable`、他の EP は 200。復旧後にクロールが成功する |
 | AIT-91 | `test_90_component_failures.py` | 全 | Indexer 停止: EP-13 の `indexer` が `abnormal`、読み取りの EP は 200。停止中に始めたクロールとソース削除は Crawler 側で `failed`・`failure_reason=indexer_unavailable`(`failure_detail` は「Indexer が応答しない」を含む)になる(部分失敗)。クロールのロックは解放され EP-02 の `last_crawl` がそのジョブになる。削除は `deleting` の状態の見え方を確認する。復旧後の再実行で完了する |
 | AIT-92 | `test_90_component_failures.py` | 全 | OpenSearch 停止: 読み取りの EP は 503 `unavailable`、EP-13 の `opensearch` が `abnormal`、EP-14 と `/healthz` は 200、EP-06 は 503。復旧後に 4 サービスが healthy になり、読み取りとクロールが戻る |
+| AIT-93 | `test_90_component_failures.py` | 全 | web 停止: EP-13 の `web` だけが `abnormal`(`reason` は `connection_refused` か `name_not_resolved`。実測値を `[observed]` で記録)、他は `normal`。EP-01・09・12・14 と `/healthz` は 200。復旧後に EP-13 の 5 つが `normal` に戻る |
 
 ## テスト設計上の注意
 
@@ -169,25 +170,25 @@ Crawler の結合テスト(`scripts/run-crawler-integration-test.sh`)・Indexer 
 - **実行中はホスト(Mac など)をスリープさせない**: 実行中にホストが止まるとコンテナも止まり、Crawler のロックのリースが切れて `lock_lost`(`lease_expired`)でクロールが失敗する、と推定している。2026-11-25 に、AIT-60 が `lock_lost`(`lease_expired`)で失敗した実行が 1 回あった。**原因はスリープと推定**(スリープの記録はない)。根拠は、pytest の経過が 318.78 秒なのに実行全体の壁時計が約 1 時間 42 分で、Crawler のログが約 1 時間 38 分途切れていたこと(結果文書 4.6)。Mac では `caffeinate -i scripts/run-api-integration-test.sh` のように実行するとよい。`caffeinate -i` 付きの 6 回(結果文書 4.6 の 3〜8 回目)では `lock_lost` は出ていない
 - **待ちは上限つきのポーリング**(`support.py` の `poll_until`): ジョブの終了 90 秒、`running` の観測 30 秒(間隔 0.2 秒)、ロックの解放 30 秒、アイドル待ち 120 秒、サービスの復旧 300 秒、検索の反映 10 秒。`sleep` に頼らない
 - **テスト間の独立**: `conftest.py` が各テストの前後で、実行中・実行待ちのジョブが 0 になるのを待つ(Job Runner は直列で、前のテストのジョブが次の窓を乱すため)。障害系は最後のファイル(`test_90_*`)に集め、止める区間の外でだけこの待ちが動く
-- **api は検索対象の文書を mount しない**: Crawler だけが `tests/integration/api/data` を `:ro` で `/data/documents` に mount する。EP-13 の `web` を `normal` にするため、api には `fixtures/web/index.html` だけのディレクトリを `/app/web` に mount する(Web UI の成果物は api のイメージに含まれない)
+- **api は検索対象の文書を mount しない**: Crawler だけが `tests/integration/api/data` を `:ro` で `/data/documents` に mount する。EP-13 の `web` は、fixture ではなく実 `web`(Nginx)を api が `http://web:80/admin/` で確認した結果で、`normal` になる
 - **EP-13 の `reason` など、設計が複数の値を許す箇所**は、どちらも受け入れ、実測値を `[observed]` で出力する
 - **実機が設計と違ったとき**: テストを実機に合わせて変えず、発見事項として扱う(設計書の改版はユーザー判断)
-- **セキュリティ**: api は認証がなく、`127.0.0.1:8080` だけに publish する(破壊的操作を含む)。結合テストのスタックでも `0.0.0.0` へ公開しない。Crawler の `8001` も、テスト用の上書き(`compose.test.yaml`)だけが `127.0.0.1` に publish する(本番用の `compose.yaml` は公開しない)。詳細は `deploy/compose/README.md` の公開範囲の注意(HO-40・41)
+- **セキュリティ**: api は認証がなく、`127.0.0.1:8080` だけに publish する(破壊的操作を含む)。結合テストのスタックでも `0.0.0.0` へ公開しない。api の `8080` と Crawler の `8001` は、テスト用の上書き(`compose.test.yaml`)だけが `127.0.0.1` に publish する(本番用の `compose.yaml` は公開しない)。本番用の `compose.yaml` が `127.0.0.1:8090` に publish する `web` は、IT でも有効になる(テストは `web` 経由では呼ばない)。詳細は `deploy/compose/README.md` の公開範囲の注意(HO-40・41)
 
-### 障害系の安全策(AIT-90〜92)
+### 障害系の安全策(AIT-90〜93)
 
 障害系は、実コンテナを止めるため、次の制限をかけている(`support.py` の `ComposeControl`)。
 
 - 操作できるのは、プロジェクト `loreley-it` と compose ファイル 2 つ(定数で固定)に対する **`stop`・`start` だけ**。引数リストで `docker compose` を実行し、shell は使わない。`subprocess` にはタイムアウトを付ける
-- 止めてよいサービスは**許可リスト `crawler`・`indexer`・`opensearch` だけ**。`api`・`opensearch-init` や他のプロジェクトのコンテナは、docker を呼ぶ前に `ValueError` になる
-- 止める区間は `compose_control.stopped(...)`。テストが途中で失敗しても、区間を抜けるときに `finally` で必ず `start` し、healthy になるまで待つ(上限 300 秒。OpenSearch の停止後は opensearch・indexer・crawler・api の 4 つ)。復旧に失敗したときは例外にする
-- `LORELEY_IT_ALLOW_COMPOSE_CONTROL=1` がないと、3 テストとも skip する(pytest を直接実行したときに、意図せずコンテナを止めないため)。スクリプトが渡す
+- 止めてよいサービスは**許可リスト `crawler`・`indexer`・`opensearch`・`web` だけ**。`api`・`opensearch-init` や他のプロジェクトのコンテナは、docker を呼ぶ前に `ValueError` になる
+- 止める区間は `compose_control.stopped(...)`。テストが途中で失敗しても、区間を抜けるときに `finally` で必ず `start` し、healthy になるまで待つ(上限 300 秒。OpenSearch の停止後は opensearch・indexer・crawler・api の 4 つ。`web` の停止後は web)。復旧に失敗したときは例外にする
+- `LORELEY_IT_ALLOW_COMPOSE_CONTROL=1` がないと、4 テストとも skip する(pytest を直接実行したときに、意図せずコンテナを止めないため)。スクリプトが渡す
 
 ## `data/` と後始末
 
 - `tests/integration/api/data/` は、Crawler に `:ro` で mount する検索対象の文書の置き場(コンテナ内 `/data/documents`)。**`.gitignore` 済み**。テストは `data/<source_id>/` を作って文書を置き、テストの終了後に削除する(`support.py` の `SourceDirectory`)。ファイルは 0644、ディレクトリは 0755(Crawler は uid 10001 で動くため)
 - スクリプトは、起動前に `data/` を作って `chmod 755` し、終了時に `compose down -v --remove-orphans` のあとで削除する(使用中の mount 元を消さないため)。`compose down` が失敗したときは、コンテナが残っている可能性があるので `data/` を**削除せず**、手動で消すよう案内する。`--keep` のときはスタックと `data/` を残し、後始末のコマンドを表示する
-- **事前確認で中止する条件**(排他ロックを取ったあと。何も消さず終了コード 1。スタックにもボリュームにも `data/` にも触れない): (1) `loreley-it` のコンテナの残り(停止中を含む。`docker ps -a` が失敗して確認できないときも中止)、(2) `loreley-it` の名前付きボリュームの残り(`docker volume ls` が失敗して確認できないときも中止)、(3) 空でない `data/`(権限などで内容を確認できないときも中止)、(4) ホストのポート 9200・8000・8001・8080 の使用中。終了時の `down -v` と `rm -rf` が、前回 `down`(`-v` なし)で止めただけのボリュームや、利用者が `data/` に置いたファイルを消さないため。ポートの使用中は、使っている Docker コンテナと `lsof` の結果を表示する(止めはしない)
+- **事前確認で中止する条件**(排他ロックを取ったあと。何も消さず終了コード 1。スタックにもボリュームにも `data/` にも触れない): (1) `loreley-it` のコンテナの残り(停止中を含む。`docker ps -a` が失敗して確認できないときも中止)、(2) `loreley-it` の名前付きボリュームの残り(`docker volume ls` が失敗して確認できないときも中止)、(3) 空でない `data/`(権限などで内容を確認できないときも中止)、(4) ホストのポート 9200・8000・8001・8080・8090 の使用中。終了時の `down -v` と `rm -rf` が、前回 `down`(`-v` なし)で止めただけのボリュームや、利用者が `data/` に置いたファイルを消さないため。ポートの使用中は、使っている Docker コンテナと `lsof` の結果を表示する(止めはしない)
 - メンテナンスフラグが残ったとき(`loreley-jobs` の `maintenance` 文書。中断した実行の後)は、次の実行が conftest で終了コード 2 になる。スタックごと作り直す(`down -v --remove-orphans`)か、`curl -X DELETE http://127.0.0.1:9200/loreley-jobs/_doc/maintenance` で消す。この IT のテスト自身はメンテナンスフラグを書かないので、通常は残らない
 
 ## 未実施(スコープ外)
@@ -204,11 +205,10 @@ Crawler の結合テスト(`scripts/run-crawler-integration-test.sh`)・Indexer 
 | パス | 内容 |
 | --- | --- |
 | `pyproject.toml` / `uv.lock` | テスト専用の依存(`pytest`・`httpx`。dev に `ruff`)。アプリの依存とは分けている。`uv.lock` で固定している |
-| `compose.test.yaml` | テスト用の上書き(原本の上限、Crawler のポーリング間隔、Indexer の走査間隔、Crawler の publish、api への `web` の mount、healthcheck の間隔)。`deploy/compose` には混ぜない。Crawler・Indexer の IT 用とは別で、重ねない |
+| `compose.test.yaml` | テスト用の上書き(原本の上限、Crawler のポーリング間隔、Indexer の走査間隔、Crawler・api の publish、`web`・api の healthcheck の間隔)。`deploy/compose` には混ぜない。Crawler・Indexer の IT 用とは別で、重ねない |
 | `conftest.py` | フィクスチャと、起動済みのスタックへの疎通確認・メンテナンスフラグの残りの確認、各テスト前後のアイドル待ち |
 | `support.py` | Admin API のクライアント、OpenSearch の検証ヘルパ(読み取りと前提作りの書き込み)、`document_id` の独立実装(アプリのコードは import しない)、待ちのヘルパ、検索対象ディレクトリ、障害系の `ComposeControl` |
 | `test_*.py` | シナリオ別のテスト(上の表) |
-| `fixtures/web/index.html` | EP-13 の `web` を `normal` にするためのテスト用の空のページ |
 | `data/` | 実行中の検索対象の文書(実行時に作られ、終了時に削除される。`.gitignore` 済み) |
 | `results/` | スクリプトの実行ログ(`.gitignore` 済み) |
 

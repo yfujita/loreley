@@ -32,7 +32,7 @@ from loreley_api.infrastructure.opensearch import (
     SearchIndexReader,
     SourcesReader,
 )
-from loreley_api.infrastructure.probes import HttpHealthCheck, WebDistCheck
+from loreley_api.infrastructure.probes import HttpHealthCheck
 
 
 @dataclass(frozen=True)
@@ -53,7 +53,6 @@ class AdminProbes:
 
     http: HttpHealthCheck
     opensearch: OpenSearchHealthCheck
-    web_dist: WebDistCheck
 
 
 @dataclass(frozen=True)
@@ -118,15 +117,14 @@ def build_admin_dependencies(
         dashboard=DashboardService(
             http_probe=probes.http,
             opensearch_probe=probes.opensearch,
-            web_probe=probes.web_dist,
             runner=runner,
             clock=clock,
             crawler_url=settings.crawler_url,
             indexer_url=settings.indexer_url,
+            web_url=settings.web_url,
             dashboards_health_url=settings.dashboards_health_url,
             embedding_health_url=settings.embedding_health_url,
             llm_health_url=settings.llm_health_url,
-            web_dist_dir=settings.web_dist_dir,
             probe_timeout_seconds=settings.probe_timeout_seconds,
         ),
         meta=MetaService(

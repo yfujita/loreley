@@ -1,4 +1,4 @@
-# Loreley の compose 構成(MVP: OpenSearch・Indexer・Crawler・api)。
+# Loreley の compose 構成(MVP: OpenSearch・Indexer・Crawler・api・web)。
 #
 # 起動(このディレクトリで実行。.env は任意。無くても既定値で動く):
 #   docker compose up -d --build
@@ -9,7 +9,8 @@
 #   読み取り専用で mount する。Indexer だけを起動したいときは、サービス名を指定する:
 #   docker compose up -d --build opensearch opensearch-init indexer
 #   api は opensearch と opensearch-init だけを待つ(crawler・indexer が落ちていても起動する)。
-#   起動直後は、crawler・indexer が接続できるようになるまで、api の画面の状態は「異常」に見える(設計書の記述。実機未確認)。
+#   web は api の healthy を待つ。api は web を待たない(web が落ちていても api は起動する)。
+#   起動直後は、crawler・indexer・web が接続できるようになるまで、api の画面の状態は「異常」に見える(設計書の記述。実機未確認)。
 # 停止(データは残す): docker compose down
 # 停止(データも消す): docker compose down -v
 #
@@ -17,7 +18,7 @@
 # 書かない(プロジェクト名は `-p` で指定する。未指定ならディレクトリ名 `compose` になる)。
 #
 # 公開範囲(重要):
-#   Indexer API・Crawler API・api(Admin API)には認証・認可がなく(Indexer は `DELETE` でソースの
+#   Indexer API・Crawler API・api(Admin API)・web(api へのプロキシ)には認証・認可がなく(Indexer は `DELETE` でソースの
 #   文書の全削除、Crawler と api はクロール・ソース削除ジョブの起動、ロック解放、設定の登録・更新まで
 #   呼べる)、OpenSearch もセキュリティプラグインを無効にしている(認証・TLS なし)。
 #   そのため、ホストへの publish は必ず 127.0.0.1(ループバック)に限る。`0.0.0.0` を省いた
@@ -26,7 +27,11 @@
 #   Crawler は設計書(crawler-architecture 10章)のとおり、ホストに公開しない(ports なし)。
 #   Crawler API は、FileSystem Connector の root にコンテナ内の任意のパスを登録でき、認証もないため。
 #   結合テストの pytest だけは、tests/integration/crawler/compose.test.yaml がループバックに publish する。
-#   api は、127.0.0.1 にだけ publish する(認証がなく、到達できる全員が破壊的操作を実行できるため)。
+#   Admin View と Admin API のホスト側の入口は web に一本化する。web は 127.0.0.1 にだけ publish し、
+#   /api/ を api に中継する。web に到達できる全員が、認証なしで破壊的操作を実行でき、ブラウザ経由の
+#   書き込みへの保護もない。api は本番用のこのファイルでは publish しない(ports なし)。内部ネットワークのサービス名(api:8080)で
+#   だけ到達できる。結合テストの pytest だけは、tests/integration/api/compose.test.yaml が
+#   ループバックに publish する。
 #
 # 上限・索引名の同値定義(重要):
 #   Crawler は起動時に、自分の上限値(原本 1 件・バッチ・last-seen の件数など)が Indexer の上限
@@ -218,6 +223,8 @@ services:
       LORELEY_API_OPENSEARCH_URL: http://opensearch:9200
       LORELEY_API_CRAWLER_URL: http://crawler:8001
       LORELEY_API_INDEXER_URL: http://indexer:8000
+      # web(Nginx)の確認先。api は {URL}/admin/ の 200 で web の死活を判定する(EP-13)。
+      LORELEY_API_WEB_URL: http://web:80
       LORELEY_API_LOG_LEVEL: ${API_LOG_LEVEL:-INFO}
       # 索引名。Crawler・Indexer・opensearch-init と同じ変数から渡す(ファイル冒頭の「上限・索引名の同値定義」)。
       LORELEY_API_SOURCES_INDEX_NAME: ${LORELEY_SOURCES_INDEX_NAME:-loreley-sources}
@@ -234,15 +241,27 @@ services:
         condition: service_healthy
       opensearch-init:
         condition: service_completed_successfully
-      # crawler・indexer は待たない。落ちていても、api は起動して画面にその異常を表示する。
-    ports:
-      # ループバックのみ(ファイル冒頭の「公開範囲」を参照)。認証がないため、0.0.0.0 へは公開しない。
-      # コンテナ内のポート(8080)は固定で、ホスト側だけ .env の API_HOST_PORT で変えられる。
-      - "127.0.0.1:${API_HOST_PORT:-8080}:8080"
+      # crawler・indexer・web は待たない。落ちていても、api は起動して画面にその異常を表示する。
+    # ports は定義しない(ファイル冒頭の「公開範囲」を参照)。ホストへは公開せず、web 経由(/api/)で使う。
+    # api の /healthz をホストから確認するときは、`docker compose exec api python -c ...`(README 参照)。
     restart: unless-stopped
     # 検索対象のディレクトリは mount しない(読み取り専用でも mount するのは crawler だけ)。
     # healthcheck は、イメージの HEALTHCHECK(/healthz、start-period 10 秒)をそのまま使う。
-    # Web UI のビルド成果物(/app/web)は、現時点のイメージに含まれない(Dockerfile の冒頭を参照)。
+
+  web:
+    build: ../../apps/web
+    ports:
+      # ループバックのみ(ファイル冒頭の「公開範囲」を参照)。認証がないため、0.0.0.0 へは公開しない。
+      # コンテナ内のポート(80)は固定で、ホスト側だけ .env の WEB_HOST_PORT で変えられる。
+      - "127.0.0.1:${WEB_HOST_PORT:-8090}:80"
+    depends_on:
+      # nginx は api が未起動でも起動できる(名前解決は実行時)が、起動直後の /api/ が 502 にならないよう、
+      # api の healthy を待つ。api は web を待たない。
+      api:
+        condition: service_healthy
+    restart: unless-stopped
+    # healthcheck は、イメージの HEALTHCHECK(/admin/ の 200)をそのまま使う。同じ /admin/ を、api の
+    # Dashboard(EP-13)の web の判定も確認する。
 
 volumes:
   opensearch-data:

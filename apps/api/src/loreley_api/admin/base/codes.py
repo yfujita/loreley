@@ -70,6 +70,10 @@ class ComponentId(StrEnum):
     `web` は compose のサービスではなく、`api` が配信する Web UI の表示名。
     """
 
+    # 上の docstring は OpenAPI の `description` に出る。`web` は今は `web` コンテナ(Nginx)の
+    # `/admin/` の確認なので説明が古いが、OpenAPI を変えないために文面を直していない
+    # (直すのは、OpenAPI の更新を伴う別タスク)。
+
     CRAWLER = "crawler"
     INDEXER = "indexer"
     OPENSEARCH = "opensearch"

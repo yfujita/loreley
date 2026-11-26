@@ -101,6 +101,7 @@ class Settings(BaseSettings):
     # --- Crawler・Indexer・死活確認 ---
     crawler_url: str
     indexer_url: str
+    web_url: str
     crawler_connect_timeout_seconds: float = Field(3.0, gt=0, le=60)
     crawler_response_timeout_seconds: float = Field(60.0, gt=0, le=600)
     health_probe_timeout_seconds: float = Field(3.0, gt=0, le=30)
@@ -113,8 +114,6 @@ class Settings(BaseSettings):
     cron_timezone: OptionalText = None
     admitting_lock_grace_seconds: float = Field(60.0, gt=0, le=3600)
     openapi_enabled: bool = False
-    # 存在は起動時に検査しない(`web` の死活確認で確かめる)。
-    web_dist_dir: str = Field("/app/web", min_length=1)
 
     @field_validator(
         "opensearch_url",
@@ -130,7 +129,7 @@ class Settings(BaseSettings):
             _split_url(value, allowed_schemes=HTTP_AND_HTTPS)
         return value
 
-    @field_validator("crawler_url", "indexer_url")
+    @field_validator("crawler_url", "indexer_url", "web_url")
     @classmethod
     def _validate_base_url(cls, value: str) -> str:
         """固定のパスを足して使うので、パス・クエリを持たない形に限る。末尾の `/` は取り除く。"""
@@ -238,11 +237,11 @@ def build_config(settings: Settings) -> ApiConfig:
         admin=AdminSettings(
             crawler_url=settings.crawler_url,
             indexer_url=settings.indexer_url,
+            web_url=settings.web_url,
             dashboards_health_url=settings.dashboards_health_url,
             embedding_health_url=settings.embedding_health_url,
             llm_health_url=settings.llm_health_url,
             probe_timeout_seconds=settings.health_probe_timeout_seconds,
-            web_dist_dir=settings.web_dist_dir,
             cron_timezone=settings.cron_timezone,
             dashboards_url=settings.dashboards_url,
             admitting_lock_grace_seconds=settings.admitting_lock_grace_seconds,

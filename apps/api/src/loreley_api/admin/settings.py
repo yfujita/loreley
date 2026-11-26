@@ -9,13 +9,14 @@ class AdminSettings:
     # `/healthz` を確認する。操作の呼び出しに使う Crawler の URL は `CrawlerClientConfig` が持つ。
     crawler_url: str
     indexer_url: str
+    # `web` コンテナ(Nginx)の接続先。EP-13 が `/admin/` を確認する(同じ形)。
+    web_url: str
     # 任意コンポーネントの確認先(完全な URL)。`None` は未設定(`not_configured`)。
     dashboards_health_url: str | None
     embedding_health_url: str | None
     llm_health_url: str | None
     # 確認 1 件のタイムアウト。EP-13 全体の期限は、これに 1 秒を足した値(C 6.1)。
     probe_timeout_seconds: float
-    web_dist_dir: str
     # EP-14。`None` は未設定(`null` で返す)。
     cron_timezone: str | None
     dashboards_url: str | None

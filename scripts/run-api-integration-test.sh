@@ -23,10 +23,10 @@
 #                                   ただし、下の「固定する値」(ポート・索引名・cron のタイムゾーン)は上書きされる。
 #
 # 固定する値(テストが前提にする):
-#   ホスト側ポート 9200・8000・8001・8080、テストの接続先 URL(LORELEY_IT_{OPENSEARCH,INDEXER,CRAWLER,API}_URL を
+#   ホスト側ポート 9200・8000・8001・8080・8090、テストの接続先 URL(LORELEY_IT_{OPENSEARCH,INDEXER,CRAWLER,API}_URL を
 #   上のポートの 127.0.0.1 に)、索引名 4 つ(既定値)、LORELEY_CRON_TIMEZONE=Asia/Tokyo
 #   (Crawler と api に同じ変数から届くことを AIT-01 が確かめる)、LORELEY_IT_ALLOW_COMPOSE_CONTROL=1
-#   (障害系のテストが `docker compose -p loreley-it stop/start` を実行してよいことの許可。AIT-90〜92)。
+#   (障害系のテストが `docker compose -p loreley-it stop/start` を実行してよいことの許可。AIT-90〜93)。
 #
 # 設計上の注意:
 #   - `docker compose up --wait` は使わない。ホストの compose v2.3.3 では、使い捨てコンテナ
@@ -38,8 +38,12 @@
 #     (別の結合テストが実行中、または SIGKILL などで残った)は、何も消さず、保持者の PID・開始時刻・
 #     スクリプト名を表示して終了コード 1 で中止する。残ったロックは自動では解除しない。保持者が
 #     動いていないことを確かめてから、表示される手順(rm -rf)で手動で解除する。
-#   - ホスト側ポートは 9200(OpenSearch)・8000(Indexer)・8001(Crawler)・8080(api)で固定。
-#     テストがこの 4 つに接続する。
+#   - ホスト側ポートは 9200(OpenSearch)・8000(Indexer)・8001(Crawler)・8080(api)・8090(web)で固定。
+#     テストが接続するのは 8090 を除く 4 つ。8090 を固定するのは、compose のマージは `ports` を消せず、
+#     本番用の compose.yaml にある `web` の publish が IT でも有効になるため(ポート確認の対象にし、
+#     使用中なら事前確認で中止する)。api の 8080 は、IT 用の上書き(compose.test.yaml)だけが publish する。
+#   - `web` は実物(apps/web の Docker ビルド。npm レジストリへの接続が要る)。api が `/admin/` を確認して
+#     EP-13 の `web` を判定する。
 #   - Crawler が読む文書は tests/integration/api/data に置く(api は mount しない)。Docker に root 所有で作らせないよう、
 #     起動前にこのスクリプトが作り、終了時に削除する(--keep のときは残す)。
 #   - 終了時の `down -v` と `rm -rf` が、利用者のデータを消さないよう、事前確認で loreley-it の
@@ -59,13 +63,16 @@ readonly OPENSEARCH_PORT=9200
 readonly INDEXER_PORT=8000
 readonly CRAWLER_PORT=8001
 readonly API_PORT=8080
+readonly WEB_PORT=8090
 # compose は deploy/compose/.env やシェルの環境変数でホスト側ポートを変えられる。テストは 9200・8000・
-# 8001・8080 に接続するので、ここで固定する(シェルの環境変数は .env より優先される)。固定しないと、
-# ポート確認は 4 つを見るのに、スタックは別のポートで起動し、テストが「起動していません」と誤って中止する。
+# 8001・8080 に接続し、`web` は 8090 に publish されるので、ここで固定する(シェルの環境変数は .env より
+# 優先される)。固定しないと、ポート確認は 5 つを見るのに、スタックは別のポートで起動し、テストが
+# 「起動していません」と誤って中止する。
 export OPENSEARCH_HOST_PORT="$OPENSEARCH_PORT"
 export INDEXER_HOST_PORT="$INDEXER_PORT"
 export CRAWLER_HOST_PORT="$CRAWLER_PORT"
 export API_HOST_PORT="$API_PORT"
+export WEB_HOST_PORT="$WEB_PORT"
 # テストの接続先も、compose が publish するポートに固定する。固定しないと、シェルに残った
 # LORELEY_IT_*_URL が、ソース登録・削除やクロール起動、OpenSearch への直接書き込みを、このスクリプトが
 # 起動したのとは別の環境に向けてしまう(pytest を直接実行するときだけ、環境変数で変えられる)。
@@ -100,9 +107,9 @@ usage() {
 
 IT_SCRIPT_NAME="run-api-integration-test"
 IT_COMPOSE_TEST_FILE="tests/integration/api/compose.test.yaml"
-IT_PORTS=("OpenSearch:${OPENSEARCH_PORT}" "Indexer:${INDEXER_PORT}" "Crawler:${CRAWLER_PORT}" "api:${API_PORT}")
-IT_SERVICES=(opensearch opensearch-init indexer crawler api)
-IT_WAIT_CHECKS=("opensearch:healthy" "opensearch-init:exited_ok" "indexer:healthy" "crawler:healthy" "api:healthy")
+IT_PORTS=("OpenSearch:${OPENSEARCH_PORT}" "Indexer:${INDEXER_PORT}" "Crawler:${CRAWLER_PORT}" "api:${API_PORT}" "web:${WEB_PORT}")
+IT_SERVICES=(opensearch opensearch-init indexer crawler api web)
+IT_WAIT_CHECKS=("opensearch:healthy" "opensearch-init:exited_ok" "indexer:healthy" "crawler:healthy" "api:healthy" "web:healthy")
 IT_RESULTS_DIR="tests/integration/api/results"
 IT_REQUIRE_UV=true
 pytest_cmd=(uv run --project tests/integration/api pytest tests/integration/api -v -rP)

@@ -40,7 +40,7 @@ from loreley_api.infrastructure.opensearch import (
     create_probe_connection,
     create_read_connection,
 )
-from loreley_api.infrastructure.probes import HttpHealthProbe, WebDistProbe
+from loreley_api.infrastructure.probes import HttpHealthProbe
 from loreley_api.server import SubAppMount, create_app
 
 logger = logging.getLogger(__name__)
@@ -109,7 +109,6 @@ def build_app(config: ApiConfig) -> FastAPI:
     probes = AdminProbes(
         http=http_probe,
         opensearch=OpenSearchHealthProbe(opensearch_probe_connection.client),
-        web_dist=WebDistProbe(),
     )
     admin_dependencies = build_admin_dependencies(
         settings=config.admin,

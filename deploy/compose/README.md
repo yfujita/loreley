@@ -1,13 +1,14 @@
 # deploy/compose
 
-OpenSearch・Indexer・Crawler・api を起動する compose 構成(MVP)。`compose.yaml` が `opensearch`・`opensearch-init`・`indexer`・`crawler`・`api` の 5 サービスを定義する。
+OpenSearch・Indexer・Crawler・api・web を起動する compose 構成(MVP)。`compose.yaml` が `opensearch`・`opensearch-init`・`indexer`・`crawler`・`api`・`web` の 6 サービスを定義する。
 
 > **確認状況**: 特記がない限り、次の環境で実機確認した事実だけを書いている。「未確認」「想定(未確認)」と書いた箇所は、実機で確認していない。
 >
 > - 確認環境: macOS(x86_64)、Docker 20.10.13(Docker Desktop。VM のメモリ約 3.8GiB、CPU 2)、docker compose v2.3.3
 > - 結合テスト(`tests/integration/indexer`・`tests/integration/crawler`・`tests/integration/api`)は、この構成を専用のプロジェクト名 `loreley-it` で起動して実行する。手順と結果は [tests/integration/indexer/README.md](../../tests/integration/indexer/README.md)・[tests/integration/crawler/README.md](../../tests/integration/crawler/README.md)・[tests/integration/api/README.md](../../tests/integration/api/README.md) を参照
 > - `crawler` サービス(2026-11-16 に追加)の確認は、Crawler の結合テストの手動起動と一括スクリプトによる(結果は [crawler-integration.md](../../docs/v0.x/test-results/crawler-integration.md))。`docker compose up -d --build`(サービス名なし)を `.env` の設定なしで直接実行した確認は未実施
-> - `api` サービス(2026-11-25 に追加)の確認は、`docker compose config` による環境変数の展開と publish 先の確認、および Admin API の結合テストの一括スクリプトによる(結果は [admin-api-integration.md](../../docs/v0.x/test-results/admin-api-integration.md))。ただし結合テストは `web` の mount(`tests/integration/api/fixtures/web`)を付けて実行しており、mount なしで `web` が `abnormal` になることの実機確認は未実施。`docker compose up -d --build`(サービス名なし)を `api` を含めて直接実行した確認も未実施(結合テストのスクリプトは、サービス名を指定して起動する)
+> - `api` サービス(2026-11-25 に追加)の確認は、`docker compose config` による環境変数の展開と publish 先の確認、および Admin API の結合テストの一括スクリプトによる(結果は [admin-api-integration.md](../../docs/v0.x/test-results/admin-api-integration.md))。`docker compose up -d --build`(サービス名なし)を `api` を含めて直接実行した確認は未実施(結合テストのスクリプトは、サービス名を指定して起動する)
+> - `web` サービス(2026-11-26 に追加)の確認は、専用のプロジェクト名で `compose.yaml` だけを起動した実機確認(Nginx → 実 `api`)と、Admin API の結合テスト(`web` は実物を起動する)による。確認した内容は、`/admin/` の配信と SPA のフォールバック、`/api/` の中継(読み取り・書き込み)、`job_id` の `%2F`・`%2E` の保持、1 MiB 超の本文が `api` の JSON 400 になること、`api` 停止中の HTML の 502、`crawler` を `docker pause`(応答しない状態)にしたとき、約 60 秒で `api` の JSON 504(`crawler_response_lost`)が返ること(`stop` した場合は未確認)、`web` の停止・起動に伴う EP-13 の `web` の状態の変化
 
 ## 構成
 
@@ -17,7 +18,8 @@ OpenSearch・Indexer・Crawler・api を起動する compose 構成(MVP)。`comp
 | `opensearch-init` | インデックス(`loreley-documents-000001` とエイリアス `loreley-documents`、`loreley-deletions`、`loreley-jobs`、`loreley-sources`)を作る使い捨てコンテナ。冪等。作成後は終了する | なし |
 | `indexer` | `apps/indexer` をビルドして起動。`opensearch` が healthy で、`opensearch-init` が正常終了してから起動する | `127.0.0.1:8000` |
 | `crawler` | `apps/crawler` をビルドして起動。`opensearch` が healthy、`opensearch-init` が正常終了、`indexer` が healthy になってから起動する。検索対象のディレクトリを `:ro` で mount する(後述の「`crawler` サービス」) | なし(設計書どおり。結合テストの上書き `tests/integration/crawler/compose.test.yaml` だけが `127.0.0.1:8001` に publish する。後述「ループバックのみ公開する理由」) |
-| `api` | `apps/api`(Admin API)をビルドして起動。`opensearch` が healthy、`opensearch-init` が正常終了してから起動する。`crawler`・`indexer` は待たない(後述の「`api` サービス」)。**認証がない** | `127.0.0.1:8080`(コンテナ内は 8080 固定) |
+| `api` | `apps/api`(Admin API)をビルドして起動。`opensearch` が healthy、`opensearch-init` が正常終了してから起動する。`crawler`・`indexer`・`web` は待たない(後述の「`api` サービス」)。**認証がない** | なし(内部ネットワークの `api:8080` だけ。`web` が `/api/` で中継する。結合テストの上書き `tests/integration/api/compose.test.yaml` だけが `127.0.0.1:8080` に publish する) |
+| `web` | `apps/web` をビルドして起動(Nginx。Admin View の静的配信と `/api/` の `api` への中継)。`api` が healthy になってから起動する(後述の「`web` サービス」)。**`/api/` を通じて認証なしの破壊的操作ができる** | `127.0.0.1:8090`(コンテナ内は 80 固定) |
 
 スキーマと init スクリプトは `infra/opensearch/` にある。
 
@@ -25,7 +27,8 @@ OpenSearch・Indexer・Crawler・api を起動する compose 構成(MVP)。`comp
 
 - Docker と docker compose v2(確認した版: Docker 20.10.13、compose v2.3.3。`up --wait` は使わない。後述)
 - Docker に割り当てるメモリは **4GB 以上を推奨**。OpenSearch の JVM ヒープは既定 512m(最大 512MiB を実測で確認)で、Docker VM のメモリが約 4GB の環境を想定している。確認環境(約 3.8GiB)でのアイドル時の使用メモリは、OpenSearch 約 855MiB、Indexer 約 56MiB(OpenSearch 2.19.7 での測定。Crawler と 3.9.0 の使用量は測定していない)。OpenSearch・Indexer・Crawler を同時に起動して、Crawler の結合テストは全件成功した。ほかの重いコンテナを同時に動かさない
-- ホストのポート `9200`(OpenSearch)・`8000`(Indexer)・`8080`(api)が空いていること(`.env` で変えられる)。Crawler はホストに公開しない(結合テストの実行時だけ `8001`)
+- ホストのポート `9200`(OpenSearch)・`8000`(Indexer)・`8090`(web)が空いていること(`.env` で変えられる)。Crawler と api はホストに公開しない(結合テストの実行時だけ、Crawler は `8001`、api は `8080`)
+- `web` のイメージのビルドには、npm レジストリへの接続が必要(Node のビルドステージで `npm ci` を実行する)。実行時の `web` は外部と通信しない
 - **未確認**(Mac でのみ実施):
   - Linux の `vm.max_map_count`。262144 未満だと OpenSearch が起動しない場合がある。必要なら `sysctl -w vm.max_map_count=262144`(Docker Desktop(Mac)では必要なかった)。`scripts/run-indexer-integration-test.sh` は、Linux で値が低いと警告を出す(この警告も未確認)
   - SELinux が有効なホスト。`opensearch-init` は `infra/opensearch` を bind mount(読み取り専用)で読むため、SELinux のラベルによっては読めない場合がある(`:z` の要否は未確認)
@@ -47,7 +50,7 @@ cp .env.example .env
 | `INDEXER_HOST_PORT` | `8000` | Indexer のホスト側ポート |
 | `INDEXER_LOG_LEVEL` | `INFO` | Indexer のログレベル |
 | `CRAWLER_LOG_LEVEL` | `INFO` | Crawler のログレベル |
-| `API_HOST_PORT` | `8080` | api のホスト側ポート(バインドは常に `127.0.0.1`) |
+| `WEB_HOST_PORT` | `8090` | web のホスト側ポート(バインドは常に `127.0.0.1`)。api はホストに公開しないので、対応する変数はない |
 | `API_LOG_LEVEL` | `INFO` | api のログレベル |
 | `CRAWLER_DOCUMENTS_DIR` | `./documents` | Crawler が読む検索対象のディレクトリ(ホスト側のパス)。コンテナ内では `/data/documents` に読み取り専用で mount される。**注意点は「`crawler` サービス」を参照** |
 | `LORELEY_JOBS_INDEX_NAME` | `loreley-jobs` | `loreley-jobs` の索引名。`opensearch-init`・Indexer・Crawler・api に同じ値が渡る |
@@ -66,13 +69,16 @@ cp .env.example .env
 
 ```sh
 docker compose up -d --build          # 起動(`--wait` は使わない。後述)。crawler・api も起動する(`CRAWLER_DOCUMENTS_DIR` の既定 `./documents` が無ければ作られる。後述)
-docker compose ps                     # 状態の確認。opensearch・indexer・crawler・api が healthy になるまで待つ(opensearch-init は Exited (0) になる)
+docker compose ps                     # 状態の確認。opensearch・indexer・crawler・api・web が healthy になるまで待つ(opensearch-init は Exited (0) になる)
 curl http://127.0.0.1:9200/_cluster/health
 curl http://127.0.0.1:8000/healthz
-curl http://127.0.0.1:8080/healthz
-# crawler はホストに公開しない。healthy は `docker compose ps` で確認する(起動時の回復が終わるまで接続できず、healthcheck の start_period は 180 秒)
+curl -I http://127.0.0.1:8090/admin/  # web(Admin View)。200 が返る
+# crawler と api はホストに公開しない。healthy は `docker compose ps` で確認する(crawler は起動時の回復が終わるまで接続できず、healthcheck の start_period は 180 秒)
+# api の /healthz は、コンテナ内から確認する(ホストの 8080 にはつながらない):
+docker compose exec api python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8080/healthz').read())"
+docker compose logs web api           # web・api のログ
 
-docker compose up -d --build opensearch opensearch-init indexer   # Indexer だけを起動する(crawler・api を起動しない)
+docker compose up -d --build opensearch opensearch-init indexer   # Indexer だけを起動する(crawler・api・web を起動しない)
 
 docker compose down                   # 停止(データは残る)
 docker compose down -v                # 停止してデータ(名前付きボリューム)も削除
@@ -83,7 +89,7 @@ docker compose down -v                # 停止してデータ(名前付きボリ
 - **初期化**: インデックスは `opensearch-init` が起動のたびに確認し、無いものだけ作る(冪等)。既存のインデックスは変更しない。再実行すると、すべて `skip` と表示して終了する(確認済み)。検索インデックスは、エイリアス `loreley-documents` の有無で判定する。再インデックスでエイリアスを `-000002` に付け替えて `-000001` を削除した状態でも、空の `-000001` は作り直さない(その状態を模擬して確認済み)
 - **マッピングを変えたいとき**: `infra/opensearch/schema/*.json` を直しても、既存のインデックスは、`loreley-jobs` を除いて変わらない(init は既存を変更しない。検索インデックスと `loreley-deletions`・`loreley-sources` は `dynamic: strict` なので、定義にない項目を書くと拒否される)。`loreley-jobs` だけは、init が起動のたびに `jobs.json` の項目のうち不足しているものを `PUT _mapping` で足す(拡張前に作ったボリュームでも、Crawler が使う `record_type`・`status` などで検索できる。型が違う項目は 400 で init が失敗して止まる。実機で確認済み)。足した項目は、すでに入っている文書を再索引しない(ジョブ記録は Crawler が更新のたびに書き直す)。ほかのインデックスは、開発用のデータを消してよいなら、`docker compose down -v` でボリュームごと消して、`up -d` で作り直す。**データを残したまま変える手順(再インデックス)は、本タスクでは未確認**(対象外。設計は `apps/indexer/README.md` 8 章と arch 11 章)
 - **停止**: Indexer は SIGTERM を受けると `Shutting down` → `Application shutdown complete` と出して、1 秒で終了コード 0 で止まる(`stop_grace_period` は 30 秒)
-- 結合テストなど、開発用スタックと分けたい場合は `-p <プロジェクト名>` を付ける(ボリュームも別になる)。結合テストは `scripts/run-indexer-integration-test.sh`(`opensearch opensearch-init indexer` だけを起動)と `scripts/run-crawler-integration-test.sh`(`crawler` も起動)が `-p loreley-it` で起動して実行し、終わると `down -v` で消す。Admin API の結合テスト(`scripts/run-api-integration-test.sh`)は、`opensearch opensearch-init indexer crawler api` を同じプロジェクト名で起動する。**3 つのスクリプトはプロジェクト名とホストのポート(9200・8000)が同じため、同時には実行できない**。開発用のスタックに向けて結合テストを実行しない(テストはデータを削除しない)
+- 結合テストなど、開発用スタックと分けたい場合は `-p <プロジェクト名>` を付ける(ボリュームも別になる)。結合テストは `scripts/run-indexer-integration-test.sh`(`opensearch opensearch-init indexer` だけを起動)と `scripts/run-crawler-integration-test.sh`(`crawler` も起動)が `-p loreley-it` で起動して実行し、終わると `down -v` で消す。Admin API の結合テスト(`scripts/run-api-integration-test.sh`)は、`opensearch opensearch-init indexer crawler api web` を同じプロジェクト名で起動する(`web` のビルドに npm レジストリへの接続が要る。`web` は `127.0.0.1:8090` に publish されるので、このポートも空いている必要がある)。**3 つのスクリプトはプロジェクト名とホストのポート(9200・8000)が同じため、同時には実行できない**。開発用のスタックに向けて結合テストを実行しない(テストはデータを削除しない)
 
 ## `crawler` サービス
 
@@ -99,18 +105,29 @@ docker compose down -v                # 停止してデータ(名前付きボリ
 
 ## `api` サービス
 
-- **起動順**: `opensearch` が healthy、`opensearch-init` が正常終了してから起動する。**`crawler`・`indexer` は待たない**。落ちていても、api は起動して、その異常を状態として返す(設計書 `api-base-design-v0.1.md` 8 章)。`restart: unless-stopped`
+- **起動順**: `opensearch` が healthy、`opensearch-init` が正常終了してから起動する。**`crawler`・`indexer`・`web` は待たない**。落ちていても、api は起動して、その異常を状態として返す(設計書 `api-base-design-v0.1.md` 8 章)。`restart: unless-stopped`
 - **healthcheck**: イメージの `HEALTHCHECK`(`GET /healthz`、`start-period` 10 秒)をそのまま使う。`/healthz` は OpenSearch・Crawler・Indexer に接続せず、api 自身が受け付けを始めていれば 200 を返す
-- **接続先**: OpenSearch・Crawler・Indexer へは、内部ネットワークのサービス名(`http://opensearch:9200`・`http://crawler:8001`・`http://indexer:8000`)で接続する。api が Crawler を呼ぶので、Crawler をホストに公開する必要はない
+- **接続先**: OpenSearch・Crawler・Indexer・web へは、内部ネットワークのサービス名(`http://opensearch:9200`・`http://crawler:8001`・`http://indexer:8000`・`http://web:80`)で接続する。api が Crawler を呼ぶので、Crawler をホストに公開する必要はない。`web` へは `LORELEY_API_WEB_URL`(`http://web:80`)の `/admin/` の 200 で死活を確認する(EP-13)
 - **索引名**: `sources`・`jobs` は Crawler と、`deletions` は Indexer と同じ変数から渡す(上の表)。検索インデックスは、エイリアスを渡す。実体名(`opensearch-init` の `SEARCH_INDEX_NAME`)は渡さない。再インデックスでエイリアスを付け替えたあとに、古い索引を読まないため
 - **Crawler と同じ値で渡す設定**: cron のタイムゾーンと受付途中のロックの猶予は、1 つの変数から Crawler と api の両方に渡す(上の表)。api は Crawler の値を読めないので、この変数で揃える
 - **`LORELEY_API_OPENAPI_ENABLED` は渡さない**: 既定(無効)のまま。`/api/admin/v1/openapi.json` は公開されない(結合テストの AIT-01 で 404 を確認)
 - **検索対象のディレクトリは mount しない**: `:ro` で mount するのは `crawler` だけ
-- **`web` が `abnormal` に見える(既知。未対応)**: api の状態確認は、`LORELEY_API_WEB_DIST_DIR`(既定 `/app/web`)直下の `index.html` が読めるかで `web` を判定する。現在の `apps/api` のイメージは Web UI のビルド成果物を含まない(`apps/api/Dockerfile` の冒頭に明記。HO-36 は未対応)ため、この compose で起動した api は、`web` を `abnormal` と報告する(コードと Dockerfile の読解による)。api 自身や他のコンポーネントの異常ではない
+- **`web` を止めると `abnormal` になる**: `web` を止めると、api の Dashboard(EP-13)で `web` が `abnormal` になる(実機確認済み。`reason` は `name_not_resolved`)。起動すると `normal` に戻る。api 自身は影響を受けない
 - **起動直後の見え方**(設計書 `api-base-design-v0.1.md` の 6 章・9.2 の HO-45)
   - 設計書の記述(**実機未確認**): Indexer は起動時の整理が終わるまで接続を拒否するように見え、Crawler は起動時の回復が終わるまで接続できない(最大約 3 分。イメージの `--start-period` 180 秒に基づく値で、設計書も仮値としている)。このあいだ、api の状態確認ではその 2 つが異常に見え、Crawler への操作は 503 になりうる。回復すれば自動で応じる(再起動は要らない)。結合テストはすべてのサービスが healthy になってから始めるので、この起動直後の見え方は確認していない
   - 実機確認したこと: Crawler・Indexer を停止している間も、読み取りの API は OpenSearch だけで応答する(Admin API の結合テストの AIT-90・91。この compose での確認。結果は [admin-api-integration.md](../../docs/v0.x/test-results/admin-api-integration.md))
-- **認証がない・公開範囲**: 次の「ループバックのみ公開する理由」を読むこと。**`API_HOST_PORT` はホスト側のポート番号を変えるだけで、バインド先は変わらない**。`ports` を `0.0.0.0` や、ホストを省いた書き方に変えない
+- **ホストに公開しない**: `compose.yaml` の `api` に `ports` はない。ホストの `127.0.0.1:8080` にはつながらず、利用者は `web`(`/api/`)経由で使う。`/healthz` などをホストから確認するときは `docker compose exec api python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8080/healthz').read())"` でコンテナ内から確認する。結合テストだけが、`tests/integration/api/compose.test.yaml` で `127.0.0.1:${API_HOST_PORT:-8080}` に publish する(`API_HOST_PORT` はこの上書き用で、本番用の compose にはない)
+- **認証がない・公開範囲**: 次の「ループバックのみ公開する理由」を読むこと。`api` に `ports` を足さない
+
+## `web` サービス
+
+- **役割**: Nginx が、`/admin/` で Admin View(`apps/web` のビルド成果物 `dist/`)を静的配信し、`/api/` を `api:8080` に中継する。ブラウザから見て同一オリジンなので CORS は要らない。`/admin`(スラッシュなし)は 301 で `/admin/`、`/` は 302 で `/admin/`、`/api`(スラッシュなし)は 301 で `/api/` になる。定義したパス以外(`/index.html`・`/healthz` など)は 404。設定は `apps/web/nginx/default.conf`
+- **公開**: `127.0.0.1:${WEB_HOST_PORT:-8090}`(コンテナ内は 80 固定)。ブラウザで `http://127.0.0.1:8090/admin/` を開く
+- **起動順**: `api` が healthy になってから起動する(`depends_on` の `service_healthy`。起動直後の `/api/` が 502 にならないようにするため)。逆に、**`api` は `web` を待たない**(`web` が落ちていても `api` は起動する)。`restart: unless-stopped`。nginx は `api` の名前解決を実行時に行うので、`api` が停止中でも `web` は起動できる
+- **healthcheck**: イメージの `HEALTHCHECK`(`/admin/` の 200)をそのまま使う。`/healthz` の location はない。`api` の Dashboard(EP-13)の `web` の判定も、同じ `/admin/` の 200 を確認する
+- **`api` が止まっているとき**: `/api/` は Nginx の HTML の 502 になる(実機確認済み)。`/admin/` は 200 のまま。`api` が起動すれば `/api/` は復旧する(`web` の再起動は要らない)。`api` の Crawler 待ち(約 63 秒)の結果不明の JSON 504(`crawler_response_lost`)より先に Nginx が切れないよう、`proxy_read_timeout` は 90 秒にしている
+- **再起動**: `docker restart <web のコンテナ>`(実機で確認。`docker compose restart web` は未確認)。なお、compose v2.3.3 の `docker compose up -d --no-deps --force-recreate web` は、`--no-deps` を付けても `depends_on` の `api` を起動する(実機で確認)ので、手順に使わない
+- **イメージのビルド**: `apps/web/Dockerfile` が、Node のステージで `npm ci` → `npm run build`(`vue-tsc` → `vite build`)を行い、`dist/` を Nginx のイメージにコピーする。**ビルドには npm レジストリへの接続が必要**。ベースイメージ(Node・Nginx)はタグとダイジェストで固定している(更新の運用は Dockerfile の冒頭のコメント)。型生成(`gen:api`)はビルドで行わない
 
 ## ループバックのみ公開する理由
 
@@ -118,11 +135,11 @@ docker compose down -v                # 停止してデータ(名前付きボリ
 - Crawler API にも認証・認可がない。クロール・ソース削除ジョブの起動、ロック解放、データソース設定の登録・更新まで呼べる
 - OpenSearch もセキュリティプラグインを無効にしている(認証・TLS なし)
 - そのため、ホストへの publish は `127.0.0.1`(同じホストからのみ)に限っている。`0.0.0.0`(全 NIC)への公開は、同じネットワークの誰でも削除などを実行できるようになるのでしない
-- api(Admin API)にも認証・認可がない。クロールの起動(強制削除モードを含む)、データソース削除ジョブの起動、取消、ロック解放、データソース設定の登録・更新まで呼べる。ホストの `127.0.0.1` 以外(社内ネットワークなど)へ公開すると、到達できる全員がこれらの破壊的操作を実行できる(HO-40)。データソース設定の `connector_config.root` には、Crawler のコンテナから見える任意のパスを指定できる(読めるのは、Crawler の `:ro` の mount と、コンテナ内で読める範囲)
-- **ブラウザ経由の書き込み要求への保護がない**(HO-41。設計書でリスクとして受け入れ済み): 同じホストで動くブラウザが悪意あるウェブページを開くと、そのページから `127.0.0.1:8080` の本文なしの POST(ソース削除ジョブの起動、クロールの起動、取消)を送られうる。DNS rebinding なら、ほかの API も対象になる。`Origin` 検査などの緩和は MVP では入れていない。信頼できる利用者だけが使う検証環境で、api を使うホストのブラウザで、信頼できないページを開かないこと。将来の認証の設計で再検討する
-- OpenSearch・Indexer・api のホスト側ポートは `.env` で変えられるが、バインド先は常に `127.0.0.1`
-- **Crawler は、この compose ではホストに公開しない**(設計書 `crawler-architecture-v0.4.md` 10 章のとおり)。`127.0.0.1` への公開でも、認証・認可の代わりにならない。ホスト上の任意のプロセスが、FileSystem Connector の `connector_config.root` に `/data/documents` 以外のコンテナ内のパスを登録して、Crawler の実行ユーザーが読める(対象の拡張子の)ファイルを OpenSearch に索引できてしまうため。ホストの結合テスト(pytest)だけは、`tests/integration/crawler/compose.test.yaml` が `127.0.0.1:8001` に publish する(`CRAWLER_HOST_PORT` でホスト側のポート番号だけ変えられる)。Admin API(`api`)のように内部ネットワークから呼ぶ側は、サービス名(`http://crawler:8001`)で呼ぶので、Crawler の publish は不要(`api` はそうしている)。将来は、Connector が許可するルートディレクトリを制限する仕組みが望ましい(未対応)
-- コンテナ間は、compose の内部ネットワークでサービス名(`http://opensearch:9200`)で通信する。ホストへの publish は、開発者が `curl` などで確認するためのもの
+- api(Admin API)にも認証・認可がない。クロールの起動(強制削除モードを含む)、データソース削除ジョブの起動、取消、ロック解放、データソース設定の登録・更新まで呼べる。api はホストに公開せず、`web`(`127.0.0.1:8090` の `/api/`)が中継するので、**`web` が同じ操作の入口になる**。`web` を `127.0.0.1` 以外(社内ネットワークなど)へ公開すると、到達できる全員がこれらの破壊的操作を実行できる(HO-40)。データソース設定の `connector_config.root` には、Crawler のコンテナから見える任意のパスを指定できる(読めるのは、Crawler の `:ro` の mount と、コンテナ内で読める範囲)
+- **ブラウザ経由の書き込み要求への保護がない**(HO-41。設計書でリスクとして受け入れ済み): 同じホストで動くブラウザが悪意あるウェブページを開くと、そのページから `127.0.0.1:8090` の `/api/` への本文なしの POST(ソース削除ジョブの起動、クロールの起動、取消)を送られうる。DNS rebinding なら、ほかの API も対象になる。`Origin` 検査などの緩和は MVP では入れていない。信頼できる利用者だけが使う検証環境で、`web` を使うホストのブラウザで、信頼できないページを開かないこと。将来の認証の設計で再検討する
+- OpenSearch・Indexer・web のホスト側ポートは `.env` で変えられるが、バインド先は常に `127.0.0.1`。`ports` を `0.0.0.0` や、ホストを省いた書き方に変えない
+- **Crawler は、この compose ではホストに公開しない**(設計書 `crawler-architecture-v0.4.md` 10 章のとおり)。`127.0.0.1` への公開でも、認証・認可の代わりにならない。ホスト上の任意のプロセスが、FileSystem Connector の `connector_config.root` に `/data/documents` 以外のコンテナ内のパスを登録して、Crawler の実行ユーザーが読める(対象の拡張子の)ファイルを OpenSearch に索引できてしまうため。ホストの結合テスト(pytest)だけは、`tests/integration/crawler/compose.test.yaml` が `127.0.0.1:8001` に publish する(`CRAWLER_HOST_PORT` でホスト側のポート番号だけ変えられる)。Admin API(`api`)のように内部ネットワークから呼ぶ側は、サービス名(`http://crawler:8001`)で呼ぶので、Crawler の publish は不要(`api` はそうしている。`api` 自身もホストに公開せず、`web` が中継する)。将来は、Connector が許可するルートディレクトリを制限する仕組みが望ましい(未対応)
+- コンテナ間は、compose の内部ネットワークでサービス名(`http://opensearch:9200`)で通信する。ホストへの publish は、利用者がブラウザで `web` を開き、開発者が `curl` などで確認するためのもの
 - 他のホストから使う必要が出たら、認証付きのリバースプロキシなどを前に置く(MVP の対象外)
 
 ## OpenSearch のバージョン固定方針
@@ -156,7 +173,17 @@ docker compose down -v                # 停止してデータ(名前付きボリ
 
 - 実機で確認したこと: 9200 を別のプロセスが使っているとき、`scripts/run-indexer-integration-test.sh` が事前確認で検出し、原因と対処を表示して終了コード 1 で中止する(スタックには触れない)。`scripts/run-crawler-integration-test.sh` も、8001 を塞いだ状態で同様に中止した(スクリプトの修正前の版での確認)。実測では、起動した OpenSearch に `fess_config.coordinator` という索引が現れた。**索引名から Fess が書き込んだと推定**している(書き込んだプロセスの特定は未確認)。9200 を別のアプリが使う・接続している環境では、同様に索引が作られることがある(`loreley-*` には影響しなかった)
 - 想定(未確認): `docker compose up` を直接実行した場合は、`bind: address already in use` で `opensearch` または `indexer` の起動に失敗する
-- 対処(案): 使用中のプロセスを止める。または `.env` の `OPENSEARCH_HOST_PORT` / `INDEXER_HOST_PORT` を変える(結合テストのスクリプトは 9200・8000・8001 に固定するので、変えられない)
+- 対処(案): 使用中のプロセスを止める。または `.env` の `OPENSEARCH_HOST_PORT` / `INDEXER_HOST_PORT` / `WEB_HOST_PORT` を変える(結合テストのスクリプトは 9200・8000・8001・8080・8090 に固定するので、変えられない)
+
+### `/api/` が HTML の 502 になる(実機で確認)
+
+- 事象: `web` 経由の `/api/` が Nginx の HTML の 502 を返す。`/admin/` は 200 のまま。`api` が停止している(または起動していない)とき
+- 対処: `docker compose ps` で `api` の状態を確認し、`docker compose logs web api` で原因を見る。`api` が起動(healthy)すれば `/api/` は復旧する。`api` の `/healthz` は `docker compose exec api python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8080/healthz').read())"` でコンテナ内から確認する(ホストの 8080 にはつながらない)
+
+### `web` のビルドが失敗する(想定。未確認)
+
+- 想定: `docker compose up -d --build` の `web` のビルドで、`npm ci` が npm レジストリに接続できず失敗する(ビルドには接続が必要。実行時は不要)
+- 対処(案): ネットワーク(プロキシなど)を確認して、ビルドをやり直す
 
 ### OpenSearch が OOM で落ちる(exit 137)(想定。未確認)
 

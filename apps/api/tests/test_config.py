@@ -25,6 +25,7 @@ REQUIRED = {
     "opensearch_url": "http://opensearch:9200",
     "crawler_url": "http://crawler:8001",
     "indexer_url": "http://indexer:8000",
+    "web_url": "http://web:80",
 }
 
 
@@ -87,11 +88,11 @@ def test_the_defaults() -> None:
     assert config.http_probe.timeout_seconds == 3
     admin = config.admin
     assert (admin.crawler_url, admin.indexer_url) == ("http://crawler:8001", "http://indexer:8000")
+    assert admin.web_url == "http://web:80"
     assert admin.dashboards_health_url is None
     assert admin.embedding_health_url is None
     assert admin.llm_health_url is None
     assert admin.probe_timeout_seconds == 3
-    assert admin.web_dist_dir == "/app/web"
     assert admin.cron_timezone is None
     assert admin.dashboards_url is None
     assert admin.admitting_lock_grace_seconds == 60
@@ -117,6 +118,7 @@ def test_the_settings_are_exactly_the_documented_variables() -> None:
         "search_index_name",
         "crawler_url",
         "indexer_url",
+        "web_url",
         "crawler_connect_timeout_seconds",
         "crawler_response_timeout_seconds",
         "health_probe_timeout_seconds",
@@ -127,7 +129,6 @@ def test_the_settings_are_exactly_the_documented_variables() -> None:
         "cron_timezone",
         "admitting_lock_grace_seconds",
         "openapi_enabled",
-        "web_dist_dir",
     }
 
 
@@ -157,7 +158,6 @@ def test_environment_variables_override_the_defaults(monkeypatch: pytest.MonkeyP
         cron_timezone="Asia/Tokyo",
         admitting_lock_grace_seconds="3600",
         openapi_enabled="true",
-        web_dist_dir="/srv/web",
     )
 
     config = load_config()
@@ -182,7 +182,6 @@ def test_environment_variables_override_the_defaults(monkeypatch: pytest.MonkeyP
     assert admin.cron_timezone == "Asia/Tokyo"
     assert admin.admitting_lock_grace_seconds == 3600
     assert admin.openapi_enabled is True
-    assert admin.web_dist_dir == "/srv/web"
 
 
 @pytest.mark.parametrize(("value", "expected"), [("debug", "DEBUG"), ("Warning", "WARNING")])
@@ -220,7 +219,7 @@ def test_the_password_is_not_in_the_repr_of_the_config(monkeypatch: pytest.Monke
 # --- 必須の欠落 ---
 
 
-@pytest.mark.parametrize("name", ["opensearch_url", "crawler_url", "indexer_url"])
+@pytest.mark.parametrize("name", ["opensearch_url", "crawler_url", "indexer_url", "web_url"])
 def test_a_missing_required_variable_fails_by_name(
     monkeypatch: pytest.MonkeyPatch, name: str
 ) -> None:
@@ -240,7 +239,8 @@ def test_every_missing_required_variable_is_reported(monkeypatch: pytest.MonkeyP
         load_config()
 
     assert str(error_info.value) == (
-        "invalid settings: opensearch_url: missing; crawler_url: missing; indexer_url: missing"
+        "invalid settings: opensearch_url: missing; crawler_url: missing; indexer_url: missing; "
+        "web_url: missing"
     )
 
 
@@ -299,7 +299,6 @@ def test_numeric_settings_accept_the_bounds(
         ("opensearch_verify_certs", "SENTINEL-BOOL", "bool_parsing"),
         ("openapi_enabled", "SENTINEL-BOOL", "bool_parsing"),
         ("sources_index_name", "", "string_too_short"),
-        ("web_dist_dir", "", "string_too_short"),
     ],
 )
 def test_an_invalid_value_reports_the_field_and_the_kind_only(
@@ -336,7 +335,7 @@ BAD_URLS = {
 }
 
 
-@pytest.mark.parametrize("name", ["opensearch_url", "crawler_url", "indexer_url"])
+@pytest.mark.parametrize("name", ["opensearch_url", "crawler_url", "indexer_url", "web_url"])
 @pytest.mark.parametrize(("reason", "value"), BAD_URLS.items())
 def test_an_invalid_required_url_fails_without_showing_the_value(
     monkeypatch: pytest.MonkeyPatch, name: str, reason: str, value: str
@@ -354,20 +353,20 @@ def test_an_invalid_optional_url_fails_without_showing_the_value(
     assert_fails_without_the_value(monkeypatch, name=name, value=value, kind=f"url_{reason}")
 
 
-@pytest.mark.parametrize("name", ["crawler_url", "indexer_url"])
+@pytest.mark.parametrize("name", ["crawler_url", "indexer_url", "web_url"])
 @pytest.mark.parametrize("value", ["https://host", "https://host:8001/"])
-def test_crawler_and_indexer_urls_accept_http_only(
+def test_the_base_urls_accept_http_only(
     monkeypatch: pytest.MonkeyPatch, name: str, value: str
 ) -> None:
     assert_fails_without_the_value(monkeypatch, name=name, value=value, kind="url_scheme")
 
 
-@pytest.mark.parametrize("name", ["crawler_url", "indexer_url"])
+@pytest.mark.parametrize("name", ["crawler_url", "indexer_url", "web_url"])
 @pytest.mark.parametrize(
     "value",
     ["http://host/prefix", "http://host/prefix/", "http://host?SENTINEL=1", "http://host/?q"],
 )
-def test_crawler_and_indexer_urls_must_not_have_a_path_or_query(
+def test_the_base_urls_must_not_have_a_path_or_query(
     monkeypatch: pytest.MonkeyPatch, name: str, value: str
 ) -> None:
     assert_fails_without_the_value(monkeypatch, name=name, value=value, kind="url_path")
@@ -385,13 +384,14 @@ def test_crawler_and_indexer_urls_must_not_have_a_path_or_query(
 def test_the_trailing_slash_of_a_base_url_is_removed(
     monkeypatch: pytest.MonkeyPatch, value: str, expected: str
 ) -> None:
-    set_environment(monkeypatch, crawler_url=value, indexer_url=value)
+    set_environment(monkeypatch, crawler_url=value, indexer_url=value, web_url=value)
 
     config = load_config()
 
     assert config.crawler_client.base_url == expected
     assert config.admin.crawler_url == expected
     assert config.admin.indexer_url == expected
+    assert config.admin.web_url == expected
 
 
 def test_the_opensearch_and_health_urls_accept_https_a_path_and_a_query(
@@ -565,6 +565,7 @@ def test_loading_the_config_makes_no_network_access(monkeypatch: pytest.MonkeyPa
         opensearch_url="http://opensearch.invalid:9200",
         crawler_url="http://crawler.invalid:8001",
         indexer_url="http://indexer.invalid:8000",
+        web_url="http://web.invalid:80",
     )
 
     assert load_config().opensearch.url == "http://opensearch.invalid:9200"

@@ -15,11 +15,11 @@ def make_admin_settings(**overrides: object) -> AdminSettings:
     settings = AdminSettings(
         crawler_url="http://crawler.invalid:8001",
         indexer_url="http://indexer.invalid:8000",
+        web_url="http://web.invalid:80",
         dashboards_health_url=None,
         embedding_health_url=None,
         llm_health_url=None,
         probe_timeout_seconds=3.0,
-        web_dist_dir="/nonexistent/web",
         cron_timezone="Asia/Tokyo",
         dashboards_url=None,
         admitting_lock_grace_seconds=60.0,

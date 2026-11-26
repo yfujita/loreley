@@ -29,10 +29,11 @@ pytestmark = pytest.mark.anyio
 
 CRAWLER_URL = "http://crawler.invalid:8001"
 INDEXER_URL = "http://indexer.invalid:8000"
+WEB_URL = "http://web.invalid:80"
+WEB_HEALTH_URL = f"{WEB_URL}/admin/"
 DASHBOARDS_HEALTH_URL = "http://dashboards.invalid:5601/api/status"
 EMBEDDING_HEALTH_URL = "http://embedding.invalid:8080/health"
 LLM_HEALTH_URL = "https://llm.invalid/healthz"
-WEB_DIST_DIR = "/srv/loreley/web"
 NOW_TEXT = format_instant(DEFAULT_NOW)
 
 ALL_IDS = [
@@ -65,7 +66,7 @@ def make_service(
         make_admin_settings(
             crawler_url=CRAWLER_URL,
             indexer_url=INDEXER_URL,
-            web_dist_dir=WEB_DIST_DIR,
+            web_url=WEB_URL,
             **settings,
         ),
         probes=probes.as_admin_probes(),
@@ -148,11 +149,11 @@ async def test_the_probed_urls_are_the_configured_ones_only() -> None:
     assert probes.http.checked == [
         f"{CRAWLER_URL}/healthz",
         f"{INDEXER_URL}/healthz",
+        WEB_HEALTH_URL,
         DASHBOARDS_HEALTH_URL,
         EMBEDDING_HEALTH_URL,
         LLM_HEALTH_URL,
     ]
-    assert probes.web_dist.checked == [WEB_DIST_DIR]
     assert probes.opensearch.checked == [""]
 
 
@@ -171,6 +172,7 @@ async def test_the_probed_urls_are_the_configured_ones_only() -> None:
     [
         ("crawler", f"{CRAWLER_URL}/healthz"),
         ("indexer", f"{INDEXER_URL}/healthz"),
+        ("web", WEB_HEALTH_URL),
         ("opensearch-dashboards", DASHBOARDS_HEALTH_URL),
         ("embedding", EMBEDDING_HEALTH_URL),
         ("llm", LLM_HEALTH_URL),
@@ -209,14 +211,25 @@ async def test_the_opensearch_outcome_is_reported_as_the_opensearch_component() 
     ]
 
 
-async def test_the_web_component_follows_the_web_dist_probe() -> None:
+async def test_the_web_component_follows_the_probe_of_the_admin_path_of_the_web_url() -> None:
     probes = FakeProbes()
-    probes.web_dist.behavior.inject("check", ProbeOutcome("abnormal", "missing"))
+    probes.http.behavior.inject(
+        "check", ProbeOutcome("abnormal", "connection_refused"), key=WEB_HEALTH_URL
+    )
     service = make_service(probes, InlineRunner())
 
     response = await service.check_components()
 
-    assert ("web", "abnormal", "missing") in summarize(response)
+    assert ("web", "abnormal", "connection_refused") in summarize(response)
+    assert [component.state for component in response.components if component.id != "web"] == [
+        "normal",
+        "normal",
+        "normal",
+        "normal",
+        "not_configured",
+        "not_configured",
+        "not_configured",
+    ]
 
 
 async def test_the_api_component_is_always_normal_even_when_everything_else_fails() -> None:
@@ -224,7 +237,6 @@ async def test_the_api_component_is_always_normal_even_when_everything_else_fail
     down = ProbeOutcome("abnormal", "connection_refused")
     probes.http.behavior.inject("check", down, times=None)
     probes.opensearch.behavior.inject("check", down, times=None)
-    probes.web_dist.behavior.inject("check", ProbeOutcome("abnormal", "missing"), times=None)
     service = make_service(probes, InlineRunner(), **OPTIONAL_URLS)
 
     response = await service.check_components()
@@ -241,8 +253,8 @@ async def test_the_probes_run_in_the_probe_category_with_the_deadline_of_timeout
 
     assert DEADLINE_MARGIN_SECONDS == 1.0
     assert runner.run_all_deadlines == [4.0]
-    # crawler・indexer・opensearch と設定された任意の 3 つ。`web`・`api` は枠を通さない。
-    assert runner.categories == [CATEGORY_PROBE] * 6
+    # crawler・indexer・opensearch・web と、設定された任意の 3 つ(`api` は確認しない)。
+    assert runner.categories == [CATEGORY_PROBE] * 7
 
 
 async def test_the_deadline_follows_the_configured_probe_timeout() -> None:
@@ -254,24 +266,27 @@ async def test_the_deadline_follows_the_configured_probe_timeout() -> None:
     assert runner.run_all_deadlines == [1.5]
 
 
-async def test_the_web_probe_is_called_directly_without_the_runner() -> None:
-    """R9 の明示の例外: ローカルのファイルの確認だけなので、`runner` を通さずに直接呼ぶ。"""
+async def test_the_web_probe_goes_through_the_runner_like_the_other_http_probes() -> None:
     probes = FakeProbes()
     runner = InlineRunner()
     service = make_service(probes, runner)
 
     await service.check_components()
 
-    assert probes.web_dist.checked == [WEB_DIST_DIR]
-    # 枠を通ったのは 3 つ(crawler・indexer・opensearch)だけで、`web` は含まれない。
-    assert runner.categories == [CATEGORY_PROBE] * 3
+    assert probes.http.checked == [
+        f"{CRAWLER_URL}/healthz",
+        f"{INDEXER_URL}/healthz",
+        WEB_HEALTH_URL,
+    ]
+    # 枠を通ったのは 4 つ(crawler・indexer・opensearch・web)。
+    assert runner.categories == [CATEGORY_PROBE] * 4
 
 
 # `InlineRunner` の `abandoned_indexes` は、`run_all` に渡された呼び出しの順(crawler・indexer・
-# opensearch・設定された任意)の何番目かで指定する。
+# opensearch・web・設定された任意)の何番目かで指定する。
 @pytest.mark.parametrize(
     ("index", "component_id"),
-    [(0, "crawler"), (1, "indexer"), (2, "opensearch")],
+    [(0, "crawler"), (1, "indexer"), (2, "opensearch"), (3, "web")],
 )
 async def test_a_probe_that_passed_the_deadline_is_undetermined_timeout_and_the_others_are_kept(
     index: int, component_id: str
@@ -292,7 +307,7 @@ async def test_a_probe_that_passed_the_deadline_is_undetermined_timeout_and_the_
 
 
 async def test_every_probe_that_passed_the_deadline_is_undetermined_timeout() -> None:
-    runner = InlineRunner(abandoned_indexes={0, 1, 2, 3, 4, 5})
+    runner = InlineRunner(abandoned_indexes={0, 1, 2, 3, 4, 5, 6})
     service = make_service(FakeProbes(), runner, **OPTIONAL_URLS)
 
     response = await service.check_components()
@@ -302,7 +317,7 @@ async def test_every_probe_that_passed_the_deadline_is_undetermined_timeout() ->
         ("indexer", "undetermined", "timeout"),
         ("opensearch", "undetermined", "timeout"),
         ("api", "normal", None),
-        ("web", "normal", None),
+        ("web", "undetermined", "timeout"),
         ("opensearch-dashboards", "undetermined", "timeout"),
         ("embedding", "undetermined", "timeout"),
         ("llm", "undetermined", "timeout"),
@@ -358,7 +373,7 @@ async def test_a_not_configured_component_is_not_probed_and_has_no_reason() -> N
 
     await service.check_components()
 
-    assert len(probes.http.checked) == 2  # crawler と indexer だけ
+    assert len(probes.http.checked) == 3  # crawler・indexer・web だけ
 
 
 # --- 実物の `BlockingRunner`(スレッド・期限・放棄) ---
@@ -391,6 +406,7 @@ async def check_with_slow_probe(
         ("crawler", "http", f"{CRAWLER_URL}/healthz"),
         ("indexer", "http", f"{INDEXER_URL}/healthz"),
         ("opensearch", "opensearch", None),
+        ("web", "http", WEB_HEALTH_URL),
         ("opensearch-dashboards", "http", DASHBOARDS_HEALTH_URL),
         ("llm", "http", LLM_HEALTH_URL),
     ],
@@ -434,17 +450,19 @@ async def test_without_a_slow_probe_the_response_does_not_wait_for_the_deadline(
 async def test_several_slow_probes_are_all_cut_at_the_same_deadline() -> None:
     probes = FakeProbes()
     release = threading.Event()
-    probes.http.behavior.before("check", lambda: release.wait(30))
-    probes.http.behavior.before("check", lambda: release.wait(30))
+    for url in (f"{CRAWLER_URL}/healthz", f"{INDEXER_URL}/healthz", WEB_HEALTH_URL):
+        probes.http.behavior.before("check", lambda: release.wait(30), key=url)
     probes.opensearch.behavior.before("check", lambda: release.wait(30))
 
     response, elapsed = await check_with_slow_probe(probes, release)
 
     assert elapsed < RESPONSE_LIMIT_SECONDS
-    assert summarize(response)[:3] == [
+    assert summarize(response)[:5] == [
         ("crawler", "undetermined", "timeout"),
         ("indexer", "undetermined", "timeout"),
         ("opensearch", "undetermined", "timeout"),
+        ("api", "normal", None),
+        ("web", "undetermined", "timeout"),
     ]
 
 

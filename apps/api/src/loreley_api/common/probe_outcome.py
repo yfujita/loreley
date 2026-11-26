@@ -12,6 +12,8 @@ ProbeReason = Literal[
     "connection_refused",
     "name_not_resolved",
     "unexpected_status",
+    # 返す確認はない(`web` を HTTP の確認に置き換えた)。EP-13 の `reason` の列挙(OpenAPI)を
+    # 変えないために残している。
     "missing",
     "timeout",
     "connection_error",
