@@ -3,17 +3,17 @@
 ## 基本情報
 
 - 状態: done
-- 現在工程: 完了(実装・検証・レビュー・タスクレビュー済み。作業ツリーは未コミット)
+- 現在工程: 完了(実装・検証・レビュー・タスクレビュー済み。PR #26 を作成し、そのレビュー指摘に対応済み(0013))
 - 最終更新: 2026-11-27
 - 最新作業記録: 0013-pr-review-fixes.md
 
 ## 現在の状況
 
-前提タスク B+C を実装した(比較基準 SHA は 6569993。未コミット)。`web` コンテナ(Nginx。`apps/web/Dockerfile`・`nginx/default.conf`・`.dockerignore`)の追加(0005)、`api` の EP-13 の `web` 判定を `HttpHealthCheck`(`LORELEY_API_WEB_URL`・確認先 `/admin/`)に置換して `web_dist` 系を撤去(0006。OpenAPI 差分ゼロ)、compose の変更(`web` を `127.0.0.1:8090` に公開、`api` は `ports` なし。0007)、IT の追従(実 `web` を含め AIT-93 を追加。24 passed。0008)、実機確認(0009)、README・コメント(0010)、レビューと指摘対応(0011)、タスクレビューと最終申し送り(0012)。`apps/api` の pytest は 3435 passed。
+前提タスク B+C を実装した(比較基準 SHA は 6569993。PR #26)。`web` コンテナ(Nginx。`apps/web/Dockerfile`・`nginx/default.conf`・`.dockerignore`)の追加(0005)、`api` の EP-13 の `web` 判定を `HttpHealthCheck`(`LORELEY_API_WEB_URL`・確認先 `/admin/`)に置換して `web_dist` 系を撤去(0006。OpenAPI 差分ゼロ)、compose の変更(`web` を `127.0.0.1:8090` に公開、`api` は `ports` なし。0007)、IT の追従(実 `web` を含め AIT-93 を追加。24 passed。0008)、実機確認(0009)、README・コメント(0010)、レビューと指摘対応(0011)、タスクレビューと最終申し送り(0012)。`apps/api` の pytest は 3435 passed。PR #26 のレビュー指摘(未定義パスを 404 にする・コメントの修正)に対応した(0013)。
 
 ## 次のアクション
 
-1. ユーザーが作業ツリーの差分を確認し、コミット・PR にする(B と C は同じコミット範囲で)
+1. ユーザーが PR #26 をレビュー・マージする
 2. 設計書・IT 結果文書の追従改訂(HO-59・60・65 ほか)を別タスクで依頼する(0012 の申し送り)
 
 ## 未解決事項
