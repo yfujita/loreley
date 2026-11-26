@@ -270,6 +270,7 @@ apps/web/
 **タイムアウト付き fetch(E 5.3。仮値。承認済みの案(ゲート3)。FARC-U-16)**: `configureApiClient()` が `setConfig({ fetch })` に渡す。**読み取り(GET)45 秒・書き込み 90 秒**(メソッドで切り替える。`api` の最悪の待ち時間より先に切らない値。根拠と Nginx との順序は E 5.3)。
 
 - 自前の `AbortController` と `setTimeout` で中断する。呼び出し側の `signal`(Query が破棄したとき)の中断も内側の `AbortController` に伝える。時間切れは `TimeoutError` として投げて `timeout` に正規化し、利用者側の中断は `AbortError` のまま通す(上の表。両者を区別する)。
+- **時間切れの対象は、ヘッダー受信までではなく本文の取得完了まで**(E 5.3。承認済みの案(PR #21 のレビュー指摘への対応。ユーザー指示 2026-11-26)): ヘッダー受信の時点でタイマーを止めない。呼び出し側の `signal` の中断も本文の取得完了まで伝える。実装方式は E の FARC-U-22 の (5)(実装時確認)。
 - **`AbortSignal.any` は使わない**(対応下限の Safari 16.4 で使えない可能性があるため。推測。未確認。E の FARC-U-22)。
 - 実機での確認(タイムアウトと Query のキャンセルの区別、`TypeError` の捕捉、`api` 側の最悪の合計との整合)は E の FARC-U-22 に従う(FMOD-U-12)。
 
@@ -303,9 +304,9 @@ apps/web/
 | --- | --- | --- |
 | `queryClient.ts` | `QueryClient` の既定値(E 5.4。`retry` 1(`network`・`retryable=true` の 5xx・**読み取りの `invalid_response`**(Nginx 由来の 502・503・504。FARC-P-43)に限る。`timeout` は再試行しない。判定は `error` を `unknown` として `isApiError` で確認して行う)・`retryDelay` 1 秒・`staleTime` 0・フォーカス・再接続での再取得なし・**マウント時は再取得**・mutation の再試行なし・グローバル通知なし) | — |
 | `keys.ts` | **key factory**(E 5.4 の表。`['meta']`・`['dashboard']`・`['sources','list']`・`['sources','detail',sourceId]`・`['sources','edit',sourceId]`・`['jobs','list',params]`・`['jobs','detail',jobId]`・`['documents',sourceId,params]`・`['opensearch','cluster']`)。生成の `{fn}QueryKey` は使わず、`withKey` で生成 Options の key を上書きする(Hey API 0.x の key の形の変更に引きずられない) | — |
-| `withKey.ts` | **`withKey(options, key)`**: 生成 Options の key を差し替えて返す 1 つのヘルパー。`{ ...{fn}Options(…), queryKey: keys.… }` をそのまま `useQuery` に渡すと**型検査が通らない**(TS2769。`staleTime` などの型が、生成された key の型に結びつくため。確認 2026-11-26。E 5.4)ので、**key の型を合わせるキャストをここ 1 か所に閉じ込める**(承認済みの案(ゲート5。2026-11-26)。E 5.4)。実行時は、生成された `queryFn` が `{fn}Options` の引数(クロージャ)から URL を作り、key から作らないので、key を差し替えても正しい URL へ送られる(E 5.4)。`@tanstack/vue-query` の型を import してよい(R4) | — |
+| `withKey.ts` | **`withKey(options, key)`**: 生成 Options の key を差し替えて返す 1 つのヘルパー。`{ ...{fn}Options(…), queryKey: keys.… }` をそのまま `useQuery` に渡すと**型検査が通らない**(TS2769。`staleTime` などの型が、生成された key の型に結びつくため。確認 2026-11-26。E 5.4)ので、**key の型を合わせるキャストをここ 1 か所に閉じ込める**(承認済みの案(ゲート5。2026-11-26)。E 5.4)。実行時は、生成された `queryFn` が `{fn}Options` の引数(クロージャ)から URL を作り、key から作らないので、key を差し替えても正しい URL へ送られる(E 5.4)。`@tanstack/vue-query` の型を import してよい(R4) | — | 依存が重くなったときの代替(SDK 関数から独自の Options を組み立てる)は E の FARC-U-22 の (6)。
 | `polling.ts` | `refetchInterval`: D1 の 30 秒(スイッチ連動)・J2 の関数(`queued`・`running` のときだけ 10 秒。E 5.5) | — |
-| `placeholder.ts` | `placeholderData` の関数(**同じスコープの**ページ・並べ替えの変更だけ前回データを保持。E 5.6) | — |
+| `placeholder.ts` | `placeholderData` の関数(**同じスコープの**ページ・並べ替えの変更だけ前回データを保持。E 5.6)。**`isPlaceholderData` が `true` の間は、行単位の更新操作(J1 の取消など)を無効にする**判定を、画面が使えるように返す(承認済みの案(PR #21 のレビュー指摘への対応。ユーザー指示 2026-11-26)) | — |
 | `invalidation.ts` | **invalidate の表**(E 5.8)。操作 → prefix の配列を 1 か所に持ち、mutation が呼ぶ | — |
 | `meta.ts` | `useMetaQuery`(`staleTime: Infinity`。FARC-P-25)、`useDashboardsUrl`・`useCronTimezone`(失敗は `null` と同じ) | EP-14(`getMeta`) |
 | `dashboard.ts` | `useDashboardQuery(autoRefresh)` | EP-13(`getDashboard`) |
@@ -473,7 +474,7 @@ features/<名前>/
 | --- | --- |
 | `pages/SourcesListPage.vue`(S1) | `ListPage`+`SourcesTable`。主操作「データソースを登録」。行の操作から `dialogs`(DLG-1・DLG-2・削除の再実行)を開く |
 | `pages/SourceDetailPage.vue`(S2) | `DetailPage`+4 つのカード(`SourceSettingsCard`・`LockStateCard`(`lockStateView` の写像。E 5.10)・`LastJobCard`・`IndexCard`)。操作は `sourceActions.ts` の表。**`status=null`(EP-02 も null 許容)のときは S1 と同じく「削除中」の判定も操作も出さない**(E 5.7。承認済みの案(ゲート5。2026-11-26)) |
-| `pages/SourceCreatePage.vue`(S3)・`SourceEditPage.vue`(S4) | `FormPage`+`SourceForm`(**共有**)。S4 は現在値を取得できなければフォームを出さない |
+| `pages/SourceCreatePage.vue`(S3)・`SourceEditPage.vue`(S4) | `FormPage`+`SourceForm`(**共有**)。S4 は現在値を取得できなければフォームを出さない。**S4 は `SourceEditPage` を `sourceId` で `:key` し、編集対象の ID が変わったら再マウントして、フォームの値・検証エラー・サーバーエラー・送信状態を作り直す**(E 5.8。承認済みの案(PR #21 のレビュー指摘への対応。ユーザー指示 2026-11-26)) |
 | `components/` | `SourcesTable.vue`(S1。クライアント側のページ・並べ替え。`AdminDataTable`)・`SourceRowActions.vue`・`SourceSettingsCard.vue`・`LockStateCard.vue`・`LastJobCard.vue`・`IndexCard.vue`・`SourceForm.vue`・`SourceFormAlerts.vue`(読めない項目・丸め・削除中・上部アラート) |
 | `composables/` | `useSourcesListPage`(EP-01・EP-14。表の行モデル)、`useSourceDetailPage`(EP-02・EP-14)、`useSourceForm`(下) |
 | `models/sourceRow.ts` | 一覧の行の表示用変換(`last_crawl` と `delete_job` からタグ・補足文。行の `unavailable` を `rowCell` で引く。source-a の未実行と source-b の読み取り失敗を区別する)。**`status=null`(保存値が読めない。EP-01 の `status`・`connector_type` は null 許容。確認 2026-11-26)の行は「削除中」と判定せず**、状態は「—」+視覚的に隠した「読み取れません」にする(FARC-P-36)。**`last_completed_at`・`connector_type` は S1 では使わない**(使う画面仕様がない。要件にない追加をしない。B 1.4 が S1 の項目とする点は AF-U-9 が未決。承認済みの案(ゲート5。2026-11-26)) |
@@ -501,7 +502,7 @@ features/<名前>/
 
 | 要素 | 内容 |
 | --- | --- |
-| `pages/JobsListPage.vue`(J1) | `ListPage`+`FilterBar`(データソース・状態)+`JobsTable`(`AdminDataTableServer`)。取消は `dialogs/job-cancel` |
+| `pages/JobsListPage.vue`(J1) | `ListPage`+`FilterBar`(データソース・状態)+`JobsTable`(`AdminDataTableServer`)。取消は `dialogs/job-cancel`。取消ボタンは、前回データの表示中(`isPlaceholderData`)は無効にする(E 5.6) |
 | `pages/JobDetailPage.vue`(J2) | `DetailPage`+カード(`JobSummaryCard`・`FailureAlert`・`WarningList`・`RegistrationCard`(`StatList`。件数・`partial`・`phase` が `null` なら「—」。`cellState`)・`DeletionCard`・`LockCard`)。操作は `jobActions.ts` |
 | `composables/useJobsListPage.ts` | `jobsParams.ts` による URL の条件・`useJobsListQuery`・EP-01 の選択肢 |
 | `composables/useJobDetailPage.ts` | `useJobDetailQuery`(10 秒のポーリング)・最終更新・「見つかりません」の判定(`isValidPathId` が偽、または 404) |
@@ -742,6 +743,9 @@ tests/integration/<名前>/      # リポジトリ直下(`apps/web/` の外)。�
 | `admin/composables/useListParams`・`useBreadcrumbs`・`useViewState` | Vitest | URL ↔ 条件、不正値の正規化(`replace`)、条件を変えたら 1 ページ目に戻る、`push`/`replace`。パンくずの親の解決(`params` の引き継ぎ)。`viewState` の組み立て(404 の「見つかりません」・stale・`describeError` の結果) |
 | `features/*/models`・`*Actions.ts`・`*Params.ts` | Vitest(純粋) | `dashboardViewModel`(降格)、`indexFilter`・`matrixModel`(API の並びを保つ。補完しない)、`jobActions`・`sourceActions`(状態 → 操作の全組合せ。`status=null` は操作なし)、`documentTabs` の kebab ↔ snake と**行型のアダプタ**(4 型を他の型にないキーで判別、合わない行・タブは想定外)、`sourceRow`(`status=null` の行は「削除中」にしない)、`fromSettings`(TTL モード・丸め・`malformed`) |
 | **`features/sources/form/toRequest`** | Vitest(純粋。承認済みの案(ゲート4)) | **`ttl_days` と `ttl_seconds` の使わない方が、キーごと存在しない**こと(`'ttl_seconds' in body` が偽。`JSON.stringify` した結果に `null` の `ttl_*` が現れない)。日・秒の両モード。前提タスク A の前(生成型が `ttl_*` を `number \| null` とするため型は通る)でも後でも同じ出力であること。S4 は `source_id`・`connector_type` を含めない。`connector_config` は 5 項目を常に全部 |
+| **S4 の編集対象 ID の切り替え**(`SourceEditPage`) | Vitest(コンポーネント。承認済みの案(PR #21 のレビュー指摘への対応。ユーザー指示 2026-11-26)) | `sourceId` が変わったとき(a → b)、フォームの値・検証エラー・サーバーエラー・送信状態が作り直され、`updateSource` に前の ID の入力が送られないこと(E 5.8・10.1) |
+| **タイムアウトが本文の取得完了までを対象にすること**(`configureApiClient` のタイムアウト付き fetch) | Vitest(`fetch` の差し替え。承認済みの案(PR #21 のレビュー指摘への対応。ユーザー指示 2026-11-26)) | ヘッダー受信後に本文の受信が止まったとき、時間切れ(`timeout`)になること。呼び出し側の中断が本文の取得完了まで伝わること(E 5.3・10.1。方式は FARC-U-22 の (5)) |
+| **J1 の行操作の無効化**(`JobsListPage`・`JobsTable`) | Vitest(コンポーネント。承認済みの案(PR #21 のレビュー指摘への対応。ユーザー指示 2026-11-26)) | `isPlaceholderData` が `true` の間は、行の取消が無効になること(E 5.6・10.1) |
 | `features/sources/form/fieldMap`・`serverErrors` | Vitest(純粋) | `ttl_days` 固定の排他・必須 → TTL 欄、添字つき・添字なしの配列エラー、`connector_config` 単体 → 上部アラート、照合できない `detail`・表にない `field` → 上部アラート、`invalid_request` で `details.errors` なし → 診断つきの上部アラート |
 | `features/jobs/catalogs`・`dialogs` の純関数 | Vitest(純粋) | `warningCatalog` の型ガード(`code` が string でない要素は一般的な文言)、`refusal.ts`(`lock_held` の variant・`canLinkToJob`)、DLG-4 の `force_delete`・`rewrite_mode` の null → false、`released=false` の文言 |
 | `shared/ui`・`admin/components` | Vitest(コンポーネント) | props と状態の出し分け(`StatusTag` の未登録警告、`ConfirmDialog` の実行ボタンの有効/無効と理由、`PatternListInput` の追加・削除・Enter、`ShardMatrix` の列数)。レイアウト・コンテナクエリ・フォーカスの実挙動は E2E と実機 |
