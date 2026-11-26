@@ -166,7 +166,7 @@ docker run --restart unless-stopped \
   uv run python -m loreley_api.admin.openapi_export <出力パス>
   ```
 
-  書き出した JSON はリポジトリにコミットしない(置き場は、フロントエンドのタスクで決める)
+  書き出した JSON はリポジトリにコミットする(FARC-P-6)。置き場と、再生成の差分検査は、フロントエンドの型生成の手順が決める
 
 ## 7. 開発・テスト
 
