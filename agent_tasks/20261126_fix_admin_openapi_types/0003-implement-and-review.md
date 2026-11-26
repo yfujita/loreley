@@ -36,3 +36,7 @@
 - 任意項目(jobs の `sort` の列挙化、`warnings[].code` の型)は行っていない。フロントは型ガードで対処する予定で支障はない
 - 書き出した OpenAPI のコミット、Hey API の生成・CI の差分検査はフロントの実装タスクで行う
 - 結合テスト(IT)は実行していない(実行時の挙動を変えていないため)
+
+## 追記(PR #24 のレビュー指摘への対応)
+
+- [Nitpick] `test_openapi.py` の回帰テストで、`title` をパラメータにしたのに assert が `field.replace(...).title()` のままだった(ruff の整形後に置換したため、上記「title の期待値を具体値にした」の置換が当たっていなかった)。assert を `{"title": title, "type": "integer"}` に修正した。`ruff` 通過、`tests/admin/test_openapi.py` 119 件通過

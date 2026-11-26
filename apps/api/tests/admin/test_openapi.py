@@ -438,10 +438,7 @@ def test_the_request_ttl_is_an_optional_non_null_integer(
     # 任意(`required` に含まない)かつ非 null の整数にする。
     body_schema = schema["components"]["schemas"][body]
 
-    assert body_schema["properties"][field] == {
-        "title": field.replace("_", " ").title(),
-        "type": "integer",
-    }
+    assert body_schema["properties"][field] == {"title": title, "type": "integer"}
     assert field not in body_schema["required"]
 
 
