@@ -11,13 +11,13 @@
 - **構成**: `main`(設定・ログ設定・組み立て・起動)、`config`(環境変数)、`server`(外側のアプリ。機能を載せる口)、`health`(ヘルスチェック)、`admin`(Admin API)、`infrastructure`(OpenSearch・Crawler・死活確認の各クライアント)、`common`(エラー形式・アクセスログ・ログ設定など)
 - **共通の挙動**: エラーは `{"error": {"code", "message", "retryable"}}`(任意で `details`)の JSON、未定義のパスは 404 `not_found`、未定義のメソッドは 405 `method_not_allowed`。アクセスログは自前(メソッド・ルートのテンプレート・ステータス・所要時間)で、`/healthz` は DEBUG。エラー応答・ログには入力値・認証情報・原本のパスを出さない。対話型ドキュメント(`/docs`・`/redoc`)と CORS はない
 - **MVP の前提**: 単一ホスト・単一プロセス・**認証なし**
-- **このタスクの範囲外**: Web UI(`/admin/`)の静的配信、compose への `api` サービスの追加、Dockerfile の Node ビルドステージ(別タスク。設計書の申し送り HO-34〜37)。`LORELEY_API_WEB_DIST_DIR` は現在、EP-13 の `web` の死活確認(`index.html` が読めるか)だけに使う
+- **Web UI の配信は `api` の役割ではない**: Web UI(`/admin/`)の静的配信と `/api/` の中継は、`web` コンテナ(Nginx。`apps/web`)が担う。`api` は静的ファイルを配信せず、イメージにも Web の成果物を含まない。EP-13 の `web` は、`LORELEY_API_WEB_URL` の `/admin/` を HTTP で確認した結果(200 なら normal)を返す
 
 ## 2. 公開範囲と安全性(必ず読むこと)
 
 **この `api` には認証・認可がない。信頼できるネットワークにだけ公開する。**
 
-- **既定は localhost のみ**。待ち受けの既定は `127.0.0.1` で、Docker で動かすときもホストへの publish は `127.0.0.1` に限る(4 章)。社内ネットワークへ公開すると、到達できる**全員**が次の操作を実行できる
+- **既定は localhost のみ**。待ち受けの既定は `127.0.0.1` で、Docker で動かすときもホストへの publish は `127.0.0.1` に限る(4 章)。compose では `api` をホストに公開せず、公開するのは `web`(`127.0.0.1` の `/api/`)だけで、`web` が同じ操作の入口になる。社内ネットワークへ公開すると、到達できる**全員**が次の操作を実行できる
   - データソース削除ジョブの起動(EP-05。そのデータソースの全文書・記録・設定が消え、取り消せない)
   - `force_delete=true` でのクロール起動(EP-06。削除の割合ルール・最小件数ルールを無視して削除する)
   - クロールの取消(EP-07)、ロック解放(EP-08)
@@ -55,7 +55,7 @@
 
 ## 4. 起動方法
 
-必須の環境変数が 3 つある(5 章: `OPENSEARCH_URL`・`CRAWLER_URL`・`INDEXER_URL`)。欠けていると、起動に失敗する。**起動時に OpenSearch・Crawler・Indexer へは接続しない**ので、これらが落ちていても `api` は起動する(接続できない状態は、各 EP の応答と EP-13 に出る)。
+必須の環境変数が 4 つある(5 章: `OPENSEARCH_URL`・`CRAWLER_URL`・`INDEXER_URL`・`WEB_URL`)。欠けていると、起動に失敗する。**起動時に OpenSearch・Crawler・Indexer・web へは接続しない**ので、これらが落ちていても `api` は起動する(接続できない状態は、各 EP の応答と EP-13 に出る)。
 
 ### ローカル
 
@@ -67,6 +67,7 @@ uv sync
 LORELEY_API_OPENSEARCH_URL=http://localhost:9200 \
 LORELEY_API_CRAWLER_URL=http://localhost:8001 \
 LORELEY_API_INDEXER_URL=http://localhost:8000 \
+LORELEY_API_WEB_URL=http://localhost:8090 \
   uv run python -m loreley_api.main
 curl -s http://127.0.0.1:8080/healthz   # {"status":"ok"}
 ```
@@ -85,6 +86,7 @@ docker run --restart unless-stopped \
   -e LORELEY_API_OPENSEARCH_URL=http://opensearch:9200 \
   -e LORELEY_API_CRAWLER_URL=http://crawler:8001 \
   -e LORELEY_API_INDEXER_URL=http://indexer:8000 \
+  -e LORELEY_API_WEB_URL=http://web:80 \
   loreley-api
 ```
 
@@ -94,7 +96,8 @@ docker run --restart unless-stopped \
 - イメージは Python 3.12(slim。ベースイメージはタグとダイジェストで固定。運用は `Dockerfile` の冒頭のコメント)で、依存は `uv.lock` から入れる(dev 依存は含まない)。**非 root(uid 10001)** で動く
 - コンテナでは `LORELEY_API_HOST=0.0.0.0` が設定済み(既定の `127.0.0.1` では外から届かない)。`LORELEY_API_PORT` を変えたら、公開するポートも合わせる
 - `HEALTHCHECK` は `GET /healthz`(間隔 15 秒、タイムアウト 5 秒、起動猶予 10 秒、再試行 3 回)。ホストは `127.0.0.1` 固定。`LORELEY_API_HOST` を特定の IP や IPv6 に変えるなら、`HEALTHCHECK` も合わせる
-- 現在のイメージには Web UI のビルド成果物(`/app/web`)が入っていない。そのため EP-13 の `web` は異常と表示される(Node ビルドステージの追加は別タスク)
+- イメージは Web UI を含まない(Node のビルドステージもない)。Web UI の配信は `web` コンテナが担う。`web` が起動していない環境では、EP-13 の `web` は異常と表示される
+- **compose では `api` をホストに公開しない**(`deploy/compose/compose.yaml` に `ports` がない)。ホストから `127.0.0.1:8080` にはつながらず、`web`(`127.0.0.1:8090` の `/api/`)経由で使う。確認は `docker compose ps`・`docker compose logs web api` と、コンテナ内から `docker compose exec api python -c "import urllib.request as u; print(u.urlopen('http://127.0.0.1:8080/healthz').read())"`。上の `docker run` の例は compose を使わない単体の起動で、ホストの `127.0.0.1` に publish している
 
 ## 5. 環境変数
 
@@ -107,6 +110,7 @@ docker run --restart unless-stopped \
 | `OPENSEARCH_URL` | OpenSearch の接続先(`http`・`https`) |
 | `CRAWLER_URL` | Crawler の接続先。**`http` だけ**。パス・クエリを持たない(`http://crawler:8001` の形。末尾の `/` は取り除く) |
 | `INDEXER_URL` | Indexer の接続先(`/healthz` の確認だけに使う)。`CRAWLER_URL` と同じ形で、`http` だけ |
+| `WEB_URL` | `web`(Nginx)の接続先(EP-13 の `web` の確認だけに使う)。`CRAWLER_URL` と同じ形で、`http` だけ。パス・クエリを持たない(末尾の `/` は取り除く)。確認先は `{WEB_URL}/admin/`(200 で normal)。compose では `http://web:80` |
 
 **待ち受けとログ**
 
@@ -149,9 +153,8 @@ docker run --restart unless-stopped \
 | `CRON_TIMEZONE` | なし | cron のタイムゾーン(IANA 名。例 `Asia/Tokyo`)。EP-14 で返す。Crawler の `LORELEY_CRAWLER_TIMEZONE` と同じ値を渡す。未設定なら `null` |
 | `ADMITTING_LOCK_GRACE_SECONDS` | `60` | ロック取得直後の猶予(0 より大きく 3600 以下)。Crawler の `LORELEY_CRAWLER_ADMITTING_LOCK_GRACE_SECONDS` と同じ値を渡す |
 | `OPENAPI_ENABLED` | `false` | OpenAPI JSON の実行時公開(6 章) |
-| `WEB_DIST_DIR` | `/app/web` | Web UI のビルド成果物のディレクトリ。EP-13 が直下の `index.html` を確認する。存在は起動時に検査しない |
 
-**URL の検証**: scheme は `http`・`https`(`CRAWLER_URL`・`INDEXER_URL` は `http` だけ)、ホストあり、ユーザー情報(`user:pass@`)なし、フラグメント(`#...`)なし。認証情報は専用の変数で渡す。
+**URL の検証**: scheme は `http`・`https`(`CRAWLER_URL`・`INDEXER_URL`・`WEB_URL` は `http` だけ)、ホストあり、ユーザー情報(`user:pass@`)なし、フラグメント(`#...`)なし。認証情報は専用の変数で渡す。
 
 **設定が不正なとき**: 起動に失敗して終了コード 1 で終わる。標準エラー出力には、**値を含まず**、項目名と検証の種別だけを出す(例: `loreley_api.config.ConfigError: invalid settings: port: int_parsing; opensearch_url: missing`)。ログは標準エラー出力に出る。
 

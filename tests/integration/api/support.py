@@ -833,14 +833,16 @@ COMPOSE_FILES = (
     REPOSITORY_ROOT / "deploy/compose/compose.yaml",
     REPOSITORY_ROOT / "tests/integration/api/compose.test.yaml",
 )
-# 障害系が止めてよいサービス。api は止めない(テストの対象)。opensearch-init は使い捨て。
-CONTROLLABLE_SERVICES = frozenset({"crawler", "indexer", "opensearch"})
+# 障害系が止めてよいサービス。api は止めない(テストの対象)。opensearch-init は使い捨て。`web` は
+# fixture ではなく実物で、api が `http://web:80/admin/` を確認して EP-13 の `web` を判定する。
+CONTROLLABLE_SERVICES = frozenset({"crawler", "indexer", "opensearch", "web"})
 # サービスを起動し直した後に、healthy になるのを待つサービス。OpenSearch の停止は、これに依存する
 # Crawler・Indexer と、読み取りに使う api の見え方にも影響するので、4 つが揃うまで待つ。
 SERVICES_TO_AWAIT_AFTER_START = {
     "crawler": ("crawler",),
     "indexer": ("indexer",),
     "opensearch": ("opensearch", "indexer", "crawler", "api"),
+    "web": ("web",),
 }
 CONTROLLABLE_ACTIONS = frozenset({"stop", "start"})
 # 障害系を許可する環境変数。スクリプトが export する(手動で pytest を直接実行したときに、意図せず
@@ -885,8 +887,9 @@ def require_controllable_service(service: str) -> None:
 class ComposeControl:
     """障害系のテストが、`loreley-it` のサービスを止めて起動し、healthy まで待つ。
 
-    操作できるのはプロジェクト `loreley-it` の `crawler`・`indexer`・`opensearch` の `stop`・`start`
-    だけ(`build_compose_command`)。開発用スタックや他のプロジェクトのコンテナには触れない。
+    操作できるのはプロジェクト `loreley-it` の `crawler`・`indexer`・`opensearch`・`web` の
+    `stop`・`start` だけ(`build_compose_command`)。開発用スタックや他のプロジェクトのコンテナには
+    触れない。
     テストは、止める区間を `stopped`(with 文)で囲む。区間を抜けるとき(テストの失敗を含む)に、
     必ず `start` して、healthy に戻るのを上限つきで確認する。
     """

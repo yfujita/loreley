@@ -14,7 +14,6 @@ from loreley_api.infrastructure.opensearch import (
 from loreley_api.infrastructure.probes import (
     HttpHealthProbe,
     HttpProbeConfig,
-    WebDistProbe,
     ports,
 )
 from tests.fakes.fake_opensearch_client import FakeOpenSearchClient
@@ -22,7 +21,6 @@ from tests.fakes.fake_probes import (
     OPERATIONS,
     FakeHttpHealthProbe,
     FakeOpenSearchHealthProbe,
-    FakeWebDistProbe,
 )
 from tests.fakes.protocol_conformance import (
     assert_same_methods_as_protocol,
@@ -33,7 +31,7 @@ from tests.fakes.protocol_conformance import (
 
 def test_the_probe_modules_define_exactly_these_protocols() -> None:
     """Protocol を足したのに、偽物の検査に足し忘れる、を防ぐ。"""
-    assert set(protocols_defined_in(ports)) == {"HttpHealthCheck", "WebDistCheck"}
+    assert set(protocols_defined_in(ports)) == {"HttpHealthCheck"}
     assert set(protocols_defined_in(health_probe)) == {"OpenSearchHealthCheck"}
 
 
@@ -41,16 +39,14 @@ def test_the_probe_modules_define_exactly_these_protocols() -> None:
     ("candidate", "protocol"),
     [
         (FakeHttpHealthProbe(), ports.HttpHealthCheck),
-        (FakeWebDistProbe(), ports.WebDistCheck),
         (FakeOpenSearchHealthProbe(), health_probe.OpenSearchHealthCheck),
         (HttpHealthProbe(HttpProbeConfig(timeout_seconds=1.0)), ports.HttpHealthCheck),
-        (WebDistProbe(), ports.WebDistCheck),
         (
             OpenSearchHealthProbe(ReadOnlyOpenSearch(FakeOpenSearchClient())),
             health_probe.OpenSearchHealthCheck,
         ),
     ],
-    ids=["fake-http", "fake-web", "fake-opensearch", "http", "web", "opensearch"],
+    ids=["fake-http", "fake-opensearch", "http", "opensearch"],
 )
 def test_each_probe_has_every_protocol_method_with_the_same_parameters(
     candidate: object, protocol: type
@@ -58,11 +54,8 @@ def test_each_probe_has_every_protocol_method_with_the_same_parameters(
     assert_same_methods_as_protocol(candidate, protocol, label=type(candidate).__name__)
 
 
-@pytest.mark.parametrize("protocol", [ports.HttpHealthCheck, ports.WebDistCheck])
-def test_the_operation_names_of_the_fakes_are_exactly_the_protocol_methods(
-    protocol: type,
-) -> None:
-    assert set(public_methods(protocol)) == OPERATIONS
+def test_the_operation_names_of_the_fakes_are_exactly_the_protocol_methods() -> None:
+    assert set(public_methods(ports.HttpHealthCheck)) == OPERATIONS
 
 
 @pytest.mark.parametrize("operation", ["check_url", "probe", "checks"])

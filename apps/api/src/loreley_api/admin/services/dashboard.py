@@ -1,12 +1,12 @@
 """ダッシュボード(EP-13。C 6章。D 5.5)。
 
-8 つのコンポーネントを固定の順で返す。`crawler`・`indexer`・`opensearch` と、設定された任意
-コンポーネントの確認は、`probe` の枠で並行に実行し、全体の期限(確認のタイムアウト + 1 秒)で
+8 つのコンポーネントを固定の順で返す。`crawler`・`indexer`・`opensearch`・`web` と、設定された
+任意コンポーネントの確認は、`probe` の枠で並行に実行し、全体の期限(確認のタイムアウト + 1 秒)で
 打ち切る。期限までに終わらなかった確認は `undetermined`(`timeout`)にする。1 つが遅くても、
 他を待たせず、全体は期限内に応答する。
 
 - `api`: 応答できていること自体が根拠なので、常に `normal`。
-- `web`: ローカルのファイルの確認だけなので、枠を通さずに直接呼ぶ(R9 の明示の例外)。
+- `web`: `{WEB_URL}/admin/`(Nginx)を、`crawler`・`indexer` と同じ HTTP の確認で見る。
 - 任意コンポーネント: 確認先の URL が未設定なら、確認せず `not_configured`。
 
 確認先の URL は、設定(環境変数)から得た値だけを使う。リクエストからは何も受け取らない(C 6.4)。
@@ -24,12 +24,15 @@ from loreley_api.common.concurrency import CATEGORY_PROBE, Abandoned, BlockingRu
 from loreley_api.common.probe_outcome import ProbeOutcome
 from loreley_api.common.timestamps import format_instant
 from loreley_api.infrastructure.opensearch import OpenSearchHealthCheck
-from loreley_api.infrastructure.probes import HttpHealthCheck, WebDistCheck
+from loreley_api.infrastructure.probes import HttpHealthCheck
 
 logger = logging.getLogger(__name__)
 
 # `crawler`・`indexer` の確認先(`{CRAWLER_URL}/healthz`)。任意コンポーネントは設定された完全な URL。
 HEALTH_PATH = "/healthz"
+# `web` の確認先(`{WEB_URL}/admin/`)。末尾の `/` は必須: `/admin`(スラッシュなし)は Nginx が
+# 301 を返し、`HttpHealthProbe` はリダイレクトに従わないので、常に異常になってしまう。
+WEB_HEALTH_PATH = "/admin/"
 # 全体の期限は、確認 1 件のタイムアウトにこの秒数を足した値(C 6.1)。
 DEADLINE_MARGIN_SECONDS = 1.0
 
@@ -50,27 +53,25 @@ class DashboardService:
         *,
         http_probe: HttpHealthCheck,
         opensearch_probe: OpenSearchHealthCheck,
-        web_probe: WebDistCheck,
         runner: BlockingRunner,
         clock: Clock,
         crawler_url: str,
         indexer_url: str,
+        web_url: str,
         dashboards_health_url: str | None,
         embedding_health_url: str | None,
         llm_health_url: str | None,
-        web_dist_dir: str,
         probe_timeout_seconds: float,
     ) -> None:
         self._http_probe = http_probe
         self._opensearch_probe = opensearch_probe
-        self._web_probe = web_probe
         self._runner = runner
         self._clock = clock
-        self._web_dist_dir = web_dist_dir
         self._deadline_seconds = probe_timeout_seconds + DEADLINE_MARGIN_SECONDS
         # 確認先の URL は、起動時に設定から作り、実行時には変えない。
         self._crawler_health_url = f"{crawler_url}{HEALTH_PATH}"
         self._indexer_health_url = f"{indexer_url}{HEALTH_PATH}"
+        self._web_health_url = f"{web_url}{WEB_HEALTH_PATH}"
         # 任意コンポーネントの確認先(完全な URL)。`None` は未設定。
         self._optional_health_urls: dict[ComponentId, str | None] = {
             ComponentId.OPENSEARCH_DASHBOARDS: dashboards_health_url,
@@ -89,10 +90,6 @@ class DashboardService:
             for component_id, finished in zip(probe_calls, results, strict=True)
         }
         statuses[ComponentId.API] = self._status(ComponentId.API, ProbeOutcome("normal"))
-        # ローカルのファイルの確認だけなので、`runner` を通さずに直接呼ぶ(R9 の例外)。
-        statuses[ComponentId.WEB] = self._status(
-            ComponentId.WEB, self._web_probe.check(self._web_dist_dir)
-        )
         for component_id, url in self._optional_health_urls.items():
             if url is None:
                 statuses[component_id] = self._not_configured(component_id)
@@ -103,11 +100,12 @@ class DashboardService:
         )
 
     def _build_probe_calls(self) -> dict[ComponentId, Callable[[], _Finished]]:
-        """`probe` の枠で実行する確認。順は `crawler`・`indexer`・`opensearch`・設定された任意。"""
+        """`probe` の枠で実行する確認。順は `crawler`・`indexer`・`opensearch`・`web`・任意。"""
         calls = {
             ComponentId.CRAWLER: self._timed_http_check(self._crawler_health_url),
             ComponentId.INDEXER: self._timed_http_check(self._indexer_health_url),
             ComponentId.OPENSEARCH: self._timed(self._opensearch_probe.check),
+            ComponentId.WEB: self._timed_http_check(self._web_health_url),
         }
         for component_id, url in self._optional_health_urls.items():
             if url is not None:

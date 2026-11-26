@@ -37,7 +37,7 @@ from loreley_api.infrastructure.opensearch import (
     SearchIndexReader,
     SourcesReader,
 )
-from loreley_api.infrastructure.probes import HttpHealthCheck, WebDistCheck
+from loreley_api.infrastructure.probes import HttpHealthCheck
 
 
 class _Unconnected:
@@ -58,11 +58,11 @@ def _build_unconnected_dependencies() -> AdminDependencies:
         settings=AdminSettings(
             crawler_url="http://crawler.invalid",
             indexer_url="http://indexer.invalid",
+            web_url="http://web.invalid",
             dashboards_health_url=None,
             embedding_health_url=None,
             llm_health_url=None,
             probe_timeout_seconds=3.0,
-            web_dist_dir="/nonexistent",
             cron_timezone=None,
             dashboards_url=None,
             admitting_lock_grace_seconds=60.0,
@@ -82,7 +82,6 @@ def _build_unconnected_dependencies() -> AdminDependencies:
         probes=AdminProbes(
             http=cast(HttpHealthCheck, unconnected),
             opensearch=cast(OpenSearchHealthCheck, unconnected),
-            web_dist=cast(WebDistCheck, unconnected),
         ),
     )
 

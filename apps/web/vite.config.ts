@@ -5,7 +5,8 @@ import { defineConfig } from 'vite'
 import vuetify from 'vite-plugin-vuetify'
 
 // 既定の転送先は compose の web コンテナの公開ポート(WEB_HOST_PORT の既定値)。
-// web コンテナの追加前は何も待ち受けていないため、api を直接指す場合は LORELEY_DEV_API_TARGET で上書きする。
+// 使う前に compose で web を起動しておく。api はホストに公開されないので、WEB_HOST_PORT を変えたときなどは
+// LORELEY_DEV_API_TARGET で上書きする。
 // VITE_ を付けないのは、クライアントのコードに露出させない dev 専用の値だから。
 const devApiTarget = process.env.LORELEY_DEV_API_TARGET || 'http://127.0.0.1:8090'
 

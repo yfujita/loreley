@@ -3,9 +3,8 @@
 - CORS を許可しない: `fastapi.middleware.cors`・`starlette.middleware.cors` を import しない。
 - ルート関数と、`Depends` に渡す依存関係は `async def`(同期の関数は共通のスレッドプールで動き、
   並行の上限を迂回するため)。
-- ブロッキングの呼び出しは `BlockingRunner` 経由。**例外は `WebDistProbe`**(ローカルのファイルの
-  確認だけ。C 6.3)で、`services.dashboard` がメソッドの本体から直接呼ぶ。ほかのプローブの
-  `.check(...)` は、入れ子の関数・lambda(`runner.run_all` に渡す呼び出し)の中にだけ書く。
+- ブロッキングの呼び出しは `BlockingRunner` 経由。例外はない(`web` も HTTP の確認なので枠を通す)。
+  プローブの `.check(...)` は、入れ子の関数・lambda(`runner.run_all` に渡す呼び出し)の中にだけ書く。
 - `FastAPI(...)` は、`docs_url=None`・`redoc_url=None`・`redirect_slashes=False` を明示する。
   `openapi_url` も明示する(値は問わない)。
 
@@ -236,13 +235,14 @@ def find_fastapi_calls_missing_arguments(sources: Mapping[str, str]) -> list[str
     return problems
 
 
-# --- R9 の例外: ブロッキングの呼び出しは runner 経由(直接呼んでよいのは `WebDistProbe` だけ) ---
+# --- R9: ブロッキングの呼び出しは runner 経由(メソッドの本体から直接呼んでよいプローブはない) ---
 
 PROBE_OPERATION = "check"
-# メソッドの本体から直接呼んでよい `.check(...)` の受け手(`WebDistProbe`)。
-DIRECT_CHECK_RECEIVERS = frozenset({"self._web_probe"})
+# メソッドの本体から直接呼んでよい `.check(...)` の受け手。`web` を HTTP の確認に置き換えたので、
+# 空(以前は、`web` がローカルのファイルの確認だったので、1 つだけ例外があった)。
+DIRECT_CHECK_RECEIVERS: frozenset[str] = frozenset()
 DASHBOARD_SERVICE_FILE = "admin/services/dashboard.py"
-PROBE_PROTOCOL_NAMES = frozenset({"HttpHealthCheck", "WebDistCheck", "OpenSearchHealthCheck"})
+PROBE_PROTOCOL_NAMES = frozenset({"HttpHealthCheck", "OpenSearchHealthCheck"})
 
 
 def _names_in(source: str) -> set[str]:
@@ -259,7 +259,7 @@ def _iter_without_nested_callables(node: ast.AST) -> Iterator[ast.AST]:
 
 
 def find_direct_check_calls(source: str) -> list[str]:
-    """メソッドの本体で直接呼ばれる `<受け手>.check(...)` の受け手(`self._web_probe` など)。
+    """メソッドの本体で直接呼ばれる `<受け手>.check(...)` の受け手(`self._http_probe` など)。
 
     入れ子の関数・lambda の中の呼び出しは、`runner` に渡す呼び出しなので数えない。
     """
@@ -313,7 +313,7 @@ def test_dependencies_passed_to_depends_are_all_async() -> None:  # R9
     assert find_sync_dependencies(sources) == []
 
 
-def test_only_the_web_dist_probe_is_called_directly_and_the_others_go_through_the_runner() -> None:
+def test_no_probe_is_called_directly_and_all_go_through_the_runner() -> None:
     # プローブ(の Protocol)を使う admin のファイルだけが対象(`StalledCheck.check` などは別物)。
     sources = {
         path: source
@@ -321,9 +321,9 @@ def test_only_the_web_dist_probe_is_called_directly_and_the_others_go_through_th
         if path.startswith("admin/") and PROBE_PROTOCOL_NAMES.intersection(_names_in(source))
     }
 
-    # 空振りしていない: `services.dashboard` が `WebDistProbe` を直接呼んでいる。
+    # 空振りしていない: プローブを使う `services.dashboard` が対象に入り、直接の呼び出しがない。
     assert DASHBOARD_SERVICE_FILE in sources
-    assert find_direct_check_calls(sources[DASHBOARD_SERVICE_FILE]) == ["self._web_probe"]
+    assert find_direct_check_calls(sources[DASHBOARD_SERVICE_FILE]) == []
     assert find_disallowed_direct_checks(sources) == []
 
 
@@ -453,12 +453,13 @@ def test_a_direct_call_of_another_probe_is_detected() -> None:
     source = (
         "class Service:\n"
         "    async def check_components(self):\n"
-        "        self._web_probe.check(self._dir)\n"
+        "        self._web_probe.check(self._url)\n"
         "        return self._http_probe.check(self._url)\n"
     )
 
     assert find_disallowed_direct_checks({"admin/services/x.py": source}) == [
-        "admin/services/x.py calls self._http_probe.check(...) directly"
+        "admin/services/x.py calls self._web_probe.check(...) directly",
+        "admin/services/x.py calls self._http_probe.check(...) directly",
     ]
 
 
@@ -489,13 +490,6 @@ def test_calls_inside_a_lambda_or_a_nested_function_are_not_direct() -> None:
     )
 
     assert find_direct_check_calls(source) == []
-
-
-def test_the_web_dist_probe_may_be_called_directly() -> None:
-    source = "class Service:\n    async def run(self):\n        self._web_probe.check(self._dir)\n"
-
-    assert find_direct_check_calls(source) == ["self._web_probe"]
-    assert find_disallowed_direct_checks({"a.py": source}) == []
 
 
 def test_other_method_names_are_not_probe_calls() -> None:

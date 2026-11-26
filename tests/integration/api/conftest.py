@@ -1,7 +1,7 @@
 """結合テストの共通フィクスチャ。
 
-前提: compose で `opensearch`・`opensearch-init`・`indexer`・`crawler`・`api` が起動済みで、
-`crawler`・`api` が healthy であること。テストは、起動済みのスタックに 127.0.0.1 経由でつなぐ
+前提: compose で `opensearch`・`opensearch-init`・`indexer`・`crawler`・`api`・`web` が起動済みで、
+`crawler`・`api`・`web` が healthy であること。テストは、起動済みのスタックに 127.0.0.1 経由でつなぐ
 (スタックの起動・停止は、`scripts/run-api-integration-test.sh` が担当する。ここでは起動しない)。
 
 共通部品(Admin API のクライアント、OpenSearch の検証ヘルパ、`document_id` の独立実装、検索対象の

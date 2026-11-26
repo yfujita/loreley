@@ -11,6 +11,10 @@
 #   - Crawler のポーリング間隔: 実行中のジョブを観測・操作する窓(ロックを持つ時間)の長さの前提
 #     (AIT-20・50・60)。値は 10 秒で、クロール 1 回が約 10〜12 秒かかる
 #   - 待ち時間の値(ポーリング間隔・上限): テスト側の待機の上限(support.py の定数)の前提
+#
+# `web` は実物(apps/web のビルド。npm レジストリへの接続が要る)を使い、api が `http://web:80/admin/` を
+# 確認して EP-13 の `web` を判定する(fixtures は使わない)。api は、本番用の compose.yaml では公開しないが、
+# テストが直接呼ぶため、ここで 127.0.0.1 に publish する。
 # 環境変数名は apps/crawler/src/loreley_crawler/config.py(接頭辞 LORELEY_CRAWLER_)などのとおり。
 
 # 原本 1 件の上限 64 KiB(既定 20 MiB)。Indexer・Crawler・Crawler が検査に使う Indexer の値の
@@ -52,11 +56,20 @@ services:
       start_period: 180s
 
   api:
-    volumes:
-      # EP-13 の `web` を normal にするため、index.html だけを置いたディレクトリを、既定の
-      # `LORELEY_API_WEB_DIST_DIR`(/app/web)に mount する(Web UI の成果物はイメージに含まれない)。
-      # 相対パスは、最初の compose ファイル(deploy/compose/)のディレクトリが基準。
-      - ../../tests/integration/api/fixtures/web:/app/web:ro
+    # 診断用に、ループバックへ publish する(テストは `web` を経由せず、api を直接呼ぶ)。本番用の
+    # compose.yaml は api をホストに公開しない(公開するのは `web` だけ。HO-54)。認証がないため
+    # 0.0.0.0 へは公開しない。
+    ports:
+      - "127.0.0.1:${API_HOST_PORT:-8080}:8080"
     healthcheck:
       # test はイメージの HEALTHCHECK のものを使う。確認間隔だけ縮める(イメージは 15 秒)。
+      interval: 3s
+
+  web:
+    # 実 `web`(apps/web のビルド)をそのまま使う。EP-13 の `web` は、api が `http://web:80/admin/` を
+    # 確認した結果で、fixtures は要らない。`web` の publish(127.0.0.1:${WEB_HOST_PORT:-8090})は本番用の
+    # compose.yaml のもので、compose のマージは `ports` を消せないため、IT でも有効になる
+    # (scripts/run-api-integration-test.sh が 8090 に固定し、事前確認の対象にする)。
+    healthcheck:
+      # test・start_period はイメージの HEALTHCHECK のものを使う。確認間隔だけ縮める(イメージは 15 秒)。
       interval: 3s

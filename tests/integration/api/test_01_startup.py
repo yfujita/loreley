@@ -3,13 +3,13 @@
 目的:
     compose(`opensearch` → `opensearch-init` → `indexer` → `crawler`、`api`)で立ち上げた Admin API が、
     実コンテナ・実 OpenSearch の上で動いていることを確かめる。単体テストでは、compose が渡す環境変数
-    (共通変数・索引名・mount した `web`)が実際に api に届くこと、実 Crawler・Indexer・OpenSearch への
+    (共通変数・索引名・`web` の確認先 URL)が実際に api に届くこと、実 Crawler・Indexer・OpenSearch への
     死活確認、実 `cat.*` の応答を確認できない。
 
 参照する設計書の章:
     - admin-api-v0.1.md 7.1(EP-12)、8.1(EP-13)、8.2(EP-14)
     - api-base-design-v0.1.md 8 章(compose)、6 章(`/healthz`)
-    - deploy/compose/compose.yaml(`api` の環境変数・共通変数)、tests/integration/api/compose.test.yaml(`web` の mount)
+    - deploy/compose/compose.yaml(`api` の環境変数・共通変数)、apps/web(実 `web`。api が `http://web:80/admin/` を確認する)
 
 扱うシナリオ: AIT-01
 """
@@ -60,8 +60,9 @@ def test_dashboard_lists_eight_components_in_fixed_order_with_web_normal(api: Ad
     api・`web` が `normal`、確認用 URL のない 3 つが `not_configured` であること。
 
     【前提と手順】
-    前提: スクリプトが 4 サービスの healthy を待った後。`web` は、`compose.test.yaml` が `index.html` だけの
-    ディレクトリを `LORELEY_API_WEB_DIST_DIR`(/app/web)に mount している。手順: EP-13 を呼ぶ。
+    前提: スクリプトが 5 サービス(opensearch・indexer・crawler・api・web)の healthy を待った後。`web` は
+    実 `web`(apps/web のビルド)で、api が `LORELEY_API_WEB_URL`(`http://web:80`)の `/admin/` を確認する。
+    手順: EP-13 を呼ぶ。
 
     【期待する結果とその根拠】
     - `components[].id` が `crawler`・`indexer`・`opensearch`・`api`・`web`・`opensearch-dashboards`・
@@ -72,9 +73,9 @@ def test_dashboard_lists_eight_components_in_fixed_order_with_web_normal(api: Ad
     - トップの `checked_at` は、各 `components[].checked_at` 以上(B 8.1)。
 
     【単体テストでは確認できず実機で確認する点】
-    コンテナ内の api から、内部ネットワークのサービス名(`crawler:8001`・`indexer:8000`・`opensearch:9200`)で
-    実コンポーネントの `/healthz`・`cluster.health` に届くこと。mount した `web` の `index.html` が
-    実際に読めること(HO-36 の実効の確認。compose のテスト用の上書きが効いていること)。
+    コンテナ内の api から、内部ネットワークのサービス名(`crawler:8001`・`indexer:8000`・`opensearch:9200`・
+    `web:80`)で実コンポーネントの `/healthz`・`cluster.health`・`/admin/` の 200 に届くこと(HO-55 の実効の
+    確認。compose が `LORELEY_API_WEB_URL` を渡し、実 `web` が `/admin/` に 200 を返すこと)。
     """
     body = expect_json(api.dashboard(), 200)
 

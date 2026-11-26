@@ -1,7 +1,7 @@
-"""EP-13 を、実クライアント(`HttpHealthProbe`・`WebDistProbe`)とローカル HTTP スタブで確かめる。
+"""EP-13 を、実クライアント(`HttpHealthProbe`)とローカル HTTP スタブで確かめる。
 
 偽のプローブでは見えない、実 HTTP での振る舞い(受けたメソッド・パス・回数、リダイレクトを追わない、
-確認自身のタイムアウト、接続拒否、`web` のファイル)を、EP の応答まで通して確かめる(C 11章 10)。
+確認自身のタイムアウト、接続拒否、`web` の `/admin/`)を、EP の応答まで通して確かめる(C 11章 10)。
 `BlockingRunner` も実物(スレッドで実行)。OpenSearch の確認だけは、生のクライアントの偽物を使う。
 """
 
@@ -9,7 +9,6 @@ import io
 import logging
 import time
 from collections.abc import Iterator
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -20,7 +19,7 @@ from loreley_api.admin import AdminProbes, create_admin_app
 from loreley_api.common.concurrency import BlockingRunner
 from loreley_api.common.logging_setup import configure_logging
 from loreley_api.infrastructure.opensearch import OpenSearchHealthProbe, ReadOnlyOpenSearch
-from loreley_api.infrastructure.probes import HttpHealthProbe, HttpProbeConfig, WebDistProbe
+from loreley_api.infrastructure.probes import HttpHealthProbe, HttpProbeConfig
 from loreley_api.server import SubAppMount, create_app
 from tests.admin.factories import ADMIN_PREFIX, make_admin_dependencies
 from tests.api_config import make_admin_settings
@@ -63,9 +62,9 @@ def indexer() -> Iterator[LocalHttpServer]:
 
 
 @pytest.fixture
-def web_dist(tmp_path: Path) -> Path:
-    (tmp_path / "index.html").write_text("<html></html>", encoding="utf-8")
-    return tmp_path
+def web_stub() -> Iterator[LocalHttpServer]:
+    with local_http_server() as stub:
+        yield stub
 
 
 def make_client(
@@ -80,7 +79,6 @@ def make_client(
         probes=AdminProbes(
             http=http_probe,
             opensearch=OpenSearchHealthProbe(ReadOnlyOpenSearch(fake_opensearch)),
-            web_dist=WebDistProbe(),
         ),
     )
     app = create_app(mounts=[SubAppMount(ADMIN_PREFIX, create_admin_app(deps))])
@@ -94,7 +92,7 @@ def states_of(response_json: dict[str, object]) -> dict[str, tuple[str, str | No
 
 
 def test_every_component_is_normal_and_each_target_receives_one_get(
-    crawler_stub: LocalHttpServer, indexer: LocalHttpServer, web_dist: Path
+    crawler_stub: LocalHttpServer, indexer: LocalHttpServer, web_stub: LocalHttpServer
 ) -> None:
     fake_opensearch = FakeOpenSearchClient()
     fake_opensearch.script("cluster.health", OPENSEARCH_HEALTH)  # `red` でも応答できれば正常
@@ -102,7 +100,7 @@ def test_every_component_is_normal_and_each_target_receives_one_get(
         fake_opensearch,
         crawler_url=crawler_stub.url,
         indexer_url=indexer.url,
-        web_dist_dir=str(web_dist),
+        web_url=web_stub.url,
     )
 
     response = client.get(DASHBOARD)
@@ -119,13 +117,17 @@ def test_every_component_is_normal_and_each_target_receives_one_get(
         "embedding": ("not_configured", None),
         "llm": ("not_configured", None),
     }
-    for server in (crawler_stub, indexer):
+    for server, expected_path in (
+        (crawler_stub, "/healthz"),
+        (indexer, "/healthz"),
+        (web_stub, "/admin/"),
+    ):
         [request] = server.requests
-        assert (request.method, request.path) == ("GET", "/healthz")
+        assert (request.method, request.path) == ("GET", expected_path)
 
 
 def test_failures_are_reported_per_component_with_the_documented_reasons(
-    indexer: LocalHttpServer, web_dist: Path
+    indexer: LocalHttpServer,
 ) -> None:
     indexer.set_default_reply(StubReply(503))  # 起動前の Indexer
     fake_opensearch = FakeOpenSearchClient()
@@ -136,7 +138,7 @@ def test_failures_are_reported_per_component_with_the_documented_reasons(
         fake_opensearch,
         crawler_url=f"http://127.0.0.1:{closed_port()}",
         indexer_url=indexer.url,
-        web_dist_dir=str(web_dist / "no-such-directory"),
+        web_url=f"http://127.0.0.1:{closed_port()}",
     )
 
     response = client.get(DASHBOARD)
@@ -148,7 +150,7 @@ def test_failures_are_reported_per_component_with_the_documented_reasons(
         "indexer": ("abnormal", "unexpected_status"),
         "opensearch": ("abnormal", "connection_refused"),
         "api": ("normal", None),
-        "web": ("abnormal", "missing"),
+        "web": ("abnormal", "connection_refused"),
         "opensearch-dashboards": ("not_configured", None),
         "embedding": ("not_configured", None),
         "llm": ("not_configured", None),
@@ -156,26 +158,26 @@ def test_failures_are_reported_per_component_with_the_documented_reasons(
 
 
 @pytest.mark.usefixtures("unresolvable_invalid_hosts")
-def test_an_unresolvable_host_is_abnormal_name_not_resolved(
-    crawler_stub: LocalHttpServer, web_dist: Path
-) -> None:
+def test_an_unresolvable_host_is_abnormal_name_not_resolved(crawler_stub: LocalHttpServer) -> None:
     fake_opensearch = FakeOpenSearchClient()
     fake_opensearch.script("cluster.health", OPENSEARCH_HEALTH)
     client, probe = make_client(
         fake_opensearch,
         crawler_url=crawler_stub.url,
         indexer_url="http://indexer.invalid:8000",
-        web_dist_dir=str(web_dist),
+        web_url="http://web.invalid:80",
     )
 
     response = client.get(DASHBOARD)
     probe.close()
 
-    assert states_of(response.json())["indexer"] == ("abnormal", "name_not_resolved")
+    states = states_of(response.json())
+    assert states["indexer"] == ("abnormal", "name_not_resolved")
+    assert states["web"] == ("abnormal", "name_not_resolved")
 
 
 def test_a_redirect_from_an_optional_target_is_not_followed(
-    crawler_stub: LocalHttpServer, indexer: LocalHttpServer, web_dist: Path
+    crawler_stub: LocalHttpServer, indexer: LocalHttpServer, web_stub: LocalHttpServer
 ) -> None:
     """確認先が 3xx を返しても追わず、`unexpected_status`(別のサービスへ誘導されない)。"""
     fake_opensearch = FakeOpenSearchClient()
@@ -186,7 +188,7 @@ def test_a_redirect_from_an_optional_target_is_not_followed(
             fake_opensearch,
             crawler_url=crawler_stub.url,
             indexer_url=indexer.url,
-            web_dist_dir=str(web_dist),
+            web_url=web_stub.url,
             dashboards_health_url=f"{dashboards.url}/api/status",
         )
 
@@ -202,8 +204,29 @@ def test_a_redirect_from_an_optional_target_is_not_followed(
         assert redirect_target.connection_count == 0
 
 
+def test_the_web_target_without_the_trailing_slash_redirect_is_not_followed(
+    crawler_stub: LocalHttpServer, indexer: LocalHttpServer, web_stub: LocalHttpServer
+) -> None:
+    """`web` は Nginx の `/admin/` を確認する。リダイレクトは追わず、`unexpected_status`。"""
+    web_stub.set_default_reply(StubReply(301, headers={"Location": "/admin/"}))
+    fake_opensearch = FakeOpenSearchClient()
+    fake_opensearch.script("cluster.health", OPENSEARCH_HEALTH)
+    client, probe = make_client(
+        fake_opensearch,
+        crawler_url=crawler_stub.url,
+        indexer_url=indexer.url,
+        web_url=web_stub.url,
+    )
+
+    response = client.get(DASHBOARD)
+    probe.close()
+
+    assert states_of(response.json())["web"] == ("abnormal", "unexpected_status")
+    assert [request.path for request in web_stub.requests] == ["/admin/"]
+
+
 def test_a_target_that_does_not_answer_is_undetermined_timeout_within_the_deadline(
-    crawler_stub: LocalHttpServer, indexer: LocalHttpServer, web_dist: Path
+    crawler_stub: LocalHttpServer, indexer: LocalHttpServer, web_stub: LocalHttpServer
 ) -> None:
     indexer.set_default_reply(StubReply(200, delay_seconds=10.0))
     fake_opensearch = FakeOpenSearchClient()
@@ -212,7 +235,7 @@ def test_a_target_that_does_not_answer_is_undetermined_timeout_within_the_deadli
         fake_opensearch,
         crawler_url=crawler_stub.url,
         indexer_url=indexer.url,
-        web_dist_dir=str(web_dist),
+        web_url=web_stub.url,
     )
 
     started_at = time.monotonic()
@@ -223,14 +246,40 @@ def test_a_target_that_does_not_answer_is_undetermined_timeout_within_the_deadli
     states = states_of(response.json())
     assert states["indexer"] == ("undetermined", "timeout")
     assert states["crawler"] == ("normal", None)
+    assert states["web"] == ("normal", None)
     # 確認先の遅延(10 秒)を待たずに戻る(確認自身のタイムアウトの検証は `test_http_probe.py`)。
     assert elapsed_seconds < PROBE_TIMEOUT_SECONDS + TIMING_SLACK_SECONDS
     assert len(indexer.requests) == 1  # 再送しない
 
 
+def test_a_web_target_that_does_not_answer_is_undetermined_timeout_within_the_deadline(
+    crawler_stub: LocalHttpServer, indexer: LocalHttpServer, web_stub: LocalHttpServer
+) -> None:
+    web_stub.set_default_reply(StubReply(200, delay_seconds=10.0))
+    fake_opensearch = FakeOpenSearchClient()
+    fake_opensearch.script("cluster.health", OPENSEARCH_HEALTH)
+    client, probe = make_client(
+        fake_opensearch,
+        crawler_url=crawler_stub.url,
+        indexer_url=indexer.url,
+        web_url=web_stub.url,
+    )
+
+    started_at = time.monotonic()
+    response = client.get(DASHBOARD)
+    elapsed_seconds = time.monotonic() - started_at
+    probe.close()
+
+    states = states_of(response.json())
+    assert states["web"] == ("undetermined", "timeout")
+    assert states["crawler"] == ("normal", None)
+    assert elapsed_seconds < PROBE_TIMEOUT_SECONDS + TIMING_SLACK_SECONDS
+    assert len(web_stub.requests) == 1  # 再送しない
+
+
 @pytest.mark.usefixtures("restore_logging", "unresolvable_invalid_hosts")
 def test_the_configured_urls_and_the_opensearch_error_are_in_neither_the_response_nor_the_logs(
-    crawler_stub: LocalHttpServer, indexer: LocalHttpServer, web_dist: Path
+    crawler_stub: LocalHttpServer, indexer: LocalHttpServer, web_stub: LocalHttpServer
 ) -> None:
     stream = io.StringIO()
     configure_logging(level="DEBUG", stream=stream)
@@ -252,7 +301,7 @@ def test_the_configured_urls_and_the_opensearch_error_are_in_neither_the_respons
         fake_opensearch,
         crawler_url=crawler_stub.url,
         indexer_url=indexer.url,
-        web_dist_dir=str(web_dist),
+        web_url=web_stub.url,
         embedding_health_url=f"http://127.0.0.1:{closed_port()}/{token}?key={token}",
         llm_health_url=f"http://{token.lower()}.invalid/healthz",
     )
@@ -270,5 +319,5 @@ def test_the_configured_urls_and_the_opensearch_error_are_in_neither_the_respons
             records=collector.records,
             captured_text=captured_text,
         )
-    for address in (crawler_stub.url, indexer.url):
+    for address in (crawler_stub.url, indexer.url, web_stub.url):
         assert address not in response.text

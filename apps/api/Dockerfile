@@ -7,7 +7,7 @@
 # manylinux の wheel が `uv.lock` にあるので、Debian(glibc)系のイメージではコンパイラが要らない。
 # musl 系(alpine)は wheel の種類が変わるため使わない。
 #
-# 現時点の `api` は基盤だけで、Web UI の配信(`/app/web`)は含めない。
+# Web UI の配信は `api` ではなく `web` コンテナ(Nginx。`apps/web`)が担うので、このイメージには含めない。
 
 # ベースイメージは Indexer と同じものに固定している(2026-11-12 に固定。Python 3.12.16、
 # OpenSSL 3.0.22。2026-11-05 ビルド)。古いタグのままだと、Debian と OpenSSL の脆弱性修正が

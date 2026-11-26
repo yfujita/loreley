@@ -1,0 +1,20 @@
+# ビルドコンテキスト(apps/web)から除くもの。Dockerfile は package.json・package-lock.json・
+# .npmrc・index.html・vite.config.ts・tsconfig*.json・src・nginx だけを COPY するが、
+# コンテキストの転送を小さくし、手元のファイルが誤ってイメージに入らないようにする。
+
+# 手元の依存・ビルド成果物(イメージ内で `npm ci`・`npm run build` で作り直す。OS が違いうる)
+node_modules/
+dist/
+*.tsbuildinfo
+vite.config.ts.timestamp-*
+
+# 開発用の文書とバージョン管理・ビルド定義・エディタ・秘密になりうるファイル
+README.md
+.git/
+.gitignore
+Dockerfile
+.dockerignore
+**/.env
+**/.env.*
+**/*.pem
+**/*.key

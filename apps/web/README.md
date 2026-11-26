@@ -27,10 +27,20 @@ npm run preview     # dist/ の確認
 
 ## 開発サーバーの `/api` の転送先
 
-dev サーバーは `/api` を `http://127.0.0.1:8090`(compose の `web` コンテナの公開ポートの既定値)に転送する。`web` コンテナの追加(タスク `20261126_add_web_container_nginx`)の前は、この既定値の転送先には何も待ち受けていない。
+dev サーバーは `/api` を `http://127.0.0.1:8090`(compose の `web` コンテナの公開ポート。`WEB_HOST_PORT` の既定値)に転送する。使う前に、`deploy/compose` で `docker compose up -d --build` を実行して `web` を起動しておく(`web` が `/api/` を `api` に中継する)。
 
-転送先は環境変数 `LORELEY_DEV_API_TARGET` で上書きできる(クライアントに露出させないため `VITE_` は付けない)。`web` コンテナの追加前は、compose の `api` が `127.0.0.1:8080`(`API_HOST_PORT`)に publish されているので、それを指定する。追加後は `api` はホストに publish されなくなり、既定の `web` 経由になる。
+転送先は環境変数 `LORELEY_DEV_API_TARGET` で上書きできる(クライアントに露出させないため `VITE_` は付けない)。`WEB_HOST_PORT` を変えたときなどに指定する。compose の `api` はホストに公開されないので、`http://127.0.0.1:8080` は指定できない。
 
 ```sh
-LORELEY_DEV_API_TARGET=http://127.0.0.1:8080 npm run dev
+LORELEY_DEV_API_TARGET=http://127.0.0.1:8091 npm run dev
 ```
+
+## `web` コンテナ(Docker ビルド)
+
+`Dockerfile` は、Node のステージで `npm ci` → `npm run build`(型検査 → `vite build`)を行い、`dist/` を Nginx のイメージの `/usr/share/nginx/html/admin` にコピーする。Nginx が `/admin/` を静的配信し、`/api/` を `api:8080` に中継する(設定は `nginx/default.conf`)。ビルドには npm レジストリへの接続が必要。型生成(`gen:api`)はビルドで行わない。
+
+```sh
+docker build -t loreley-web apps/web   # リポジトリのルートで実行
+```
+
+通常は compose(`deploy/compose` の `web` サービス)から起動する。起動・公開範囲・運用は `deploy/compose/README.md` を参照。

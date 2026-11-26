@@ -22,7 +22,8 @@ OpenSearch 側(R8 (a)〜(c))、Crawler クライアント(d)、死活確認の�
 - (e) プローブの HTTP は `GET` だけ。送信の呼び出しは `infrastructure/probes/http_probe.py` の
   1 か所で、メソッドは `"GET"` のリテラル、URL は引数 `url`(呼び出し側が設定から得た値)、
   再送とリダイレクトの追従をしない指定にする。`infrastructure/probes` にはパスのリテラルがなく、
-  `services.dashboard` の `/healthz` だけが、確認に使う唯一のパス(C 11章 8 (c) の `GET /healthz`)。
+  `services.dashboard` の `/healthz`(`crawler`・`indexer`)と `/admin/`(`web`)だけが、
+  確認に使うパス(C 11章 8 (c) の `GET`)。
   `opensearch` のプローブは、ラッパー経由の `cluster.health` だけ((a)(b) が検査する)。
 (d) の限界: 文字列を連結して作ったパス(`"/" + name`)や、パスを別の定数に分けた書き方は検出できない
 (パスのリテラルは先頭が `/` の文字列だけを見る)。送信の呼び出しは、名前(`request`・`urlopen` など。
@@ -986,8 +987,10 @@ HTTP_PROBE_PROTOCOL = "HttpHealthCheck"
 PROBE_SEND_METHOD = "GET"
 # 確認先の URL を受け取る引数の名前(`self._pool.request("GET", url, ...)`)。
 PROBE_URL_ARGUMENT = "url"
-# `crawler`・`indexer` の確認に使う、唯一のパス。
+# `crawler`・`indexer` の確認に使うパス。
 HEALTH_PATH = "/healthz"
+# `web` の確認に使うパス(末尾の `/` は必須。`HttpHealthProbe` はリダイレクトに従わない)。
+WEB_HEALTH_PATH = "/admin/"
 
 
 def find_probe_sends_outside_http_probe(sources: Mapping[str, str]) -> list[str]:
@@ -1087,13 +1090,13 @@ def test_the_http_probe_has_no_other_way_to_choose_the_method_or_the_target() ->
     assert find_variadic_parameters(ast.parse(sources[PROBES_HTTP_FILE])) == []
 
 
-def test_the_probes_have_no_path_literal_and_only_the_dashboard_adds_healthz() -> None:
+def test_the_probes_have_no_path_literal_and_only_the_dashboard_adds_the_paths() -> None:
     probe_sources = load_sources(PROBES_DIRECTORY)
     service_source = load_sources("admin/services")["admin/services/dashboard.py"]
 
     assert find_path_literals_in_probes(probe_sources) == []
-    # 空振りしていない: 確認に使うパスは、`services.dashboard` の `/healthz` の 1 つだけ。
-    assert find_path_literals(service_source) == [HEALTH_PATH]
+    # 空振りしていない: 確認に使うパスは、`services.dashboard` の `/healthz`・`/admin/` だけ。
+    assert find_path_literals(service_source) == [HEALTH_PATH, WEB_HEALTH_PATH]
     assert find_path_literals(load_sources("admin/routers")["admin/routers/dashboard.py"]) == [
         "/dashboard"
     ]
@@ -1117,7 +1120,7 @@ def test_the_opensearch_probe_calls_only_cluster_health_through_the_wrapper() ->
 
 # --- (e) 検出器の自己テスト(合成ソース。負例が空振りしない) ---
 
-OTHER_PROBES_FILE = f"{PROBES_DIRECTORY}/web_dist.py"
+OTHER_PROBES_FILE = f"{PROBES_DIRECTORY}/other_probe.py"
 
 
 @pytest.mark.parametrize(

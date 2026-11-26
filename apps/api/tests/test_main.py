@@ -35,6 +35,7 @@ REQUIRED_ENVIRONMENT = {
     "opensearch_url": "http://opensearch.invalid:9200",
     "crawler_url": "http://crawler.invalid:8001",
     "indexer_url": "http://indexer.invalid:8000",
+    "web_url": "http://web.invalid:80",
 }
 
 
@@ -338,10 +339,9 @@ def test_the_admin_api_relays_to_the_configured_crawler_url_and_closes_the_clien
 
 
 def test_the_admin_api_serves_the_dashboard_with_the_configured_targets_and_closes_the_probes(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """EP-13 の配線: 設定の確認先(Crawler・Indexer・`WEB_DIST_DIR`)と、プローブ用の接続。"""
-    (tmp_path / "index.html").write_text("<html></html>", encoding="utf-8")
+    """EP-13 の配線: 設定の確認先(Crawler・Indexer・`WEB_URL`)と、プローブ用の接続。"""
     probe_opensearch = FakeOpenSearchClient()
     probe_opensearch.script("cluster.health", {"status": "green"})
     monkeypatch.setattr(
@@ -360,11 +360,11 @@ def test_the_admin_api_serves_the_dashboard_with_the_configured_targets_and_clos
 
     monkeypatch.setattr(HttpHealthProbe, "close", counting_close)
 
-    with local_http_server() as crawler, local_http_server() as indexer:
+    with local_http_server() as crawler, local_http_server() as indexer, local_http_server() as web:
         indexer.set_default_reply(StubReply(503))
         config = make_api_config(
             admin=make_admin_settings(
-                crawler_url=crawler.url, indexer_url=indexer.url, web_dist_dir=str(tmp_path)
+                crawler_url=crawler.url, indexer_url=indexer.url, web_url=web.url
             )
         )
         with TestClient(build_app(config)) as client:
@@ -374,6 +374,7 @@ def test_the_admin_api_serves_the_dashboard_with_the_configured_targets_and_clos
 
         assert [request.request_line for request in crawler.requests] == ["GET /healthz HTTP/1.1"]
         assert [request.request_line for request in indexer.requests] == ["GET /healthz HTTP/1.1"]
+        assert [request.request_line for request in web.requests] == ["GET /admin/ HTTP/1.1"]
 
     assert response.status_code == 200
     states = {c["id"]: (c["state"], c["reason"]) for c in response.json()["components"]}

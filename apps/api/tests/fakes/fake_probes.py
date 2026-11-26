@@ -1,13 +1,13 @@
 """プローブ(Protocol)の偽物(D 7.2)。
 
-`services` のテストで、HTTP・OpenSearch・ファイルの確認(本物は `infrastructure/probes/`・
+`services` のテストで、HTTP・OpenSearch の確認(本物は `infrastructure/probes/`・
 `infrastructure/opensearch/health_probe.py` のテストが確かめる)を持ち込まずに、台本の結果と
 呼び出しの記録を使う。
 
 - 結果の差し替え: `probe.behavior.inject("check", ProbeOutcome("abnormal", "missing"), key=url)`。
-  `key` は、HTTP のプローブでは確認先の URL、`web` のプローブではディレクトリ、`opensearch` の
-  プローブでは指定しない。差し替えがなければ `normal` を返す。
-- 呼び出しの記録: `probe.checked`(確認先の URL・ディレクトリ。`opensearch` は空文字)。
+  `key` は、HTTP のプローブでは確認先の URL、`opensearch` のプローブでは指定しない。
+  `web` も HTTP のプローブなので、確認先は `{WEB_URL}/admin/`。差し替えがなければ `normal` を返す。
+- 呼び出しの記録: `probe.checked`(確認先の URL。`opensearch` は空文字)。
 - 遅延の再現: `probe.behavior.before("check", release.wait, key=url)` のように、確認の直前に
   待たせる(実物の `BlockingRunner` のスレッドの中で呼ばれる)。
 
@@ -44,18 +44,12 @@ class FakeOpenSearchHealthProbe(_FakeProbe):
         return self._check("", None)
 
 
-class FakeWebDistProbe(_FakeProbe):
-    def check(self, directory: str) -> ProbeOutcome:
-        return self._check(directory, directory)
-
-
 class FakeProbes:
-    """3 つのプローブの偽物。既定はすべて `normal`。"""
+    """2 つのプローブの偽物。既定はすべて `normal`。"""
 
     def __init__(self) -> None:
         self.http = FakeHttpHealthProbe()
         self.opensearch = FakeOpenSearchHealthProbe()
-        self.web_dist = FakeWebDistProbe()
 
     def as_admin_probes(self) -> AdminProbes:
-        return AdminProbes(http=self.http, opensearch=self.opensearch, web_dist=self.web_dist)
+        return AdminProbes(http=self.http, opensearch=self.opensearch)

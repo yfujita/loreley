@@ -1,7 +1,7 @@
-"""AIT-90・AIT-91・AIT-92: コンポーネントの停止と復旧(Crawler・Indexer・OpenSearch)。
+"""AIT-90〜AIT-93: コンポーネントの停止と復旧(Crawler・Indexer・OpenSearch・web)。
 
 目的:
-    実 Crawler・実 Indexer・実 OpenSearch のコンテナを止めたとき、Admin API の応答が設計どおりに
+    実 Crawler・実 Indexer・実 OpenSearch・実 `web` のコンテナを止めたとき、Admin API の応答が設計どおりに
     変わり(読み取りは継続し、書き込みだけが失敗する。admin-api 10.1・10.2)、サービスを戻した後に
     元の動作へ復旧することを確かめる。
       - AIT-90: Crawler 停止。EP-03〜08 が 503 `crawler_unreachable`、EP-13 の `crawler` が `abnormal`、
@@ -10,18 +10,21 @@
         Crawler の側で失敗する(部分失敗)。復旧後の再実行で完了する
       - AIT-92: OpenSearch 停止。読み取りの EP が 503 `unavailable`、EP-13 の `opensearch` が
         `abnormal`、EP-06 が 503。復旧後に読み取りとクロールが戻る
+      - AIT-93: web 停止。api が `web` の `/admin/` を確認できず EP-13 の `web` だけが `abnormal`
+        になり、それ以外の EP(読み取り)は通常どおり。復旧後に `web` が `normal` に戻る
     単体テストでは、実コンテナの停止(接続拒否・名前解決失敗)で Admin API・Crawler が返す実際の応答と、
     停止中に始めた Job の Crawler 側の終わり方、再起動後の復旧を確認できない。
 
 参照する設計書の章:
     - admin-api-v0.1.md 2.3(エラー code)、2.6(Crawler 写像)、8.1(EP-13)、10.1・10.2(失敗時の振る舞い)
+    - api-base-design-v0.1.md 9 章の HO-55(EP-13 の `web` 判定は `web` の `/admin/` への HTTP 確認)
     - crawler-architecture-v0.4.md 7.8(Indexer のエラー別の扱い)、8.1・8.3(ソース削除の順と再実行)
     - crawler-architecture-v0.4.md 5.8(起動時の回復)
 
-扱うシナリオ: AIT-90(Crawler)、AIT-91(Indexer)、AIT-92(OpenSearch)
+扱うシナリオ: AIT-90(Crawler)、AIT-91(Indexer)、AIT-92(OpenSearch)、AIT-93(web)
 
 安全策(障害系):
-    - 止めてよいのは `loreley-it` の crawler・indexer・opensearch の `stop`・`start` だけ(`ComposeControl`。
+    - 止めてよいのは `loreley-it` の crawler・indexer・opensearch・web の `stop`・`start` だけ(`ComposeControl`。
       許可リスト・プロジェクト名は support.py で固定)。スクリプトが `LORELEY_IT_ALLOW_COMPOSE_CONTROL=1` を
       渡したときだけ動き、pytest を直接実行したときは skip する。
     - 止める区間は `compose_control.stopped(...)` で囲む。テストが途中で失敗しても、区間を抜けるときに
@@ -578,3 +581,55 @@ def test_opensearch_down_fails_the_reads_and_the_crawl_and_everything_recovers(
         lambda body: body["index"]["document_count"] == 2,
         what="EP-02 counting both documents after the recovery",
     )
+
+
+def test_web_down_marks_only_the_web_component_abnormal_and_recovers(
+    api: AdminApi,
+    compose_control: ComposeControl,
+) -> None:
+    """【何を確認するか】(AIT-93)
+    `web` が止まっている間、EP-13 の `web` だけが `abnormal` になり、他のコンポーネントは `normal`、
+    api の読み取り(EP-01・09・12・14 と `/healthz`)は影響を受けず 200 であること。`web` を戻した後、
+    EP-13 の `web` が `normal` に戻ること。
+
+    【前提と手順】
+    前提: スクリプトが 5 サービスの healthy を待った後。実 `web` が起動していて、api が
+    `http://web:80/admin/` の 200 で `normal` と判定している。
+    手順:
+      1. `web` を止める(`stopped`)。
+      2. EP-13 を読む。EP-01・09・12・14 と `/healthz` を呼ぶ。
+      3. `web` を起動し直し(区間を抜ける)、healthy を待つ。
+      4. EP-13 を読む(`web` が `normal` に戻るのを待つ)。
+
+    【期待する結果とその根拠】
+    - 手順 2: EP-13 は `web` が `abnormal`(`reason` は `connection_refused` か `name_not_resolved`。
+      B 8.1)、`crawler`・`indexer`・`opensearch`・`api` が `normal`、任意の 3 つが `not_configured`。
+      `web` は api の確認の対象でしかなく、api は `web` に依存しない(compose は api が `web` を待たない)
+      ので、EP-01・09・12・14 は 200、`/healthz` は 200 `{"status": "ok"}`。
+    - 手順 4: EP-13 の 5 つ(`crawler`・`indexer`・`opensearch`・`api`・`web`)が `normal`。
+
+    【単体テストでは確認できず実機で確認する点】
+    実 `web` の停止で、api が `http://web:80/admin/` への接続で受ける失敗の分類(EP-13 の `reason`。
+    Docker が停止したコンテナの名前を解決できなくなるか、接続が拒否されるかは環境による)、
+    `web` の再起動後に api が再び `normal` と判定すること。
+    """
+    with compose_control.stopped("web"):
+        states = fetch_component_states(api)
+        reason = assert_component_down(states, "web")
+        observed("AIT-93 EP-13 web reason", reason)
+        assert_components_normal(states, ("crawler", "indexer", "opensearch", "api"))
+        assert_optional_components_not_configured(states)
+
+        reads = {
+            "EP-01": api.list_sources(),
+            "EP-09": api.list_jobs(),
+            "EP-12": api.opensearch_cluster(),
+            "EP-14": api.meta(),
+        }
+        for response in reads.values():
+            expect_json(response, 200)  # 失敗時のメッセージに、EP のパスが出る
+        assert expect_json(api.healthz(), 200) == {"status": "ok"}
+
+    # 3. 復旧(`stopped` が `web` の healthy を待つ)。4. api が `web` を再び normal と判定する
+    states = wait_for_components_normal(api, ALL_RUNNING_COMPONENTS)
+    assert_optional_components_not_configured(states)

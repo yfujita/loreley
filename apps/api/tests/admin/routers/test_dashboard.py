@@ -20,7 +20,8 @@ from tests.fakes.inline_runner import InlineRunner
 DASHBOARD = f"{ADMIN_PREFIX}/dashboard"
 CRAWLER_URL = "http://crawler.invalid:8001"
 INDEXER_URL = "http://indexer.invalid:8000"
-CONFIGURED_URLS = [f"{CRAWLER_URL}/healthz", f"{INDEXER_URL}/healthz"]
+WEB_URL = "http://web.invalid:80"
+CONFIGURED_URLS = [f"{CRAWLER_URL}/healthz", f"{INDEXER_URL}/healthz", f"{WEB_URL}/admin/"]
 COMPONENT_KEYS = {"id", "state", "reason", "checked_at"}
 
 
@@ -29,7 +30,9 @@ def make_client(probes: FakeProbes, **settings: object) -> TestClient:
         InMemoryReaders(),
         FixedClock(),
         InlineRunner(),
-        make_admin_settings(crawler_url=CRAWLER_URL, indexer_url=INDEXER_URL, **settings),
+        make_admin_settings(
+            crawler_url=CRAWLER_URL, indexer_url=INDEXER_URL, web_url=WEB_URL, **settings
+        ),
         probes=probes.as_admin_probes(),
     )
     return TestClient(create_app(mounts=[SubAppMount(ADMIN_PREFIX, create_admin_app(deps))]))
@@ -119,7 +122,7 @@ def test_an_unknown_query_is_a_400_and_nothing_is_probed() -> None:
     assert response.json()["error"]["details"]["errors"] == [
         {"field": "url", "reason": "unknown_field"}
     ]
-    assert (probes.http.checked, probes.opensearch.checked, probes.web_dist.checked) == ([], [], [])
+    assert (probes.http.checked, probes.opensearch.checked) == ([], [])
 
 
 @pytest.mark.parametrize(
@@ -159,7 +162,6 @@ def test_the_probe_targets_come_only_from_the_settings_whatever_the_request_carr
     )
 
     assert probes.http.checked == CONFIGURED_URLS
-    assert probes.web_dist.checked == ["/nonexistent/web"]
     assert probes.opensearch.checked == [""]
 
 
