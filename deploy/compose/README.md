@@ -121,7 +121,7 @@ docker compose down -v                # 停止してデータ(名前付きボリ
 
 ## `web` サービス
 
-- **役割**: Nginx が、`/admin/` で Admin View(`apps/web` のビルド成果物 `dist/`)を静的配信し、`/api/` を `api:8080` に中継する。ブラウザから見て同一オリジンなので CORS は要らない。`/admin`(スラッシュなし)は 301 で `/admin/`、`/` は 302 で `/admin/`、`/api`(スラッシュなし)は 301 で `/api/` になる。設定は `apps/web/nginx/default.conf`
+- **役割**: Nginx が、`/admin/` で Admin View(`apps/web` のビルド成果物 `dist/`)を静的配信し、`/api/` を `api:8080` に中継する。ブラウザから見て同一オリジンなので CORS は要らない。`/admin`(スラッシュなし)は 301 で `/admin/`、`/` は 302 で `/admin/`、`/api`(スラッシュなし)は 301 で `/api/` になる。定義したパス以外(`/index.html`・`/healthz` など)は 404。設定は `apps/web/nginx/default.conf`
 - **公開**: `127.0.0.1:${WEB_HOST_PORT:-8090}`(コンテナ内は 80 固定)。ブラウザで `http://127.0.0.1:8090/admin/` を開く
 - **起動順**: `api` が healthy になってから起動する(`depends_on` の `service_healthy`。起動直後の `/api/` が 502 にならないようにするため)。逆に、**`api` は `web` を待たない**(`web` が落ちていても `api` は起動する)。`restart: unless-stopped`。nginx は `api` の名前解決を実行時に行うので、`api` が停止中でも `web` は起動できる
 - **healthcheck**: イメージの `HEALTHCHECK`(`/admin/` の 200)をそのまま使う。`/healthz` の location はない。`api` の Dashboard(EP-13)の `web` の判定も、同じ `/admin/` の 200 を確認する

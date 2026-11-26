@@ -57,7 +57,7 @@ services:
 
   api:
     # 診断用に、ループバックへ publish する(テストは `web` を経由せず、api を直接呼ぶ)。本番用の
-    # compose.yaml は api をホストに公開しない(公開するのは `web` だけ。HO-54)。認証がないため
+    # compose.yaml は api をホストに公開しない(Admin API のホスト側の入口は `web` だけ。HO-54)。認証がないため
     # 0.0.0.0 へは公開しない。
     ports:
       - "127.0.0.1:${API_HOST_PORT:-8080}:8080"

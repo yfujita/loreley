@@ -27,9 +27,9 @@
 #   Crawler は設計書(crawler-architecture 10章)のとおり、ホストに公開しない(ports なし)。
 #   Crawler API は、FileSystem Connector の root にコンテナ内の任意のパスを登録でき、認証もないため。
 #   結合テストの pytest だけは、tests/integration/crawler/compose.test.yaml がループバックに publish する。
-#   ホストに publish するのは web だけで、127.0.0.1 にだけ publish する。web は /api/ を api に中継する
-#   ので、web に到達できる全員が、認証なしで破壊的操作を実行でき、ブラウザ経由の書き込みへの保護もない。
-#   api は本番用のこのファイルでは publish しない(ports なし)。内部ネットワークのサービス名(api:8080)で
+#   Admin View と Admin API のホスト側の入口は web に一本化する。web は 127.0.0.1 にだけ publish し、
+#   /api/ を api に中継する。web に到達できる全員が、認証なしで破壊的操作を実行でき、ブラウザ経由の
+#   書き込みへの保護もない。api は本番用のこのファイルでは publish しない(ports なし)。内部ネットワークのサービス名(api:8080)で
 #   だけ到達できる。結合テストの pytest だけは、tests/integration/api/compose.test.yaml が
 #   ループバックに publish する。
 #
