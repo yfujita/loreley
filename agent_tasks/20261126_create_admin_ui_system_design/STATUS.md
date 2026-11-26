@@ -27,8 +27,8 @@ Admin View のフロントエンド設計 v0.2 を作成し、レビューを完
 ## 次のアクション
 
 1. PR のレビュー・マージ(ユーザー)
-2. 前提タスク A・B+C の要件 0000 を記載する(ユーザー。枠は起票済み: `20261126_fix_admin_openapi_types`、`20261126_add_web_container_nginx`)
-4. 前提タスク A(`apps/api`: `ttl_*` の OpenAPI 型・`openapi_export.py` の docstring)→ フロント実装(型生成の前が望ましい)。B+C(`web` コンテナ・compose・`api` の EP-13 の `web` 判定の置換・IT の追従)は `apps/web` の最初のスキャフォールドの後に着手し、`web` 経由の接続確認と初回リリースの前に完了(E 12.8、A の HO-52〜58)
+2. 前提タスク A・B+C の要件 0000 は記載済み(ユーザーの依頼によりメインエージェントが記載。2026-11-26。`20261126_fix_admin_openapi_types`、`20261126_add_web_container_nginx`)。ユーザーのレビュー待ち
+3. 前提タスク A(`apps/api`: `ttl_*` の OpenAPI 型・`openapi_export.py` の docstring)→ フロント実装(型生成の前が望ましい)。B+C(`web` コンテナ・compose・`api` の EP-13 の `web` 判定の置換・IT の追従)は `apps/web` の最初のスキャフォールドの後に着手し、`web` 経由の接続確認と初回リリースの前に完了(E 12.8、A の HO-52〜58)
 
 ## 未解決事項
 
