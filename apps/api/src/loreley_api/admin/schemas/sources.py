@@ -1,8 +1,8 @@
 """EP-01〜06・08 の DTO(B 3章・4.1・4.3)。EP-07 は `jobs.py`。"""
 
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_core import PydanticCustomError
 
 from loreley_api.admin.base.codes import LockState, SourceStatus
@@ -62,6 +62,18 @@ class SourceDetailResponse(StoredSourceSettings):
     unavailable: Unavailable
 
 
+# 省略は「指定なし」、`null` は 400 `type`(下の `_reject_explicit_null`)なので、OpenAPI では
+# 「任意かつ非 null の整数」にする(`int | None` のままだと、型生成が null を送れる型にする)。
+def _non_null_integer_schema(schema: dict[str, Any]) -> None:
+    # 既定値 `null` も外す(非 null の型に `default: null` が残ると、型と食い違う)。
+    schema.pop("anyOf", None)
+    schema.pop("default", None)
+    schema["type"] = "integer"
+
+
+OptionalTtl = Annotated[int | None, Field(json_schema_extra=_non_null_integer_schema)]
+
+
 class UpdateSourceBody(RequestModel):
     """EP-04 の本文。EP-03 の本文から `source_id`・`connector_type` を除いたもの(全置換)。
 
@@ -73,8 +85,8 @@ class UpdateSourceBody(RequestModel):
     # JSON のオブジェクトであることだけを確かめる(中身は中継する)。
     connector_config: dict[str, Any]
     # どちらか一方が必須(両方・どちらもなしは `services` が `exclusive`・`required`)。
-    ttl_days: int | None = None
-    ttl_seconds: int | None = None
+    ttl_days: OptionalTtl = None
+    ttl_seconds: OptionalTtl = None
     # 整数も受ける(strict の `float` は整数を受け、`int | float` は違反の項目名に型名が付くため)。
     # 範囲内(0 以上 100 未満)の整数は `float` でも正確。
     ratio_threshold_percent: float

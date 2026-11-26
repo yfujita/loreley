@@ -218,6 +218,7 @@ TYPE_VIOLATIONS: list[tuple[dict[str, Any], list[tuple[str, str]]]] = [
     ({"ttl_days": None}, [("ttl_days", "type")]),
     ({"ttl_days": ..., "ttl_seconds": "1"}, [("ttl_seconds", "type")]),
     ({"ttl_days": ..., "ttl_seconds": 1.5}, [("ttl_seconds", "type")]),
+    ({"ttl_days": ..., "ttl_seconds": None}, [("ttl_seconds", "type")]),
     ({"ratio_threshold_percent": "20"}, [("ratio_threshold_percent", "type")]),
     ({"ratio_threshold_percent": True}, [("ratio_threshold_percent", "type")]),
     ({"ratio_threshold_percent": None}, [("ratio_threshold_percent", "type")]),

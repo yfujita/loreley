@@ -427,6 +427,21 @@ def test_the_request_body_schemas_are_in_the_components(schema: dict[str, Any]) 
     assert set(components["StartCrawlBody"]["properties"]) == {"force_delete", "rewrite_mode"}
 
 
+@pytest.mark.parametrize("body", ["RegisterSourceBody", "UpdateSourceBody"])
+@pytest.mark.parametrize(
+    ("field", "title"), [("ttl_days", "Ttl Days"), ("ttl_seconds", "Ttl Seconds")]
+)
+def test_the_request_ttl_is_an_optional_non_null_integer(
+    schema: dict[str, Any], body: str, field: str, title: str
+) -> None:
+    # 省略は「指定なし」、明示的な `null` は 400 `type`。型生成が null を送れる型にしないよう、
+    # 任意(`required` に含まない)かつ非 null の整数にする。
+    body_schema = schema["components"]["schemas"][body]
+
+    assert body_schema["properties"][field] == {"title": title, "type": "integer"}
+    assert field not in body_schema["required"]
+
+
 # --- クエリパラメータ: 実行時に検証している必須性と列挙を反映する(型生成が不正な要求を許さない) ---
 
 ITEMS_PER_PAGE_SCHEMA = {
