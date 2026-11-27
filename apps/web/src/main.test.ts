@@ -4,6 +4,14 @@ import { describe, expect, it, vi } from 'vitest'
 
 const order: string[] = []
 
+vi.mock('vuetify/styles', () => {
+  order.push('vuetify/styles')
+  return {}
+})
+vi.mock('@/shared/theme/global.css', () => {
+  order.push('global.css')
+  return {}
+})
 vi.mock('@/admin/api', () => ({ configureApiClient: () => order.push('configureApiClient') }))
 vi.mock('@/admin/app/App.vue', () => ({ default: { name: 'App' } }))
 vi.mock('@/admin/app/setupVuetify', () => ({
@@ -27,6 +35,9 @@ describe('main.ts(起動の組み立て。E 4.1)', () => {
     await import('./main')
 
     expect(order).toEqual([
+      // CSS: vuetify/styles の後に global.css(Vuetify の後に読む必要がある)
+      'vuetify/styles',
+      'global.css',
       'configureApiClient',
       'setupVuetify',
       'use(vuetify)',

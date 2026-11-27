@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, ref } from 'vue'
 
 import { mountInLayout } from '../../../../tests/support/mount'
@@ -9,7 +9,7 @@ type Row = { job_id: string; status: string } & Record<string, unknown>
 
 const COLUMNS: AdminColumn[] = [
   { key: 'job_id', title: 'ジョブ ID' },
-  { key: 'status', title: '状態' },
+  { key: 'status', title: '状態', sortable: true },
   { key: 'queued_at', title: '開始', sortable: true },
 ]
 const ITEMS: Row[] = [
@@ -17,8 +17,19 @@ const ITEMS: Row[] = [
   { job_id: 'job-0002', status: '失敗', queued_at: '2026-11-20' },
 ]
 
+const originalWidth = window.innerWidth
+afterEach(() => {
+  window.innerWidth = originalWidth
+})
+
 async function mountServerTable(
-  options: { total?: number; page?: number; itemsPerPage?: 25 | 50 | 100; loading?: boolean } = {},
+  options: {
+    total?: number
+    page?: number
+    itemsPerPage?: 25 | 50 | 100
+    loading?: boolean
+    mustSort?: boolean
+  } = {},
 ) {
   const events: string[] = []
   const page = ref(options.page ?? 1)
@@ -36,6 +47,7 @@ async function mountServerTable(
         itemsPerPage: itemsPerPage.value,
         sort: sort.value,
         loading: options.loading,
+        mustSort: options.mustSort,
         rowTestid: (item: Row) => `j1-row-${item.job_id}`,
         'onUpdate:page': (next: number) => {
           events.push(`page=${next}`)
@@ -143,5 +155,43 @@ describe('AdminDataTableServer(FMOD-U-4。DS 4.3)', () => {
     expect(wrapper.find('caption.sr-only').text()).toBe('ジョブ一覧')
     expect(wrapper.findAll('tr.skeleton-rows__row')).toHaveLength(5)
     expect(wrapper.find('.v-data-table-footer').exists()).toBe(false)
+  })
+
+  it('単一ソート(multi-sort を使わない): 別の並べ替え可能な列を押すと、前の列の並びは外れ、通知は 1 つのソートだけ', async () => {
+    const { wrapper, events } = await mountServerTable()
+    const sortOf = () => wrapper.findAll('thead th').map((th) => th.attributes('aria-sort'))
+    expect(sortOf()).toEqual([undefined, 'none', 'descending'])
+
+    await wrapper.findAll('thead th')[1]?.trigger('click')
+    await nextTick()
+
+    expect(events).toEqual(['sort={"key":"status","order":"asc"}'])
+    // 前の列(開始)の並びは外れ、「状態」だけが並んでいる
+    expect(sortOf()).toEqual([undefined, 'ascending', 'none'])
+  })
+
+  it('must-sort を渡すと、並べ替えを解除できない(降順の次は昇順。null を通知しない)', async () => {
+    const { wrapper, events } = await mountServerTable({ mustSort: true })
+
+    await wrapper.findAll('thead th')[2]?.trigger('click')
+    await nextTick()
+    await wrapper.findAll('thead th')[2]?.trigger('click')
+    await nextTick()
+
+    expect(events).toEqual([
+      'sort={"key":"queued_at","order":"asc"}',
+      'sort={"key":"queued_at","order":"desc"}',
+    ])
+  })
+
+  it('幅 839px はカード積み(各セルに項目名)、840px は通常の表(:mobile="null" で、グローバルの mobileBreakpoint に従う)', async () => {
+    window.innerWidth = 839
+    const narrow = await mountServerTable()
+    window.innerWidth = 840
+    const wide = await mountServerTable()
+
+    expect(narrow.wrapper.find('.v-data-table__td-title').exists()).toBe(true)
+    expect(wide.wrapper.find('.v-data-table__td-title').exists()).toBe(false)
+    expect(wide.wrapper.findAll('thead th')).toHaveLength(3)
   })
 })

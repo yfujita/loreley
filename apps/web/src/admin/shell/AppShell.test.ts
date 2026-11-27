@@ -1,5 +1,5 @@
 import { flushPromises } from '@vue/test-utils'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 
 import { navGroups } from '@/admin/router/navGroups'
@@ -134,19 +134,84 @@ describe('AppShell(DS 5.1。FARC-U-14: mobileBreakpoint・permanent)', () => {
     expect(document.activeElement).toBe(button.element)
   })
 
-  it('Esc は、ドロワーが閉じているとき・常時表示のとき(幅 840px 以上)は何もしない', async () => {
-    const closed = await mountShell('/sources', 700)
-    const closedButton = closed.wrapper.find<HTMLButtonElement>(
-      'button[aria-label="メニューを開く"]',
-    )
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
-    await nextTick()
-    expect(document.activeElement).not.toBe(closedButton.element)
+  const pressKey = (key: string) =>
+    document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
 
-    const wide = await mountShell('/sources', 1000)
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }))
+  /** 本文にある入力欄(フォーカスを奪われないことの確認用)。 */
+  function focusedInput(): HTMLInputElement {
+    const input = document.createElement('input')
+    document.body.append(input)
+    input.focus()
+    return input
+  }
+
+  it('Esc は、ドロワーが閉じているとき(幅 840px 未満)は何もしない(フォーカスを動かさない)', async () => {
+    await mountShell('/sources', 700)
+    const input = focusedInput()
+
+    pressKey('Escape')
     await nextTick()
+
+    expect(document.activeElement).toBe(input)
+    input.remove()
+  })
+
+  it('Esc は、常時表示のとき(幅 840px 以上)は何もしない(ドロワーは開いたまま。フォーカスも動かさない)', async () => {
+    const wide = await mountShell('/sources', 1000)
+    const input = focusedInput()
+
+    pressKey('Escape')
+    await nextTick()
+
     expect(drawer(wide.wrapper).classes()).toContain('v-navigation-drawer--active')
+    expect(document.activeElement).toBe(input)
+    input.remove()
+  })
+
+  it.each(['Tab', 'Enter', 'a', ' ', 'Shift'])(
+    'Esc 以外のキー(%j)では、開いているドロワーは閉じない',
+    async (key) => {
+      const { wrapper } = await mountShell('/sources', 700)
+      await wrapper.find('button[aria-label="メニューを開く"]').trigger('click')
+      await nextTick()
+
+      pressKey(key)
+      await nextTick()
+
+      expect(drawer(wrapper).classes()).toContain('v-navigation-drawer--active')
+    },
+  )
+
+  it('アンマウントすると、Esc のリスナーを document から外す(残さない)', async () => {
+    const add = vi.spyOn(document, 'addEventListener')
+    const remove = vi.spyOn(document, 'removeEventListener')
+    const { wrapper } = await mountShell('/sources', 700)
+    const added = add.mock.calls.find(
+      ([type, listener]) =>
+        type === 'keydown' &&
+        typeof listener === 'function' &&
+        listener.name === 'closeDrawerOnEscape',
+    )?.[1]
+    expect(added).toBeDefined()
+
+    wrapper.unmount()
+
+    expect(remove).toHaveBeenCalledWith('keydown', added)
+    add.mockRestore()
+    remove.mockRestore()
+  })
+
+  it('幅の変化(840px 未満へのリサイズ)で閉じる通知が来ても、本文の入力欄のフォーカスを奪わない(DS 8)', async () => {
+    const { wrapper } = await mountShell('/sources', 1000)
+    const input = focusedInput()
+
+    window.innerWidth = 700
+    window.dispatchEvent(new Event('resize'))
+    await flushPromises()
+
+    expect(wrapper.find('.mobile-app-bar').exists()).toBe(true)
+    expect(document.activeElement).toBe(input)
+    input.remove()
   })
 
   it('一時表示のドロワーは、ナビの項目を選んで画面が変わると閉じる', async () => {

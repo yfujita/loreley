@@ -28,6 +28,9 @@ if (typeof window !== 'undefined') {
   }
   globalThis.ResizeObserver = ResizeObserverStub
 
+  // jsdom は `window.scrollTo` を実装していない(呼ぶと「Not implemented」のノイズが出る)。vue-router の scrollBehavior が呼ぶ。
+  window.scrollTo = () => {}
+
   // VOverlay(VDialog など)が位置の計算で `visualViewport` を読む。
   Object.defineProperty(window, 'visualViewport', {
     configurable: true,

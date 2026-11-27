@@ -25,7 +25,11 @@ const showFooter = computed(() => ['ready', 'stale'].includes(props.viewState.ki
     :primary-action-id="primaryActionId"
     @action="emit('action', $event)"
   />
-  <v-card class="list-page__card" :aria-label="cardLabel">
+  <v-card
+    class="list-page__card"
+    :role="cardLabel !== undefined ? 'region' : undefined"
+    :aria-label="cardLabel"
+  >
     <TopProgress :active="viewState.isRefreshing" />
     <div v-if="$slots.toolbar" class="list-page__toolbar">
       <slot name="toolbar" />
@@ -38,7 +42,9 @@ const showFooter = computed(() => ['ready', 'stale'].includes(props.viewState.ki
     >
       <slot />
       <template v-if="$slots.loading" #loading><slot name="loading" /></template>
-      <template #empty-actions><slot name="empty-actions" /></template>
+      <template v-if="$slots['empty-actions']" #empty-actions>
+        <slot name="empty-actions" />
+      </template>
     </ViewStateBody>
     <slot v-if="showFooter" name="footer" />
   </v-card>

@@ -4,7 +4,7 @@ import { defineComponent, h, ref } from 'vue'
 import { mountInLayout } from '../../../../tests/support/mount'
 import TypeToConfirm from './TypeToConfirm.vue'
 
-async function mountTyped(initial = '') {
+async function mountTyped(initial = '', props: { disabled?: boolean } = {}) {
   const matchedEvents: boolean[] = []
   const Host = defineComponent({
     setup() {
@@ -15,6 +15,7 @@ async function mountTyped(initial = '') {
           'onUpdate:modelValue': (next: string) => (value.value = next),
           'onUpdate:matched': (matched: boolean) => matchedEvents.push(matched),
           expected: 'demo-handbook',
+          ...props,
         })
     },
   })
@@ -69,5 +70,19 @@ describe('TypeToConfirm(DS 4.8)', () => {
 
     expect(wrapper.find('.type-to-confirm__result').text()).toBe('識別子が一致しません')
     expect(matchedEvents).toEqual([true, false])
+  })
+
+  it('空白だけの入力は、不一致のメッセージを出さない(trim して空と同じ扱い)。一致もしない', async () => {
+    const { wrapper } = await mountTyped()
+
+    await wrapper.find('input').setValue('   ')
+
+    expect(wrapper.find('.type-to-confirm__result').text()).toBe('')
+  })
+
+  it('実行中(disabled)は、入力欄を無効にする(二重送信を防ぐ)', async () => {
+    const { wrapper } = await mountTyped('', { disabled: true })
+
+    expect(wrapper.find('input').attributes('disabled')).toBeDefined()
   })
 })

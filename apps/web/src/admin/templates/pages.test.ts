@@ -102,6 +102,16 @@ describe('ListPage(DS 6.1)', () => {
     expect(ids).toEqual(['toolbar', 'body', 'footer'])
   })
 
+  it('カードは、cardLabel があるとき region(aria-label)になる。なければ role を付けない', async () => {
+    const labeled = await mountPage(ListPage, viewStates.ready(), {}, { cardLabel: 'ジョブ一覧' })
+    const plain = await mountPage(ListPage, viewStates.ready())
+
+    expect(labeled.wrapper.find('.list-page__card').attributes('role')).toBe('region')
+    expect(labeled.wrapper.find('[role="region"]').attributes('aria-label')).toBe('ジョブ一覧')
+    expect(plain.wrapper.find('.list-page__card').attributes('role')).toBeUndefined()
+    expect(plain.wrapper.find('.list-page__card').attributes('aria-label')).toBeUndefined()
+  })
+
   it('再取得中は、カード上端に進行バーを出す。本文は消えない', async () => {
     const { wrapper } = await mountPage(ListPage, viewStates.refreshing())
 

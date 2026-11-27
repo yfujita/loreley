@@ -21,4 +21,9 @@ describe('matchesIdentifier(DS 4.8: 前後の空白を除いた完全一致・�
     expect(matchesIdentifier('a b', 'a b')).toBe(true)
     expect(matchesIdentifier('ab', 'a b')).toBe(false)
   })
+
+  it('識別子が空のときは、何を入力しても一致にしない(確認の意味がなくなる)', () => {
+    expect(matchesIdentifier('', '')).toBe(false)
+    expect(matchesIdentifier('   ', '')).toBe(false)
+  })
 })

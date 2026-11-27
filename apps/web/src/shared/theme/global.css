@@ -11,6 +11,9 @@
     'Yu Gothic UI', 'Meiryo UI', 'Noto Sans JP', sans-serif;
   --v-font-heading: var(--v-font-body);
   /* 識別子・cron 式・パス専用(DS 2.2。ラベルや装飾には使わない) */
+  /* DS 2.1 の「その他」の色(theme の色名にはしない): スナックバー(ink)上のリンク、入力のプレースホルダー */
+  --color-ink-link: #9cc9ee;
+  --color-placeholder: #66727e;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
 }
 
@@ -24,7 +27,9 @@ html {
   letter-spacing: normal;
 }
 
-a {
+/* 本文中のリンク。Vuetify の部品(`v-list-item`・`v-tab` など、class に `v-` を含む `<a>`)の色は上書きしない
+   (レイヤーなしの規則は、`@layer` 内の Vuetify の規則より常に強いため、範囲を絞る) */
+:where(a:not([class*='v-'])) {
   color: rgb(var(--v-theme-primary));
 }
 
@@ -165,7 +170,7 @@ a {
 }
 .v-field input::placeholder,
 .v-field textarea::placeholder {
-  color: #66727e;
+  color: var(--color-placeholder);
   opacity: 1;
 }
 
@@ -199,14 +204,10 @@ a {
     left: 100%;
   }
 }
-/* 進行バーは、停止したときも静止した帯で「更新中」を示す(DS 2.6) */
+/* スケルトンの光沢は止める。進行バー(`.top-progress__bar`)は、詳細度の高い scoped CSS が定義するので、
+   reduced-motion の上書きも TopProgress.vue の中に置く(ここに置くと、scoped の規則に負けて止まらない) */
 @media (prefers-reduced-motion: reduce) {
   .skeleton-line {
     animation: none;
-  }
-  .top-progress__bar {
-    animation: none;
-    width: 100%;
-    opacity: 0.5;
   }
 }

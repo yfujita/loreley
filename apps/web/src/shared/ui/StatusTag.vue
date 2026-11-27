@@ -2,7 +2,7 @@
 // ステータスタグ(DS 4.1)。`kind` と `value` から、色・アイコン・文言を `statusMaps` の表で引く。
 // 未登録の値は、中立(`secondary-container`・アイコンなし)で値をそのまま出し、開発時にだけ警告する
 // (OpenSearch の状態値は API が string で返すため、未知の値がここに来うる)。
-import { computed } from 'vue'
+import { computed, watchEffect } from 'vue'
 
 import { findStatusEntry, warnUnregisteredStatus, type StatusKind } from './statusMaps'
 
@@ -11,10 +11,11 @@ const props = defineProps<{
   value: string
 }>()
 
-const entry = computed(() => {
-  const found = findStatusEntry(props.kind, props.value)
-  if (found === null) warnUnregisteredStatus(props.kind, props.value)
-  return found
+const entry = computed(() => findStatusEntry(props.kind, props.value))
+
+// 警告は副作用なので、computed の中ではなく watchEffect で行う。
+watchEffect(() => {
+  if (entry.value === null) warnUnregisteredStatus(props.kind, props.value)
 })
 
 const chipColor = computed(() => {

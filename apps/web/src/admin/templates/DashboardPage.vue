@@ -36,7 +36,9 @@ const emit = defineEmits<{ action: [id: string]; retry: [] }>()
         <slot />
       </div>
       <template v-if="$slots.loading" #loading><slot name="loading" /></template>
-      <template #empty-actions><slot name="empty-actions" /></template>
+      <template v-if="$slots['empty-actions']" #empty-actions>
+        <slot name="empty-actions" />
+      </template>
     </ViewStateBody>
   </div>
 </template>

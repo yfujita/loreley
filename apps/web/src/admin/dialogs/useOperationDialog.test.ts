@@ -228,4 +228,38 @@ describe('useOperationDialog(E 7.4・6.3。F 3.8)', () => {
     expect(dialog.error.value).toBeNull()
     expect(dialog.isOpen.value).toBe(false)
   })
+
+  it('successNotice・onSuccess は、実行の結果(result)と入力(input)の両方を受け取る', async () => {
+    const seen: string[] = []
+    const dialog = await mountDialog({
+      operation: 'startCrawl',
+      execute: async (input: { sourceId: string }) => ({ job_id: `job-${input.sourceId}` }),
+      successNotice: (result, input) => {
+        seen.push(`notice:${result.job_id}:${input.sourceId}`)
+        return { text: 'ok' }
+      },
+      onSuccess: (result, input) => seen.push(`success:${result.job_id}:${input.sourceId}`),
+    })
+    dialog.open()
+
+    await dialog.run({ sourceId: 'demo' })
+
+    expect(seen).toEqual(['notice:job-demo:demo', 'success:job-demo:demo'])
+  })
+
+  it('onAlreadyDone は、ダイアログを閉じた後に呼ばれる(呼ばれた時点で isOpen=false)', async () => {
+    let openAtCall: boolean | null = null
+    const dialog = await mountDialog({
+      operation: 'cancelJob',
+      execute: () => Promise.reject(api(409, 'job_already_finished')),
+      onAlreadyDone: () => {
+        openAtCall = dialog.isOpen.value
+      },
+    })
+    dialog.open()
+
+    await dialog.run({})
+
+    expect(openAtCall).toBe(false)
+  })
 })

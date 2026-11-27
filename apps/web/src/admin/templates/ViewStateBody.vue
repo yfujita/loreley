@@ -99,9 +99,9 @@ const errorNote = computed(() => {
       :heading-level="headingLevel"
       :data-testid="testid('error')"
     >
-      <v-btn v-if="viewState.canRetry" variant="outlined" :prepend-icon="mdiRefresh" @click="retry">
-        再試行
-      </v-btn>
+      <template v-if="viewState.canRetry" #default>
+        <v-btn variant="outlined" :prepend-icon="mdiRefresh" @click="retry">再試行</v-btn>
+      </template>
     </StateBlock>
     <StateBlock
       v-else-if="viewState.kind === 'notfound'"
@@ -111,7 +111,9 @@ const errorNote = computed(() => {
       :heading-level="headingLevel"
       :data-testid="testid('notfound')"
     >
-      <slot name="notfound-actions" />
+      <template v-if="$slots['notfound-actions']" #default>
+        <slot name="notfound-actions" />
+      </template>
     </StateBlock>
     <StateBlock
       v-else
@@ -121,7 +123,9 @@ const errorNote = computed(() => {
       :heading-level="headingLevel"
       :data-testid="testid('empty')"
     >
-      <slot name="empty-actions" />
+      <template v-if="$slots['empty-actions']" #default>
+        <slot name="empty-actions" />
+      </template>
     </StateBlock>
   </div>
 </template>

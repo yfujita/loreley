@@ -35,7 +35,9 @@ const emit = defineEmits<{ action: [id: string]; retry: [] }>()
       <div class="detail-page__stack">
         <slot />
       </div>
-      <template #notfound-actions><slot name="notfound-actions" /></template>
+      <template v-if="$slots['notfound-actions']" #notfound-actions>
+        <slot name="notfound-actions" />
+      </template>
     </ViewStateBody>
   </div>
 </template>

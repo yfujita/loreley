@@ -1,10 +1,9 @@
 import { defineConfig, devices } from '@playwright/test'
 
-// E2E 専用のポート。手動確認・UI レビュー用の dev サーバー(5173)と衝突させず、既存のサーバーも再利用しない。
-// (設計 E 10.2 は 5173・reuseExistingServer: !CI。起動中の dev サーバーを使うと、転送先が実環境のまま
-//  モックの漏れが実 API に届くため、専用ポート・再利用なしに変えた。)
-const E2E_PORT = 15173
-const E2E_BASE_URL = `http://localhost:${E2E_PORT}/admin/`
+import { E2E_BASE_URL, E2E_PORT } from './tests/support/e2eServer'
+
+// E2E 専用のポート(tests/support/e2eServer.ts)。(設計 E 10.2 は 5173・reuseExistingServer: !CI。
+// 起動中の dev サーバーを使うと、転送先が実環境のまま モックの漏れが実 API に届くため、専用ポート・再利用なしに変えた。)
 
 export default defineConfig({
   testDir: 'tests/e2e',

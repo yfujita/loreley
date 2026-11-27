@@ -1,5 +1,5 @@
 import type { VueWrapper } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, ref } from 'vue'
 
 import { mountInLayout } from '../../../../tests/support/mount'
@@ -163,22 +163,25 @@ describe('ConfirmDialog(DS 4.8)', () => {
     content.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
   }
 
-  it('Esc: 要確認・標準は閉じる', async () => {
-    const { isOpen } = await mountDialog({ level: 'confirm' })
+  it('Esc: 要確認・標準は閉じ、update:modelValue(false) と cancel をこの順に通知する', async () => {
+    const { isOpen, events } = await mountDialog({ level: 'confirm' })
 
     pressEscape()
     await nextTick()
 
     expect(isOpen.value).toBe(false)
+    expect(events).toEqual(['update:modelValue(false)', 'cancel'])
   })
 
+  // 背面クリックによる閉じ(外側クリック)は、Vuetify が isTrusted でないイベントを無視するため jsdom では確かめられない。
+  // 実ブラウザの E2E(DLG。フェーズ 5)で確認する。
+
   it.each<DialogLevel>(['confirm-warning', 'confirm-typed'])(
-    'Esc・背面クリック: %s は閉じない(persistent)。キャンセルだけで閉じる',
+    'Esc: %s は閉じない(persistent)。キャンセルだけで閉じる',
     async (level) => {
       const { isOpen } = await mountDialog({ level })
 
       pressEscape()
-      document.querySelector<HTMLElement>('.v-overlay__scrim')?.click()
       await nextTick()
 
       expect(isOpen.value).toBe(true)
@@ -256,10 +259,12 @@ describe('ConfirmDialog(DS 4.8)', () => {
     await nextTick()
     opener.remove()
 
+    const focus = vi.spyOn(opener, 'focus')
     button('キャンセル').click()
     await nextTick()
     await nextTick()
 
+    expect(focus).not.toHaveBeenCalled()
     expect(document.activeElement).not.toBe(opener)
   })
 })

@@ -241,4 +241,44 @@ describe('条件の変更(update)', () => {
 
     expect(router.currentRoute.value.fullPath).toBe('/jobs?status=failed')
   })
+
+  describe('続けて(同期的に)update を呼ぶ(Vuetify は並べ替え・件数の変更の直後に page=1 も通知する)', () => {
+    it('反映前の条件に積み上げる: sort → page=1 の 2 回で、sort の変更が消えない', async () => {
+      const { result, router } = await mountAt('/jobs?page=3&status=failed')
+
+      const first = result.update({ sort: 'queued_at' })
+      const second = result.update({ page: 1 })
+      await Promise.all([first, second])
+      await flushPromises()
+
+      expect(router.currentRoute.value.fullPath).toBe('/jobs?sort=queued_at&status=failed')
+    })
+
+    it('履歴に積むのは 1 件だけ(前の遷移は後の遷移に置き換えられる)', async () => {
+      const { result, router } = await mountAt('/jobs?page=3')
+
+      await Promise.all([result.update({ sort: 'queued_at' }), result.update({ page: 1 })])
+      await flushPromises()
+
+      expect(await goBack(router)).toBe('/jobs?page=3')
+    })
+
+    it('2 回目が今の URL と同じ条件に戻すときも、1 回目を打ち消す', async () => {
+      const { result, router } = await mountAt('/jobs?page=3')
+
+      await Promise.all([result.update({ page: 4 }), result.update({ page: 3 })])
+      await flushPromises()
+
+      expect(router.currentRoute.value.fullPath).toBe('/jobs?page=3')
+    })
+
+    it('遷移が終われば、次の update は新しい URL を土台にする(積み上げが残らない)', async () => {
+      const { result, router } = await mountAt('/jobs?page=3')
+      await result.update({ sort: 'queued_at' })
+
+      await result.update({ sort: '-queued_at' })
+
+      expect(router.currentRoute.value.fullPath).toBe('/jobs?page=3&sort=-queued_at')
+    })
+  })
 })

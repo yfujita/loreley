@@ -53,7 +53,7 @@ function runAction(onClick: () => void): void {
 <style scoped>
 .app-snackbar__action {
   margin-left: 8px;
-  color: #9cc9ee;
+  color: var(--color-ink-link);
   font-weight: 600;
   text-decoration: underline;
   background: none;

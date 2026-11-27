@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest'
 
-import { resolveViewState, type DescribedReadError, type ViewStateInput } from './viewState'
+import {
+  READY_VIEW_STATE,
+  resolveViewState,
+  type DescribedReadError,
+  type ViewStateInput,
+} from './viewState'
 
 const DIAGNOSTIC = { code: 'internal_error', status: 500 }
 
@@ -156,5 +161,23 @@ describe('resolveViewState(E 6.2 の写像)', () => {
 
   it('dataUpdatedAt が 0(未取得)のときは updatedAt を null にする', () => {
     expect(resolveViewState(input({ dataUpdatedAt: 0 })).updatedAt).toBeNull()
+  })
+})
+
+describe('READY_VIEW_STATE', () => {
+  it('取得済み・エラーなしの入力を resolveViewState に通した結果と同じ(偽の入力で ready を作らない)', () => {
+    const resolved = resolveViewState({
+      isLoading: false,
+      isFetching: false,
+      hasData: true,
+      isEmpty: false,
+      isLoadingError: false,
+      isRefetchError: false,
+      dataUpdatedAt: 0,
+      error: null,
+    })
+
+    expect(READY_VIEW_STATE).toEqual(resolved)
+    expect(READY_VIEW_STATE.kind).toBe('ready')
   })
 })

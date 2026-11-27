@@ -4,19 +4,10 @@
 import { ROUTE_NAMES } from '@/admin/lib/routeNames'
 import ListPage from '@/admin/templates/ListPage.vue'
 import StateBlock from '@/shared/ui/StateBlock.vue'
-import { resolveViewState } from '@/admin/lib/viewState'
+import { READY_VIEW_STATE } from '@/admin/lib/viewState'
 
 // 一覧の「データなし」ではなく、固定のエラーブロックを出す。ready にして、本文のスロットに StateBlock を置く。
-const viewState = resolveViewState({
-  isLoading: false,
-  isFetching: false,
-  hasData: true,
-  isEmpty: false,
-  isLoadingError: false,
-  isRefetchError: false,
-  dataUpdatedAt: 0,
-  error: null,
-})
+const viewState = READY_VIEW_STATE
 </script>
 
 <template>

@@ -72,8 +72,15 @@ export function useListParams<TParams extends object>(
     { immediate: true },
   )
 
+  // 直前に発行して、まだ URL に反映されていない条件。
+  // Vuetify は並べ替え・件数の変更の直後に、同期的に `page = 1` も通知する。画面がそれぞれを `update()` に流すと、
+  // 2 回目が `route.query`(1 回目の反映前)を土台にして、1 回目の変更を消してしまう。
+  // 反映前の条件に積み上げ、後の遷移が前の遷移を置き換える(vue-router は進行中の遷移を取り消す)ようにする。
+  let pending: TParams | null = null
+  let latestUpdateId = 0
+
   async function update(patch: Partial<TParams>): Promise<void> {
-    const current = params.value
+    const current = pending ?? params.value
     const next = { ...current, ...patch }
 
     const { pageKey, resetPageOn = [] } = definition
@@ -87,8 +94,16 @@ export function useListParams<TParams extends object>(
     }
 
     const query = definition.serialize(next)
-    if (isSameQuery(route.query, query)) return
-    await (definition.navigation === 'push' ? router.push({ query }) : router.replace({ query }))
+    // 反映待ちの条件があるときは、今の URL と同じでも発行する(進行中の遷移を、最新の条件で置き換えるため)。
+    if (pending === null && isSameQuery(route.query, query)) return
+
+    pending = next
+    const updateId = ++latestUpdateId
+    try {
+      await (definition.navigation === 'push' ? router.push({ query }) : router.replace({ query }))
+    } finally {
+      if (updateId === latestUpdateId) pending = null
+    }
   }
 
   return { params, update }

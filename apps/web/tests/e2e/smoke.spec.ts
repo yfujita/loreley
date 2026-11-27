@@ -2,6 +2,7 @@
 import { expect as baseExpect, test as baseTest } from '@playwright/test'
 
 import { jsonResponse } from '../support/apiErrors'
+import { E2E_HOST } from '../support/e2eServer'
 import { gotoBlankPage } from '../support/blankPage'
 import { expect, test } from '../support/e2eTest'
 import { meta } from '../support/fixtures/meta'
@@ -36,9 +37,11 @@ test.describe('未モックの /api/ の検出', () => {
 
     await page.goto('/api/admin/v1/meta').catch(() => {})
 
-    baseExpect(guard.unmockedRequests).toEqual(['GET http://localhost:15173/api/admin/v1/meta'])
+    baseExpect(guard.unmockedRequests).toEqual([`GET http://${E2E_HOST}/api/admin/v1/meta`])
     baseExpect(() => guard.assertNone()).toThrow(
-      /未モックの \/api\/ への要求があります:\n {2}GET http:\/\/localhost:15173\/api\/admin\/v1\/meta/,
+      new RegExp(
+        `未モックの /api/ への要求があります:\\n {2}GET http://${E2E_HOST.replace('.', '\\.')}/api/admin/v1/meta`,
+      ),
     )
   })
 

@@ -32,7 +32,7 @@ describe('TimeText(DS 4.9)', () => {
     expect(fromDate.text()).toBe('2026-11-21 10:02')
   })
 
-  it.each([null, undefined, '', 'not a date'])(
+  it.each([null, undefined, '', 'not a date', 0])(
     '値がない・日時として読めない(%j)ときは「—」を出し、読み上げ用の「なし」を添える',
     async (value) => {
       const { wrapper } = await mountInLayout(TimeText, { props: { value } })

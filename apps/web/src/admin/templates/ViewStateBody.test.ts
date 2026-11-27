@@ -177,6 +177,28 @@ describe('ViewStateBody(E 6.2・DS 4.5)', () => {
     expect(wrapper.find('.state-block-loading').exists()).toBe(false)
   })
 
+  it('操作のスロットを渡さない状態では、空の操作領域(余白だけの div)を出さない', async () => {
+    const Host: FunctionalComponent = () =>
+      h(ViewStateBody, { viewState: viewStates.notfound(), onRetry: () => {} })
+    const empty: FunctionalComponent = () =>
+      h(ViewStateBody, { viewState: viewStates.empty(), onRetry: () => {} })
+    const retryless: FunctionalComponent = () =>
+      h(ViewStateBody, {
+        viewState: viewStates.error({
+          notFound: false,
+          retryable: false,
+          unexpected: false,
+          diagnostic: { code: null, status: null },
+        }),
+        onRetry: () => {},
+      })
+
+    for (const component of [Host, empty, retryless]) {
+      const { wrapper } = await mountInLayout(component)
+      expect(wrapper.find('.state-block__actions').exists()).toBe(false)
+    }
+  })
+
   it('testidPrefix を省略すると、data-testid を付けない', async () => {
     const retries: number[] = []
     const Host: FunctionalComponent = () =>

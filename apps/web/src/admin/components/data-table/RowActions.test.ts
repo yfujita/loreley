@@ -102,14 +102,26 @@ describe('RowActions(DS 4.3)', () => {
     expect(wrapper.find('button[aria-label^="その他の操作"]').exists()).toBe(true)
   })
 
-  it('無効の主操作は、無効にして理由を title で伝える', async () => {
+  it('無効の主操作は、無効にし、理由を視覚的に隠した文言として aria-describedby で結ぶ(title は補助)', async () => {
     const { wrapper } = await mountRow({
       actions: [action({ id: 'crawl', label: 'クロール起動', disabledReason: '削除中です' })],
     })
 
-    const primary = wrapper.find('button.bg-primary-container, button.v-btn--disabled')
+    const primary = wrapper.find('button.v-btn--disabled')
+    const reason = wrapper.find('.row-actions > .sr-only')
     expect(primary.attributes('disabled')).toBeDefined()
     expect(primary.attributes('title')).toBe('削除中です')
+    expect(reason.text()).toBe('削除中です')
+    expect(primary.attributes('aria-describedby')).toBe(reason.attributes('id'))
+  })
+
+  it('有効な主操作には、理由の文言も aria-describedby も付けない', async () => {
+    const { wrapper } = await mountRow()
+
+    expect(
+      wrapper.find('button.bg-primary-container').attributes('aria-describedby'),
+    ).toBeUndefined()
+    expect(wrapper.find('.row-actions > .sr-only').exists()).toBe(false)
   })
 
   it('アイコンのみ(表のカード幅が 720px 未満): アクセシブルネームに「操作名(識別子)」を残し、ツールチップ(title)で操作名を出す', async () => {

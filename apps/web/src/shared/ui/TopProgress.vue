@@ -26,4 +26,12 @@ defineProps<{ active: boolean }>()
   background: rgb(var(--v-theme-primary));
   animation: progress-slide 1.2s ease-in-out infinite;
 }
+/* 停止したときも、静止した帯で「更新中」を示す(DS 2.6)。global.css に置くと、この scoped の規則に詳細度で負ける */
+@media (prefers-reduced-motion: reduce) {
+  .top-progress__bar {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+}
 </style>

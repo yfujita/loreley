@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, ref } from 'vue'
 
 import { mountInLayout } from '../../../tests/support/mount'
@@ -103,5 +103,25 @@ describe('useContainerWidth(DS 4.3: 列の省略は、viewport でなく表を�
     wrapper.unmount()
 
     expect(cardObserver()?.disconnected).toBe(true)
+  })
+
+  it('観測を始める前に、要素の今の幅(getBoundingClientRect)を反映する(最初の通知を待たない)', async () => {
+    const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      width: 640,
+      height: 0,
+      x: 0,
+      y: 0,
+      top: 0,
+      left: 0,
+      right: 640,
+      bottom: 0,
+      toJSON: () => ({}),
+    })
+
+    const { widths } = await mountWatcher()
+
+    // ResizeObserver から通知が来る前(通知なし)に、初期の幅が入っている
+    expect(widths[widths.length - 1]).toBe(640)
+    rect.mockRestore()
   })
 })

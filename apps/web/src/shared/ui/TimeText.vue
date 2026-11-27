@@ -16,7 +16,8 @@ const props = withDefaults(
 )
 
 const date = computed(() => {
-  if (props.value === null || props.value === undefined) return null
+  // 0(Query の `dataUpdatedAt` は、データがないとき 0)は、1970 年の日時ではなく「値なし」。
+  if (props.value === null || props.value === undefined || props.value === 0) return null
   if (typeof props.value === 'string') return parseIsoDateTime(props.value)
   const converted = new Date(props.value)
   return Number.isNaN(converted.getTime()) ? null : converted

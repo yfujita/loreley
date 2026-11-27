@@ -7,6 +7,7 @@ import type { MetaResponse } from '@/admin/api'
 
 import { apiErrorResponse, jsonResponse } from '../support/apiErrors'
 import { expect, test } from '../support/e2eTest'
+import { E2E_BASE_URL, E2E_HOST } from '../support/e2eServer'
 import { meta } from '../support/fixtures/meta'
 import { mockApi } from '../support/mockApi'
 
@@ -129,9 +130,11 @@ test.describe('840px の境(DS 5.1・7。FARC-U-14)', () => {
       await expectDrawerOpen(page)
       await expect(menu).toHaveAttribute('aria-expanded', 'true')
 
+      // フォーカスがドロワーの中(ナビのリンク)にある状態から Esc で閉じる。閉じたら、メニューのボタンへ戻る(DS 8)
+      await page.keyboard.press('Tab')
+      await expect(sideNav(page).getByRole('link', { name: 'データソース' })).toBeFocused()
       await page.keyboard.press('Escape')
       await expectDrawerClosed(page)
-      // 閉じたら、フォーカスはメニューのボタンへ戻る(DS 8)
       await expect(menu).toBeFocused()
 
       await menu.click()
@@ -145,6 +148,87 @@ test.describe('840px の境(DS 5.1・7。FARC-U-14)', () => {
       await expectDrawerClosed(page)
     })
   }
+
+  for (const width of [839, 768, 375]) {
+    test(`幅 ${width}px: 開くとフォーカスがドロワーの中に入り、Tab・Shift+Tab はドロワーの中を循環して、本文・スキップリンクへ抜けない(DS 8)`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport(width))
+      await mockMeta(page, meta.noDashboards())
+      await page.goto('no/such/page')
+      const links = sideNav(page).getByRole('link')
+      const inDrawer = () =>
+        page.evaluate(() =>
+          document.querySelector('nav.v-navigation-drawer')?.contains(document.activeElement),
+        )
+
+      await page.getByRole('button', { name: 'メニューを開く' }).click()
+      await expectDrawerOpen(page)
+      await expect(links.first()).toBeFocused()
+      // 幅は 272px(DS 5.1 のモバイル。デスクトップの 232px とは別)
+      expect((await sideNav(page).boundingBox())?.width).toBeCloseTo(272, 0)
+
+      for (let i = 0; i < 12; i++) {
+        await page.keyboard.press('Tab')
+        expect(await inDrawer(), `Tab ${i + 1} 回目`).toBe(true)
+      }
+      for (let i = 0; i < 12; i++) {
+        await page.keyboard.press('Shift+Tab')
+        expect(await inDrawer(), `Shift+Tab ${i + 1} 回目`).toBe(true)
+      }
+      // 5 つのリンクを 1 周すると、最初に戻る(循環)
+      await links.first().focus()
+      for (let i = 0; i < 5; i++) await page.keyboard.press('Tab')
+      await expect(links.first()).toBeFocused()
+    })
+  }
+
+  for (const width of [840, 1280]) {
+    test(`幅 ${width}px(常時表示): Tab は奪われず、ナビを抜けて本文のリンクへ進める`, async ({
+      page,
+    }) => {
+      await page.setViewportSize(viewport(width))
+      await mockMeta(page, meta.noDashboards())
+      await page.goto('no/such/page')
+
+      await page.keyboard.press('Tab')
+      await expect(page.getByRole('link', { name: 'メインコンテンツへ移動' })).toBeFocused()
+      for (let i = 0; i < 5; i++) await page.keyboard.press('Tab')
+      await expect(sideNav(page).getByRole('link', { name: 'OpenSearch' })).toBeFocused()
+      await page.keyboard.press('Tab')
+
+      await expect(page.getByRole('link', { name: 'ダッシュボードへ戻る' })).toBeFocused()
+    })
+  }
+
+  test('Esc 以外のキー(Tab・Enter・a)では、ドロワーは閉じない', async ({ page }) => {
+    await page.setViewportSize(viewport(700))
+    await mockMeta(page, meta.noDashboards())
+    await page.goto('sources')
+    await page.getByRole('button', { name: 'メニューを開く' }).click()
+    await expectDrawerOpen(page)
+
+    await page.keyboard.press('Tab')
+    await page.keyboard.press('a')
+    await page.keyboard.press('Space')
+
+    await expectDrawerOpen(page)
+  })
+
+  test('ウィンドウ幅の変化(840px 未満へのリサイズ)で、入力欄など本文のフォーカスを奪わない', async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport(1000))
+    await mockMeta(page, meta.noDashboards())
+    await page.goto('no/such/page')
+    const back = page.getByRole('link', { name: 'ダッシュボードへ戻る' })
+    await back.focus()
+
+    await page.setViewportSize(viewport(700))
+    await expect(page.getByRole('button', { name: 'メニューを開く' })).toBeVisible()
+
+    await expect(back).toBeFocused()
+  })
 
   test('ページ全体の横スクロールはない(375・768・840・1024・1280px)', async ({ page }) => {
     await mockMeta(page, meta.noDashboards())
@@ -202,26 +286,28 @@ test.describe('SPA 内の 404(admin-view 4.2)', () => {
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('ページが見つかりません')
   })
 
-  test('全 route(D1・S1〜S4・J1・J2・X1・O1)が開く', async ({ page }) => {
-    await mockMeta(page, meta.noDashboards())
-    const cases: [string, string][] = [
-      ['./', 'ダッシュボード'],
-      ['sources', 'データソース'],
-      ['sources/new', 'データソースを登録'],
-      ['sources/demo-handbook', 'demo-handbook'],
-      ['sources/demo-handbook/edit', '編集'],
-      ['jobs', 'ジョブ'],
-      ['jobs/job-0001', 'job-0001'],
-      ['documents', '文書の確認'],
-      ['opensearch', 'OpenSearch'],
-    ]
-    for (const [path, heading] of cases) {
+  // route ごとに 1 件のテストにする(1 件に詰めると、負荷のかかった CI で時間切れになる)。
+  const ROUTE_CASES: [string, string][] = [
+    ['./', 'ダッシュボード'],
+    ['sources', 'データソース'],
+    ['sources/new', 'データソースを登録'],
+    ['sources/demo-handbook', 'demo-handbook'],
+    ['sources/demo-handbook/edit', '編集'],
+    ['jobs', 'ジョブ'],
+    ['jobs/job-0001', 'job-0001'],
+    ['documents', '文書の確認'],
+    ['opensearch', 'OpenSearch'],
+  ]
+  for (const [path, heading] of ROUTE_CASES) {
+    test(`route「${path}」が開き、h1 は 1 つで「${heading}」`, async ({ page }) => {
+      await mockMeta(page, meta.noDashboards())
+
       await page.goto(path)
 
-      await expect(page.getByRole('heading', { level: 1 }), path).toHaveText(heading)
+      await expect(page.getByRole('heading', { level: 1 })).toHaveText(heading)
       await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1)
-    }
-  })
+    })
+  }
 })
 
 test.describe('遷移後の h1 へのフォーカスとタイトル(E 4.5・DS 8。FMOD-U-10)', () => {
@@ -395,22 +481,23 @@ test.describe('外部リンク領域(AF-20)', () => {
 })
 
 test.describe('外部通信と相対パス', () => {
-  test('同一オリジン以外への要求は 0 件(外部フォント・CDN を使わない。DS 3.1)', async ({
-    page,
-  }) => {
-    const external: string[] = []
-    page.on('request', (request) => {
-      const url = new URL(request.url())
-      if (!['localhost:15173'].includes(url.host) && url.protocol.startsWith('http')) {
-        external.push(request.url())
-      }
+  for (const path of ['./', 'sources', 'jobs/job-0001', 'no/such/page']) {
+    test(`同一オリジン以外への要求は 0 件(外部フォント・CDN を使わない。DS 3.1): ${path}`, async ({
+      page,
+    }) => {
+      const external: string[] = []
+      page.on('request', (request) => {
+        const url = new URL(request.url())
+        if (url.host !== E2E_HOST && url.protocol.startsWith('http')) external.push(request.url())
+      })
+      await mockMeta(page, meta.normal())
+
+      await page.goto(path)
+      await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+
+      expect(external).toEqual([])
     })
-    await mockMeta(page, meta.normal())
-
-    for (const path of ['./', 'sources', 'jobs/job-0001', 'no/such/page']) await page.goto(path)
-
-    expect(external).toEqual([])
-  })
+  }
 
   test('FARC-U-8: 先頭にスラッシュのない相対パスの goto は、baseURL(/admin/)の下に解決される', async ({
     page,
@@ -419,7 +506,7 @@ test.describe('外部通信と相対パス', () => {
 
     await page.goto('sources')
 
-    expect(page.url()).toBe('http://localhost:15173/admin/sources')
+    expect(page.url()).toBe(`${E2E_BASE_URL}sources`)
   })
 
   test('FARC-U-8: スラッシュで始まるパスは、/admin を落として origin 直下に解決される(使わない)', async ({
@@ -429,7 +516,7 @@ test.describe('外部通信と相対パス', () => {
 
     const response = await page.goto('/sources')
 
-    expect(page.url()).toBe('http://localhost:15173/sources')
+    expect(page.url()).toBe(`http://${E2E_HOST}/sources`)
     // dev サーバーは /admin/ の外を配信しない(Vite の base)
     expect(response?.status()).not.toBe(200)
   })
@@ -439,7 +526,119 @@ test.describe('外部通信と相対パス', () => {
   }) => {
     const response = await request.get('src/shared/theme/global.css')
 
-    expect(response.url()).toBe('http://localhost:15173/admin/src/shared/theme/global.css')
+    expect(response.url()).toBe(`${E2E_BASE_URL}src/shared/theme/global.css`)
     expect(response.status()).toBe(200)
+  })
+})
+
+/** `getComputedStyle` の色は `rgb(…)` と `color(srgb …)` の両方がありうる。`rgb(r, g, b)` にそろえる。 */
+function toRgb(value: string): string {
+  const srgb = value.match(/^color\(srgb ([\d.]+) ([\d.]+) ([\d.]+)/)
+  if (srgb === null) return value
+  const [r, g, b] = [srgb[1], srgb[2], srgb[3]].map((channel) => Math.round(Number(channel) * 255))
+  return `rgb(${r}, ${g}, ${b})`
+}
+
+test.describe('スタイル(global.css・scoped CSS の優先関係)', () => {
+  /** 画面にまだない部品(進行バー・スケルトン)の scoped CSS を、ページの CSS から探して、同じ属性を付けた要素で検査する。 */
+  async function animationNameOf(page: Page, className: string): Promise<string> {
+    return page.evaluate((name) => {
+      const css = [...document.styleSheets].flatMap((sheet) =>
+        [...sheet.cssRules].map((rule) => rule.cssText),
+      )
+      const scoped = css.join('\n').match(new RegExp(`\\.${name}\\[(data-v-[a-z0-9]+)\\]`))
+      const element = document.createElement('div')
+      element.className = name
+      if (scoped?.[1] !== undefined) element.setAttribute(scoped[1], '')
+      const parent = document.createElement('div')
+      parent.className = 'top-progress'
+      if (scoped?.[1] !== undefined) parent.setAttribute(scoped[1], '')
+      parent.append(element)
+      document.body.append(parent)
+      return getComputedStyle(element).animationName
+    }, className)
+  }
+
+  test('prefers-reduced-motion: reduce で、進行バーのアニメーションが止まり、静止した帯になる', async ({
+    page,
+  }) => {
+    await mockMeta(page, meta.noDashboards())
+    await page.goto('sources')
+    expect(await animationNameOf(page, 'top-progress__bar')).not.toBe('none')
+
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+
+    expect(await animationNameOf(page, 'top-progress__bar')).toBe('none')
+  })
+
+  test('prefers-reduced-motion: reduce で、スケルトンの光沢が止まる', async ({ page }) => {
+    await mockMeta(page, meta.noDashboards())
+    await page.goto('sources')
+    const shimmer = () =>
+      page.evaluate(() => {
+        const element = document.createElement('span')
+        element.className = 'skeleton-line'
+        document.body.append(element)
+        return getComputedStyle(element).animationName
+      })
+    expect(await shimmer()).not.toBe('none')
+
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+
+    expect(await shimmer()).toBe('none')
+  })
+
+  test('リンクの色(DS 2.1): ナビは本文色、現在地は本文色の太字、パンくずと本文中のリンクは primary', async ({
+    page,
+  }) => {
+    await mockMeta(page, meta.noDashboards())
+    await page.goto('sources/demo-handbook')
+    const color = (locator: ReturnType<Page['locator']>) =>
+      locator.evaluate((element) => getComputedStyle(element).color)
+
+    expect(await color(sideNav(page).getByRole('link', { name: 'ジョブ' }))).toBe('rgb(26, 37, 48)')
+    expect(await color(sideNav(page).getByRole('link', { name: 'データソース' }))).toBe(
+      'rgb(26, 37, 48)',
+    )
+    expect(await color(page.getByRole('navigation', { name: 'パンくず' }).getByRole('link'))).toBe(
+      'rgb(29, 91, 135)',
+    )
+
+    await page.goto('no/such/page')
+    expect(await color(page.getByRole('link', { name: 'ダッシュボードへ戻る' }))).toBe(
+      'rgb(29, 91, 135)',
+    )
+  })
+
+  test('main.ts が vuetify/styles と global.css を読み込んでいる(本文フォント・sr-only・本文色)', async ({
+    page,
+  }) => {
+    await mockMeta(page, meta.noDashboards())
+    await page.goto('sources')
+
+    const styles = await page.evaluate(() => {
+      const app = getComputedStyle(document.querySelector('.v-application') as Element)
+      const hidden = document.createElement('span')
+      hidden.className = 'sr-only'
+      hidden.textContent = 'x'
+      document.body.append(hidden)
+      const rect = hidden.getBoundingClientRect()
+      return {
+        font: app.fontFamily,
+        size: app.fontSize,
+        color: app.color,
+        hiddenWidth: rect.width,
+        titleSize: getComputedStyle(document.querySelector('h1') as Element).fontSize,
+      }
+    })
+
+    // global.css(Vuetify の後): 本文 14px・高強調の不透明度 1(本文色 #1A2530)・sr-only・見出し 20px
+    expect(styles.size).toBe('14px')
+    expect(toRgb(styles.color)).toBe('rgb(26, 37, 48)')
+    expect(styles.hiddenWidth).toBeLessThanOrEqual(1)
+    expect(styles.titleSize).toBe('20px')
+    // システムフォント(Roboto ではない)
+    expect(styles.font).toContain('Hiragino Sans')
+    expect(styles.font).not.toContain('Roboto')
   })
 })

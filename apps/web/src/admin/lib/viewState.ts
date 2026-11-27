@@ -59,6 +59,15 @@ export type ViewStateInput = {
   invalidPathId?: boolean
 }
 
+/** 通常の表示(取得済み・取得中でない・エラーなし)。データ取得を持たない画面(404・スタブ)が使う。 */
+export const READY_VIEW_STATE: ViewState = {
+  kind: 'ready',
+  isRefreshing: false,
+  updatedAt: null,
+  canRetry: false,
+  diagnostic: null,
+}
+
 export function resolveViewState(input: ViewStateInput): ViewState {
   const updatedAt = input.hasData && input.dataUpdatedAt > 0 ? input.dataUpdatedAt : null
   const isRefreshing = input.hasData && input.isFetching

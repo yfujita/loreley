@@ -84,6 +84,48 @@ describe('SideNav(DS 5.1・5.3)', () => {
     ])
   })
 
+  it('親のナビ項目の aria-current は "true"(現在のページそのものではない)。現在のページは "page"', async () => {
+    stub.respondWith(jsonResponse(meta.noDashboards()))
+
+    const detail = await mountNav('/sources/demo-handbook')
+
+    expect(detail.wrapper.find('a[data-testid="nav-sources"]').attributes('aria-current')).toBe(
+      'true',
+    )
+    expect(detail.wrapper.find('a[data-testid="nav-sources"]').classes()).toContain(
+      'side-nav__item--current',
+    )
+  })
+
+  it('featureFlag を持つ route は、フラグが有効にならないかぎり出さない(MVP の /meta にフラグはなく、安全側)', async () => {
+    stub.respondWith(jsonResponse(meta.noDashboards()))
+    const EMPTY = { render: () => null }
+    const flagged = [
+      ...routes,
+      {
+        path: '/beta',
+        name: 'beta' as never,
+        component: EMPTY,
+        meta: {
+          title: 'ベータ',
+          template: 'list' as const,
+          featureFlag: 'beta',
+          nav: { label: 'ベータ機能', icon: 'M0 0', group: 'operate', order: 9 },
+        },
+      },
+    ]
+
+    const { wrapper } = await mountInLayout(SideNav, {
+      props: { navGroups },
+      routes: flagged,
+      initialPath: '/',
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('ベータ機能')
+    expect(wrapper.findAll('ul.side-nav__group a')).toHaveLength(5)
+  })
+
   it('SPA 内の 404 では、どの項目も強調しない', async () => {
     stub.respondWith(jsonResponse(meta.noDashboards()))
     const { wrapper } = await mountNav('/no/such/page')

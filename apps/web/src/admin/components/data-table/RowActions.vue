@@ -2,7 +2,7 @@
 // 表の行の操作(DS 4.3): 主操作 1 つ(tonal ボタン)+その他の操作(`⋮` のメニュー。危険な操作は下段・赤字・区切り線の下)。
 // 操作の表(`ActionSpec[]`)は画面ごとの `*Actions.ts` が返す。実行は `action` イベントで id を渡す(ダイアログを開くのは画面)。
 // 行の主操作ボタンの名前には対象の識別子を含める(視覚的に隠した「(識別子)」。DS 4.3・8)。
-import { computed } from 'vue'
+import { computed, useId } from 'vue'
 
 import type { ActionSpec } from '@/admin/lib/actions'
 import { mdiDotsVertical } from '@/shared/theme/icons'
@@ -20,6 +20,8 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{ action: [id: string] }>()
+
+const reasonId = `${useId()}-reason`
 
 const visibleActions = computed(() => props.actions.filter((action) => action.visible))
 const primary = computed(() => visibleActions.value.find((action) => action.id === props.primaryId))
@@ -47,12 +49,18 @@ const showIconOnly = computed(() => props.iconOnly === true && props.primaryIcon
       :icon="showIconOnly ? primaryIcon : undefined"
       :aria-label="showIconOnly ? `${primary.label}(${target})` : undefined"
       :title="showIconOnly ? primary.label : (primary.disabledReason ?? undefined)"
+      :aria-describedby="primary.disabledReason !== null ? reasonId : undefined"
       @click="emit('action', primary.id)"
     >
       <template v-if="!showIconOnly">
         {{ primary.label }}<span class="sr-only">({{ target }})</span>
       </template>
     </v-btn>
+    <!-- 無効のボタンは pointer-events:none で title が届かず、キーボードにも届かない。理由を、視覚的に隠した文言として結ぶ(DS 4.8・8)。
+         行に理由を出すと表の密度を落とすので、視覚的には出さない -->
+    <span v-if="primary?.disabledReason" :id="reasonId" class="sr-only">{{
+      primary.disabledReason
+    }}</span>
     <v-menu v-if="menuActions.length > 0">
       <template #activator="{ props: menuProps }">
         <v-btn
