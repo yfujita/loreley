@@ -5,10 +5,17 @@ import {
   configureApiClient,
   getClusterOptions,
   getDashboardOptions,
+  getJobOptions,
   getMetaOptions,
+  getSourceOptions,
+  listDocumentsOptions,
+  listJobsOptions,
+  listSourcesOptions,
   registerSourceMutation,
   releaseLockMutation,
   startCrawlMutation,
+  startSourceDeleteMutation,
+  updateSourceMutation,
 } from '@/admin/api'
 
 import {
@@ -161,16 +168,21 @@ describe('書き込みのリクエスト', () => {
   })
 })
 
+/** 取得(または書き込み)を実行し、結果を `{ data }` か `{ error }` にする。 */
+async function outcomeOf(
+  run: () => Promise<unknown>,
+  mock: Parameters<typeof stub.respondWith>[0],
+): Promise<{ data: unknown } | { error: unknown }> {
+  stub.respondWith(mock)
+  return run().then(
+    (data) => ({ data }),
+    (error: unknown) => ({ error }),
+  )
+}
+
 describe('2xx の本文の検査(空・JSON のオブジェクトでないものは invalid_response)', () => {
-  async function failureFor(mock: Parameters<typeof stub.respondWith>[0]) {
-    stub.respondWith(mock)
-    return createTestQueryClient()
-      .fetchQuery(getMetaOptions())
-      .then(
-        (data) => ({ data }),
-        (error: unknown) => ({ error }),
-      )
-  }
+  const failureFor = (mock: Parameters<typeof stub.respondWith>[0]) =>
+    outcomeOf(() => createTestQueryClient().fetchQuery(getMetaOptions()), mock)
 
   it('空の本文の 200 は、`{}` を成功として返さず invalid_response(status 200)', async () => {
     expect(await failureFor(emptyBodyResponse(200))).toEqual({
@@ -317,81 +329,84 @@ describe('タイムアウト付き fetch が返す Response', () => {
   })
 })
 
-describe('2xx の最小限の形(EP ごと。responseShapes.ts)を満たさない応答は invalid_response', () => {
-  async function readFailure(fetchData: () => Promise<unknown>, mock: MockResponse) {
-    stub.respondWith(mock)
-    return fetchData().then(
-      (data) => ({ data }),
-      (error: unknown) => ({ error }),
-    )
+describe('2xx の最小限の形(responseShapes.ts)の interceptor が配線されている', () => {
+  const UPDATE_BODY = {
+    connector_config: {},
+    ttl_days: 30,
+    ratio_threshold_percent: 20,
+    min_delete_count: 10,
   }
+  const REGISTER_BODY = { source_id: 'demo', connector_type: 'file_system', ...UPDATE_BODY }
+  const queryClient = () => createTestQueryClient()
+  const DEMO = { path: { source_id: 'demo' } }
 
-  it('Dashboard が {"status":"ok"} のとき、成功として view model に渡さず invalid_response(status 200)', async () => {
-    expect(
-      await readFailure(
-        () => createTestQueryClient().fetchQuery(getDashboardOptions()),
-        jsonResponse({ status: 'ok' }),
-      ),
-    ).toEqual({
-      error: { kind: 'invalid_response', status: 200 },
-    })
-  })
-
-  it.each([
-    ['indices が配列でない', { ...opensearch.green(), indices: {} }],
-    ['nodes がない', { ...opensearch.green(), nodes: undefined }],
+  // 非空だが誤った形のオブジェクト。表(responseShapes.ts)のあるすべての EP(EP-14 は全項目 nullable で検査する項目がない)が、
+  // 成功として返さず invalid_response(status つき)にすること。項目ごとの網羅は responseShapes.test.ts。
+  const WRONG_SHAPE = { x: 1 }
+  const ENDPOINTS: Array<[name: string, status: number, run: () => Promise<unknown>]> = [
+    ['EP-01 listSources', 200, () => queryClient().fetchQuery(listSourcesOptions())],
+    ['EP-02 getSource', 200, () => queryClient().fetchQuery(getSourceOptions(DEMO))],
     [
-      'shards の要素に node のキーがない(未割り当てと取り違えない)',
-      {
-        ...opensearch.green(),
-        shards: [{ index: 'a', shard: 0, role: 'primary', state: 'started' }],
-      },
+      'EP-03 registerSource',
+      201,
+      () => runMutation(queryClient(), registerSourceMutation(), { body: REGISTER_BODY }),
     ],
     [
-      'cluster の件数が文字列',
-      { ...opensearch.green(), cluster: { ...opensearch.green().cluster, node_count: '1' } },
+      'EP-04 updateSource',
+      200,
+      () => runMutation(queryClient(), updateSourceMutation(), { ...DEMO, body: UPDATE_BODY }),
     ],
-  ])('O1: %s', async (_name, body) => {
-    expect(
-      await readFailure(
-        () => createTestQueryClient().fetchQuery(getClusterOptions()),
-        jsonResponse(body),
-      ),
-    ).toEqual({
-      error: { kind: 'invalid_response', status: 200 },
-    })
-  })
+    [
+      'EP-05 startSourceDelete',
+      202,
+      () => runMutation(queryClient(), startSourceDeleteMutation(), DEMO),
+    ],
+    [
+      'EP-06 startCrawl',
+      202,
+      () =>
+        runMutation(queryClient(), startCrawlMutation(), {
+          ...DEMO,
+          body: { force_delete: false, rewrite_mode: false },
+        }),
+    ],
+    [
+      'EP-07 cancelJob',
+      200,
+      () => runMutation(queryClient(), cancelJobMutation(), { path: { job_id: 'job-1' } }),
+    ],
+    ['EP-08 releaseLock', 200, () => runMutation(queryClient(), releaseLockMutation(), DEMO)],
+    ['EP-09 listJobs', 200, () => queryClient().fetchQuery(listJobsOptions())],
+    [
+      'EP-10 getJob',
+      200,
+      () => queryClient().fetchQuery(getJobOptions({ path: { job_id: 'job-1' } })),
+    ],
+    [
+      'EP-11 listDocuments',
+      200,
+      () => queryClient().fetchQuery(listDocumentsOptions({ ...DEMO, query: { tab: 'skipped' } })),
+    ],
+    ['EP-12 getCluster', 200, () => queryClient().fetchQuery(getClusterOptions())],
+    ['EP-13 getDashboard', 200, () => queryClient().fetchQuery(getDashboardOptions())],
+  ]
+
+  it.each(ENDPOINTS)(
+    '%s: 非空で誤った形の 2xx は成功にしない(invalid_response・status つき)',
+    async (_name, status, run) => {
+      expect(await outcomeOf(run, jsonResponse(WRONG_SHAPE, status))).toEqual({
+        error: { kind: 'invalid_response', status },
+      })
+    },
+  )
 
   it('形の合った応答は、そのまま成功として返す(フィクスチャの正常な応答)', async () => {
     expect(
-      await readFailure(
-        () => createTestQueryClient().fetchQuery(getClusterOptions()),
+      await outcomeOf(
+        () => queryClient().fetchQuery(getClusterOptions()),
         jsonResponse(opensearch.green()),
       ),
-    ).toEqual({
-      data: opensearch.green(),
-    })
-  })
-
-  it('書き込みの受付(202)で job_id がないとき、成功にせず invalid_response(status 202)', async () => {
-    stub.respondWith(jsonResponse({ status: 'queued' }, 202))
-
-    const error = await runMutation(createTestQueryClient(), startCrawlMutation(), {
-      path: { source_id: 'demo' },
-      body: { force_delete: false, rewrite_mode: false },
-    }).catch((caught: unknown) => caught)
-
-    expect(error).toEqual({ kind: 'invalid_response', status: 202 })
-  })
-
-  it('ロック解放(200)で released がないとき、成功にしない', async () => {
-    stub.respondWith(jsonResponse({ source_id: 'demo' }))
-
-    const error = await runMutation(createTestQueryClient(), releaseLockMutation(), {
-      path: { source_id: 'demo' },
-    }).catch((caught: unknown) => caught)
-
-    expect(error).toEqual({ kind: 'invalid_response', status: 200 })
+    ).toEqual({ data: opensearch.green() })
   })
 })
 

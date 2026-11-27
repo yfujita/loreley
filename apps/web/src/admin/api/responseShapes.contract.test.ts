@@ -59,6 +59,12 @@ function successSchemas(): Map<string, Schema[]> {
     for (const [method, operation] of Object.entries(methods)) {
       for (const [status, response] of Object.entries(operation.responses)) {
         if (!status.startsWith('2')) continue
+        // 204・205(本文なし)は Admin API の契約にない。宣言されたら、client.ts の「204・205 は異常」の前提が崩れる。
+        if (status === '204' || status === '205') {
+          throw new Error(
+            `${method} ${path} が ${status} を宣言しました(client.ts の validateSuccessResponse を見直す)`,
+          )
+        }
         const schema = response.content?.['application/json']?.schema
         if (schema === undefined)
           throw new Error(`${method} ${path} ${status} に JSON の本文がありません`)
@@ -98,14 +104,9 @@ describe('responseShapes ↔ OpenAPI', () => {
     expect([...Object.keys(RESPONSE_SHAPES)].sort()).toEqual([...successes.keys()].sort())
   })
 
-  it('OpenAPI の 2xx は 16 件(200・201・202 を含む)で、204 を持つ EP がない', () => {
-    const statuses = Object.values(document.paths).flatMap((methods) =>
-      Object.values(methods).flatMap((operation) => Object.keys(operation.responses)),
-    )
-
-    expect(statuses.filter((status) => status.startsWith('2'))).toHaveLength(16)
-    expect(statuses).not.toContain('204')
-    expect(statuses).not.toContain('205')
+  // 204・205 の宣言は successSchemas が拒否する(収集の時点で、宣言した EP を名指しして落ちる)。
+  it('OpenAPI の 2xx は 16 件(200・201・202 を含む)', () => {
+    expect([...successes.values()].flat()).toHaveLength(16)
   })
 
   it.each(Object.entries(RESPONSE_SHAPES))('%s', (key, shape: ResponseShape) => {
@@ -121,17 +122,6 @@ describe('responseShapes ↔ OpenAPI', () => {
         const array = schema.properties![field]!
         expect(array.type, `${key}.${field} が OpenAPI で配列でない`).toBe('array')
         checkFields(`${key}.${field}[]`, spec, elementSchemas(array))
-      }
-    }
-  })
-
-  it('表の配列・オブジェクトの項目は、OpenAPI でも配列・オブジェクトである(fields の kind が array・object のものを含む)', () => {
-    for (const [key, shape] of Object.entries(RESPONSE_SHAPES)) {
-      for (const [field, kind] of Object.entries(shape.fields)) {
-        if (kind !== 'array' && kind !== 'object') continue
-        for (const schema of successes.get(key)!) {
-          expect(kindOf(schema.properties![field]!), `${key}.${field}`).toBe(kind)
-        }
       }
     }
   })

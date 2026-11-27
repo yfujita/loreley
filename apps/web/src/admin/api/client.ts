@@ -121,6 +121,7 @@ export async function validateSuccessResponse(
   options: { url?: string },
 ): Promise<Response> {
   if (!response.ok) return response
+  // 205 は SDK の空本文の検査(validateResponseBody)でも拒否されるが、204 と同じ扱いにそろえる明示的な防御として残す。
   if (response.status === 204 || response.status === 205) {
     throw new ResponseShapeError(`unexpected ${response.status} (no content)`)
   }

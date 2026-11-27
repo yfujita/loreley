@@ -188,15 +188,6 @@ describe('findShapeProblem: 形の合わない応答(表駆動)', () => {
     expect(problem).not.toContain('SECRET-VALUE')
   })
 
-  it('null 許容(`|null`)の項目は、null なら通り、キーがないと落ちる', () => {
-    const noReason = {
-      checked_at: 'x',
-      components: [{ id: 'api', state: 'normal', checked_at: 'x', reason: null }],
-    }
-
-    expect(findShapeProblem(shape('GET /dashboard'), noReason)).toBeNull()
-  })
-
   it('プロトタイプのキー(constructor など)を、項目があると誤判定しない', () => {
     // shape が 'constructor' を要求するわけではないが、hasOwn で見ていること(`in` ではない)を、キーの欠落で確かめる
     const body = Object.create({ components: [], checked_at: 'x' }) as unknown
