@@ -1,9 +1,11 @@
 import { VueQueryPlugin, QueryClient } from '@tanstack/vue-query'
 import { mount, type VueWrapper } from '@vue/test-utils'
+import { afterEach } from 'vitest'
 import { createMemoryHistory, createRouter, type RouteRecordRaw, type Router } from 'vue-router'
-import { createVuetify } from 'vuetify'
 import { VLayout } from 'vuetify/components'
 import { defineComponent, h, type Component } from 'vue'
+
+import { setupVuetify } from '@/admin/app/setupVuetify'
 
 type MountOptions = {
   props?: Record<string, unknown>
@@ -24,9 +26,16 @@ type MountResult = {
 
 const EMPTY_PAGE: Component = { render: () => null }
 
+// テストが作った QueryClient は、テスト後に必ず空にする(キャッシュ・タイマーを次のテストへ持ち越さない)。
+const createdQueryClients: QueryClient[] = []
+afterEach(() => {
+  for (const client of createdQueryClients.splice(0)) client.clear()
+})
+
 /**
  * 対象のコンポーネントを、本番に近い土台(Vuetify・VLayout・Router・QueryClient)で包んでマウントする。
- * - QueryClient はテストごとに新しく作り、再試行しない(`retry: false`)
+ * - Vuetify は本番の `setupVuetify()`(テーマ・`defaults`・`mobileBreakpoint: 'md'`・アイコン・ロケール)
+ * - QueryClient はテストごとに新しく作り、再試行しない(`retry: false`)。テスト後に `clear()` する
  * - Router はメモリ履歴。`routes` を省くと、すべてのパスが空のページに解決される
  * - VDialog などは body にテレポートするので、`attachTo: document.body` でマウントする
  */
@@ -38,6 +47,7 @@ export async function mountInLayout(
 
   const queryClient =
     options.queryClient ?? new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  createdQueryClients.push(queryClient)
   const router = createRouter({
     history: createMemoryHistory(),
     routes: routes ?? [{ path: '/:pathMatch(.*)*', component: EMPTY_PAGE }],
@@ -52,11 +62,7 @@ export async function mountInLayout(
   const wrapper = mount(root, {
     attachTo: document.body,
     global: {
-      plugins: [
-        createVuetify({ display: { mobileBreakpoint: 'md' } }),
-        router,
-        [VueQueryPlugin, { queryClient }],
-      ],
+      plugins: [setupVuetify(), router, [VueQueryPlugin, { queryClient }]],
     },
   })
 

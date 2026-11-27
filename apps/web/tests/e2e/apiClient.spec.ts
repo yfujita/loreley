@@ -11,11 +11,12 @@ import {
   networkErrorResponse,
   nginxHtmlResponse,
 } from '../support/apiErrors'
+import { gotoBlankPage } from '../support/blankPage'
 import { expect, test } from '../support/e2eTest'
 import { dashboard } from '../support/fixtures/dashboard'
 import { meta } from '../support/fixtures/meta'
 import { mockApi } from '../support/mockApi'
-import { evaluateInBrowser, waitForViteReady } from '../support/viteReady'
+import { evaluateInBrowser } from '../support/browser'
 
 /** `configureApiClient()` を呼んだ公開口(`api`)と、アプリの QueryClient(`queryClient`)を使える状態で `body` を実行する。 */
 async function inBrowser<T>(page: Page, body: string): Promise<T> {
@@ -32,11 +33,9 @@ async function inBrowser<T>(page: Page, body: string): Promise<T> {
   )
 }
 
-// dev サーバーは globalSetup で温めてある(依存の最適化・再読み込みは済んでいる)。念のため、各テストでも
-// モジュールが読み込める状態であることを確かめる(落ち着かないときは、原因が分かるメッセージで失敗する)。
+// アプリを起動しない空のページ(同一オリジン)で、dev サーバーが配信するモジュールを読み込む。
 test.beforeEach(async ({ page }) => {
-  await page.goto('./')
-  await waitForViteReady(page)
+  await gotoBlankPage(page)
 })
 
 test('相対 baseUrl(/api/admin/v1)の Request が、実ブラウザでは解決される(jsdom では解決されない)', async ({

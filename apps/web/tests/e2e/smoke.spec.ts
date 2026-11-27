@@ -1,18 +1,28 @@
-// 基盤の起動確認と、未モックの /api/ 検出の確認。画面の E2E はフェーズ 3 以降で書く。
+// 基盤の起動確認と、未モックの /api/ 検出の確認。シェル・ルーティングの E2E は shell.spec.ts。
 import { expect as baseExpect, test as baseTest } from '@playwright/test'
 
+import { jsonResponse } from '../support/apiErrors'
+import { gotoBlankPage } from '../support/blankPage'
 import { expect, test } from '../support/e2eTest'
+import { meta } from '../support/fixtures/meta'
+import { mockApi } from '../support/mockApi'
 import { guardUnmockedApi } from '../support/unmockedApi'
 
-test('dev サーバーが /admin/ を配信し、SPA が描画される', async ({ page }) => {
+test('dev サーバーが /admin/ を配信し、SPA(シェルとダッシュボードの見出し)が描画される', async ({
+  page,
+}) => {
+  // シェルは GET /meta(EP-14)を取る。未モックの /api/ は失敗になるので、モックする。
+  await mockApi(page, { 'GET /meta': jsonResponse(meta.noDashboards()) })
+
   await page.goto('./')
 
-  await expect(page).toHaveTitle('Loreley Admin')
-  await expect(page.getByText('Admin View(準備中)')).toBeVisible()
+  await expect(page).toHaveTitle('ダッシュボード - Loreley 管理')
+  await expect(page.getByRole('navigation', { name: 'メインメニュー' })).toBeVisible()
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('ダッシュボード')
 })
 
 test('ブラウザのタイムゾーンは Asia/Tokyo(UTC の 0 時が JST の 9 時)', async ({ page }) => {
-  await page.goto('./')
+  await gotoBlankPage(page)
 
   const hours = await page.evaluate(() => new Date('2026-01-01T00:00:00Z').getHours())
 

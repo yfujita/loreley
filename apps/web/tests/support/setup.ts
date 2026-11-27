@@ -3,6 +3,7 @@ import { enableAutoUnmount } from '@vue/test-utils'
 import { afterEach } from 'vitest'
 
 import { configureApiClient } from '@/admin/api'
+import { useSnackbar } from '@/shared/ui/useSnackbar'
 // 生成クライアントの `client` は公開口に出さない設計(F 3.3。SDK 関数・client は Query・mutation 経由だけ)。
 // テストの setup だけが、下の baseUrl の差し替えのために直接 import する(R2 の例外)。
 // eslint-disable-next-line no-restricted-imports -- テスト基盤の例外。公開口に client を足さない
@@ -46,3 +47,6 @@ if (typeof window !== 'undefined') {
 
 // VDialog などは body にテレポートするので、テストごとに必ず外す。
 enableAutoUnmount(afterEach)
+
+// スナックバーの状態はモジュール内の `ref`(アプリで 1 つ)。テストの間に通知を持ち越さない。
+afterEach(() => useSnackbar().close())

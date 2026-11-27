@@ -1,14 +1,25 @@
-// vite-plugin-vuetify はコンポーネント単位の CSS しか入れないため、
-// リセット CSS・タイポグラフィ・ユーティリティはここで読み込む(必須)。
+// アプリの入口(E 4.1・F 2.4)。起動の順序はここで決める。
+// 0. `configureApiClient()`: API クライアントの設定。1〜4 より前に 1 回だけ呼ぶ(冪等。interceptor は二重に登録されない)
+// 1. Vuetify(`setupVuetify`)。`vuetify/styles` は必須: vite-plugin-vuetify はコンポーネント単位の CSS しか入れないため、
+//    リセット CSS・タイポグラフィ・ユーティリティはここで読み込む。続けて、アプリ共通の CSS(Vuetify の後)
+// 2. Router(`setupRouter`)
+// 3. Vue Query(`setupQuery`)
+// 4. マウント
 import 'vuetify/styles'
+import '@/shared/theme/global.css'
 
 import { createApp } from 'vue'
-/* eslint-disable no-restricted-imports --
-  フェーズ 3 で main.ts を作り直す(E 4.1)までの暫定。スキャフォールドのままでは R13(createVuetify は setupVuetify.ts だけ)と、設計 2.4(main.ts は admin/app だけを import する)に反する。 */
-import { createVuetify } from 'vuetify'
 
+import { configureApiClient } from '@/admin/api'
 import App from '@/admin/app/App.vue'
-import { router } from '@/admin/router'
-/* eslint-enable no-restricted-imports */
+import { setupQuery } from '@/admin/app/setupQuery'
+import { setupRouter } from '@/admin/app/setupRouter'
+import { setupVuetify } from '@/admin/app/setupVuetify'
 
-createApp(App).use(createVuetify()).use(router).mount('#app')
+configureApiClient()
+
+const app = createApp(App)
+app.use(setupVuetify())
+setupRouter(app)
+setupQuery(app)
+app.mount('#app')

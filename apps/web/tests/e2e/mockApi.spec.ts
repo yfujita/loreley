@@ -1,5 +1,5 @@
 // mockApi の動作確認(Playwright の route 経由で、実際のブラウザの fetch に応答できること)。
-// 画面の E2E はフェーズ 3 以降。ここは、モックの宣言・応答の列・通信断・未モックの扱いという、テスト基盤の確認。
+// 画面の E2E は各画面のフェーズ。ここは、モックの宣言・応答の列・通信断・未モックの扱いという、テスト基盤の確認。
 import {
   apiErrorResponse,
   jsonResponse,
@@ -10,6 +10,7 @@ import { expect, test } from '../support/e2eTest'
 import { dashboard } from '../support/fixtures/dashboard'
 import { meta } from '../support/fixtures/meta'
 import { mockApi } from '../support/mockApi'
+import { gotoBlankPage } from '../support/blankPage'
 import { guardUnmockedApi } from '../support/unmockedApi'
 import { test as baseTest, expect as baseExpect } from '@playwright/test'
 
@@ -48,7 +49,7 @@ async function fetchInPage(
 
 test.describe('mockApi', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('./')
+    await gotoBlankPage(page)
   })
 
   test('固定の応答を返し、生成型で型付けしたフィクスチャの JSON が届く', async ({ page }) => {
@@ -157,7 +158,7 @@ test.describe('未モックの /api/ の扱い', () => {
   baseTest(
     '表にない /api/admin/v1/ の要求は、捕捉に落ちて失敗として報告される',
     async ({ page }) => {
-      await page.goto('./')
+      await gotoBlankPage(page)
       const guard = await guardUnmockedApi(page)
       await mockApi(page, { 'GET /meta': jsonResponse(meta.normal()) })
 
