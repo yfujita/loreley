@@ -35,9 +35,10 @@ describe('実際に送られる URL(エンコード)', () => {
     ['a/b', `${API}/jobs/a%2Fb`],
     ['日本語', `${API}/jobs/%E6%97%A5%E6%9C%AC%E8%AA%9E`],
     ['a b', `${API}/jobs/a%20b`],
+    ['a😀b', `${API}/jobs/a%F0%9F%98%80b`],
     ['%2e%2e', `${API}/jobs/%252e%252e`],
   ])('job_id=%j → %s', async (jobId, expectedPath) => {
-    stub.respondWith(jsonResponse({}))
+    stub.respondWith(jsonResponse({ ok: true }))
 
     await getJob(jobId)
 
@@ -47,7 +48,7 @@ describe('実際に送られる URL(エンコード)', () => {
   it.each(['a.b', '..a', 'a..', 'my.source', '...'])(
     '`.` を含むだけの値 %j は拒否されず、そのままのパスで送られる',
     async (jobId) => {
-      stub.respondWith(jsonResponse({}))
+      stub.respondWith(jsonResponse({ ok: true }))
 
       await getJob(jobId)
 
@@ -56,7 +57,7 @@ describe('実際に送られる URL(エンコード)', () => {
   )
 
   it('source_id も同じ(S2 の取得)', async () => {
-    stub.respondWith(jsonResponse({}))
+    stub.respondWith(jsonResponse({ ok: true }))
 
     await createTestQueryClient().fetchQuery(
       getSourceOptions({ path: { source_id: 'my.source/x' } }),
@@ -66,7 +67,7 @@ describe('実際に送られる URL(エンコード)', () => {
   })
 
   it('X1 の取得(パスの source_id とクエリ)', async () => {
-    stub.respondWith(jsonResponse({}))
+    stub.respondWith(jsonResponse({ ok: true }))
 
     await createTestQueryClient().fetchQuery(
       listDocumentsOptions({ path: { source_id: 'a b' }, query: { tab: 'skipped' } }),
@@ -92,11 +93,12 @@ describe('不正なパス値は送信せずに拒否する(合成の 400 invalid
     ['空文字(送ると `/jobs/` に化ける)', ''],
     ['制御文字を含む値', 'a\u0001b'],
     ['改行を含む値', 'a\nb'],
+    ['孤児サロゲート(SDK のエンコードが URIError になる)', 'a\ud800b'],
     ['undefined(プレースホルダが残る)', undefined],
     ['null', null],
     ['数値', 1],
   ])('job_id が %s', async (_name, jobId) => {
-    stub.respondWith(jsonResponse({}))
+    stub.respondWith(jsonResponse({ ok: true }))
 
     const error = await getJob(jobId)
 

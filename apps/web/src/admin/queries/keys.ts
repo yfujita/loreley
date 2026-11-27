@@ -3,8 +3,7 @@
 // Hey API 0.x の key の形の変更に引きずられない。
 //
 // `params`(条件)は、URL から正規化した型付きの条件。JSON にできる値だけで作る(key の同一性は JSON で決まる)。
-import type { DocumentsQuery } from '@/admin/queries/documents'
-import type { JobsQuery } from '@/admin/queries/jobs'
+import type { DocumentsQuery, JobsQuery } from '@/admin/queries/params'
 
 export const keys = {
   meta: () => ['meta'] as const,

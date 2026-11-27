@@ -107,6 +107,39 @@ describe('lockStateView(E 5.10 の写像)', () => {
     expect(lockStateView(null, false)).toMatchObject({ kind: 'unknown', actions: ['reload'] })
   })
 
+  describe('生成型を信用しない(実行時の値が型と食い違っても落とさない。E 5.3)', () => {
+    it('未知の lock.state は「確認できません」(unknown)。解放は出さない', () => {
+      const view = lockStateView({ state: 'brand_new' as LockState, job: null }, false)
+
+      expect(view).toEqual({ kind: 'unknown', tag: null, warning: false, actions: ['reload'] })
+    })
+
+    it('プロトタイプのキー(constructor)の lock.state も unknown', () => {
+      expect(lockStateView({ state: 'constructor' as LockState, job: null }, false).kind).toBe(
+        'unknown',
+      )
+    })
+
+    it('lock が undefined(欠落)のときも、null と同じ(取得失敗なら unavailable、そうでなければ unknown)', () => {
+      expect(lockStateView(undefined, true).kind).toBe('unavailable')
+      expect(lockStateView(undefined, false).kind).toBe('unknown')
+    })
+
+    it('lock.job が undefined(欠落)でも落とさない', () => {
+      const lockWithoutJob = { state: 'lease_expired' } as unknown as Parameters<
+        typeof lockStateView
+      >[0]
+
+      expect(lockStateView(lockWithoutJob, false).actions).toEqual(['release-lock'])
+      expect(
+        lockStateView(
+          { state: 'held_crawl' } as unknown as Parameters<typeof lockStateView>[0],
+          false,
+        ).actions,
+      ).toEqual([])
+    })
+  })
+
   it('7 値すべてに、解放を出す状態は lease_expired と orphan だけ', () => {
     const withRelease = ALL_STATES.filter((state) =>
       lockStateView(lock(state), false).actions.includes('release-lock'),

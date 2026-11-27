@@ -63,10 +63,10 @@ function withoutShowJobUnlessLinkable(
  * @param lockUnavailable 最上位の `unavailable` に `lock` のキーがあるか(取得失敗。「取得できません」)
  */
 export function lockStateView(
-  lock: Pick<Lock, 'state' | 'job'> | null,
+  lock: Pick<Lock, 'state' | 'job'> | null | undefined,
   lockUnavailable: boolean,
 ): LockStateView {
-  if (lock === null) {
+  if (lock === null || lock === undefined) {
     return {
       kind: lockUnavailable ? 'unavailable' : 'unknown',
       tag: null,
@@ -84,9 +84,12 @@ export function lockStateView(
       warning: false,
       actions: ['show-job'],
     }
-    return withoutShowJobUnlessLinkable(view, lock.job)
+    return withoutShowJobUnlessLinkable(view, lock.job ?? null)
   }
 
-  const view = VIEW_BY_STATE[lock.state]
-  return withoutShowJobUnlessLinkable(view, lock.job)
+  // 生成型は 7 値の union だが、実行時の値は信用しない。未知の値は「確認できません」にする(E 5.3・5.10)。
+  const view = Object.hasOwn(VIEW_BY_STATE, lock.state)
+    ? VIEW_BY_STATE[lock.state]
+    : VIEW_BY_STATE.unknown
+  return withoutShowJobUnlessLinkable(view, lock.job ?? null)
 }

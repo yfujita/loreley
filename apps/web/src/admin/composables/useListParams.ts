@@ -4,13 +4,13 @@
 // `VDataTableServer` の表示はすべて `params` から導く。ローカルに複製しない。
 // 画面ごとの条件の定義(URL のキー・API のキー・既定値・正規化)は `features/*/*Params.ts` が持ち、ここに渡す。
 import { computed, watch, type ComputedRef } from 'vue'
-import { useRoute, useRouter, type LocationQuery, type LocationQueryRaw } from 'vue-router'
+import { useRoute, useRouter, type LocationQuery } from 'vue-router'
 
 export type ListParamsDefinition<TParams extends object> = {
   /** route の query から条件を作る。不正値(範囲外の `page`、未知の `sort`・`tab`・`size`)は既定値にする(正規化) */
   parse: (query: LocationQuery) => TParams
   /** 条件を URL のクエリにする。既定値は省略する */
-  serialize: (params: TParams) => LocationQueryRaw
+  serialize: (params: TParams) => Record<string, string>
   /**
    * 条件の変更を履歴に積むか。ページ・件数・並べ替え・絞り込み・タブの変更は `push`(戻る・再読み込み・共有で再現)、
    * O1 の `q`・`state` は `replace`(opensearch 3.5)。正規化は常に `replace`。
@@ -23,7 +23,9 @@ export type ListParamsDefinition<TParams extends object> = {
 }
 
 /** query の値が文字列 1 つのキーだけを取り出して比べる(配列・null は不一致)。 */
-function toComparableQuery(query: LocationQuery | LocationQueryRaw): Record<string, string> | null {
+function toComparableQuery(
+  query: LocationQuery | Record<string, string>,
+): Record<string, string> | null {
   const result: Record<string, string> = {}
   for (const [key, value] of Object.entries(query)) {
     if (value === undefined) continue
@@ -33,7 +35,7 @@ function toComparableQuery(query: LocationQuery | LocationQueryRaw): Record<stri
   return result
 }
 
-function isSameQuery(current: LocationQuery, normalized: LocationQueryRaw): boolean {
+function isSameQuery(current: LocationQuery, normalized: Record<string, string>): boolean {
   const left = toComparableQuery(current)
   const right = toComparableQuery(normalized)
   if (left === null || right === null) return false

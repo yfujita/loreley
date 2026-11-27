@@ -21,15 +21,35 @@ describe('値があるはずの項目の表(FMOD-U-13)', () => {
     }
   })
 
-  it('registration: 件数・partial・phase', () => {
-    expect(EXPECTED_FIELDS.registration).toContain('created_count')
-    expect(EXPECTED_FIELDS.registration).toContain('partial')
-    expect(EXPECTED_FIELDS.registration).toContain('phase')
-    expect(EXPECTED_FIELDS.registration).toHaveLength(10)
+  it('registration: 件数 8 つ・partial・phase(全体を固定)', () => {
+    expect(EXPECTED_FIELDS.registration).toEqual([
+      'created_count',
+      'enumerated_count',
+      'error_count',
+      'invalid_id_count',
+      'oversize_count',
+      'skipped_count',
+      'unchanged_count',
+      'updated_count',
+      'partial',
+      'phase',
+    ])
   })
 
   it('EP-01 の行: status だけ(connector_type・last_completed_at は S1 で使わない)', () => {
     expect(EXPECTED_FIELDS.sourceListRow).toEqual(['status'])
+  })
+
+  it('EP-02 の設定項目(全体を固定)', () => {
+    expect(EXPECTED_FIELDS.sourceDetail).toEqual([
+      'connector_type',
+      'connector_config',
+      'status',
+      'ttl_seconds',
+      'min_delete_count',
+      'ratio_threshold_percent',
+      'updated_at',
+    ])
   })
 
   it('EP-02 の設定項目: ttl_days(割り切れない null)・schedule_cron(手動のみの null)は含めない', () => {

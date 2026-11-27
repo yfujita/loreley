@@ -16,6 +16,7 @@ describe('isValidPathId', () => {
     ['`/` を含む値(API が 404 にする)', 'a/b'],
     ['空白を含む値', 'a b'],
     ['日本語', '日本語'],
+    ['対になったサロゲート(絵文字)', 'a😀b'],
     ['エンコード済みのドット(二重にエンコードされる)', '%2e%2e'],
   ])('許可する: %s', (_name, value) => {
     expect(isValidPathId(value)).toBe(true)
@@ -30,6 +31,8 @@ describe('isValidPathId', () => {
     ['改行', 'a\nb'],
     ['タブ', '\tabc'],
     ['DEL(U+007F)', 'abc\u007f'],
+    ['孤児サロゲート(上位だけ。encodeURIComponent が URIError を投げる)', 'a\ud800b'],
+    ['孤児サロゲート(下位だけ)', '\udc00'],
     ['undefined', undefined],
     ['null', null],
     ['数値', 123],

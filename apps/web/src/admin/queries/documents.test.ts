@@ -7,7 +7,8 @@ import { runComposable } from '../../../tests/support/composableTesting'
 import { useFetchStub } from '../../../tests/support/fetchStub'
 import { documents } from '../../../tests/support/fixtures/documents'
 import { createTestQueryClient } from '../../../tests/support/queryTesting'
-import { useDocumentsQuery, type DocumentsQuery } from './documents'
+import { useDocumentsQuery } from './documents'
+import type { DocumentsQuery } from './params'
 import { keys } from './keys'
 
 const stub = useFetchStub()
@@ -70,6 +71,10 @@ describe('useDocumentsQuery(EP-11。X1)', () => {
     expect(result.isPending.value).toBe(true)
     expect(result.isLoading.value).toBe(false)
     expect(result.fetchStatus.value).toBe('idle')
+    // 取得しなかった(request interceptor に任せて通ったのではない): 待機中のまま、エラーも取得中もない
+    expect(result.status.value).toBe('pending')
+    expect(result.error.value).toBeNull()
+    expect(result.isLoading.value).toBe(false)
   })
 
   it('FARC-U-26 (4): 取得中は isLoading が true', async () => {
@@ -88,6 +93,10 @@ describe('useDocumentsQuery(EP-11。X1)', () => {
 
     expect(stub.requests).toEqual([])
     expect(result.fetchStatus.value).toBe('idle')
+    // 取得しなかった(request interceptor に任せて通ったのではない): 待機中のまま、エラーも取得中もない
+    expect(result.status.value).toBe('pending')
+    expect(result.error.value).toBeNull()
+    expect(result.isLoading.value).toBe(false)
   })
 
   it('source が未選択から選択に変わったら取得を始める', async () => {

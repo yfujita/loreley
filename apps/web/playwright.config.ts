@@ -8,6 +8,8 @@ const E2E_BASE_URL = `http://localhost:${E2E_PORT}/admin/`
 
 export default defineConfig({
   testDir: 'tests/e2e',
+  // dev サーバーを、テストの前に温める(負荷の高い環境で、最初のテストが時間切れにならないように)。webServer の起動後に実行される。
+  globalSetup: './tests/e2e/globalSetup.ts',
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   use: {

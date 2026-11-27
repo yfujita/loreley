@@ -1,12 +1,7 @@
-// 単位変換・丸め(E 7.3・7.7・F 3.5)。変換は Admin API が行うので、画面は入力単位のまま送る。
-// ここは、表示のための日 ↔ 秒と、しきい値の桁判定・丸め。
+// 単位変換・丸め(E 7.3・7.7・F 3.5)。変換は Admin API が行うので、画面は入力単位のまま送る(日 → 秒の変換は持たない)。
+// ここは、S4 の表示のための秒 → 日と、しきい値の桁判定・丸め。
 
 export const SECONDS_PER_DAY = 86_400
-
-/** 日 → 秒(表示・テスト用。リクエストは入力単位のまま送る)。 */
-export function daysToSeconds(days: number): number {
-  return days * SECONDS_PER_DAY
-}
 
 /** 秒 → 日。日で割り切れるときだけ整数、それ以外は null(S4 が「N 秒」表示に切り替える)。 */
 export function secondsToDays(seconds: number): number | null {

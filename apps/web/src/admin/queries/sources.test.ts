@@ -1,5 +1,5 @@
 import { flushPromises } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 
 import { apiErrorResponse, jsonResponse } from '../../../tests/support/apiErrors'
@@ -49,6 +49,10 @@ describe('useSourceDetailQuery(EP-02。S2)', () => {
 
       expect(stub.requests).toEqual([])
       expect(result.fetchStatus.value).toBe('idle')
+      // 取得しなかった(request interceptor に任せて通ったのではない): 待機中のまま、エラーも取得中もない
+      expect(result.status.value).toBe('pending')
+      expect(result.error.value).toBeNull()
+      expect(result.isLoading.value).toBe(false)
       expect(result.data.value).toBeUndefined()
     },
   )
@@ -117,8 +121,9 @@ describe('useSourceEditQuery(EP-02。S4。FARC-P-12)', () => {
     await flushPromises()
 
     first.wrapper.unmount()
-    await new Promise((resolve) => setTimeout(resolve, 20))
-    expect(queryClient.getQueryState(keys.sources.edit('demo'))).toBeUndefined()
+    await vi.waitFor(() =>
+      expect(queryClient.getQueryState(keys.sources.edit('demo'))).toBeUndefined(),
+    )
 
     await runComposable(() => useSourceEditQuery('demo'), { queryClient })
     await flushPromises()
@@ -144,5 +149,9 @@ describe('useSourceEditQuery(EP-02。S4。FARC-P-12)', () => {
 
     expect(stub.requests).toEqual([])
     expect(result.fetchStatus.value).toBe('idle')
+    // 取得しなかった(request interceptor に任せて通ったのではない): 待機中のまま、エラーも取得中もない
+    expect(result.status.value).toBe('pending')
+    expect(result.error.value).toBeNull()
+    expect(result.isLoading.value).toBe(false)
   })
 })

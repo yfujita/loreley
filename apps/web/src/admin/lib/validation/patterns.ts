@@ -2,6 +2,7 @@
 // 画面側の規則は Connector の規則の**複製**で、ずれたときの安全網がサーバーの `config_invalid`(E 7.1)。
 // 文言は画面仕様 2.3.2 の「画面のメッセージと Crawler の固定文の対応」の表。
 import { formatCount } from '@/shared/lib/number'
+import { hasLoneSurrogate } from '@/shared/api/unicode'
 
 import {
   MAX_PATTERNS,
@@ -34,25 +35,6 @@ const textEncoder = new TextEncoder()
 /** UTF-8 のバイト数。 */
 export function utf8ByteLength(value: string): number {
   return textEncoder.encode(value).length
-}
-
-/** 対になっていないサロゲート(孤児サロゲート)を含むか。 */
-function hasLoneSurrogate(value: string): boolean {
-  for (let index = 0; index < value.length; index += 1) {
-    const code = value.charCodeAt(index)
-    const isHigh = code >= 0xd800 && code <= 0xdbff
-    const isLow = code >= 0xdc00 && code <= 0xdfff
-    if (isHigh) {
-      const next = value.charCodeAt(index + 1)
-      if (next >= 0xdc00 && next <= 0xdfff) {
-        index += 1
-        continue
-      }
-      return true
-    }
-    if (isLow) return true
-  }
-  return false
 }
 
 /** 取得元のパス(`root`)の検証。エラー文を返す(問題がなければ null)。 */

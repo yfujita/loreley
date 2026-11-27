@@ -41,5 +41,7 @@ export default defineConfig({
     // vite-plugin-vuetify は、仮想モジュールの中身を resolveId の時にメモリへ置き load で返すため、
     // キャッシュ済みの変換結果では resolveId が呼ばれず、中身が空になる(Vitest 5・vite-plugin-vuetify 2.1.3 で確認)。
     fsModuleCache: false,
+    // vi.stubGlobal(fetchStub など)を、テストごとに元へ戻す。後始末の漏れでテスト間に fetch の差し替えが残らないように。
+    unstubGlobals: true,
   },
 })

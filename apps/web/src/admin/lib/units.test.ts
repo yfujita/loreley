@@ -1,17 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import {
-  daysToSeconds,
-  hasMoreThanTwoDecimals,
-  roundToTwoDecimals,
-  secondsToDays,
-  SECONDS_PER_DAY,
-} from './units'
+import { hasMoreThanTwoDecimals, roundToTwoDecimals, secondsToDays, SECONDS_PER_DAY } from './units'
 
 describe('日 ↔ 秒', () => {
   it('1 日 = 86,400 秒', () => {
     expect(SECONDS_PER_DAY).toBe(86_400)
-    expect(daysToSeconds(30)).toBe(2_592_000)
   })
 
   it('日で割り切れるときだけ日にする(それ以外は null。S4 が「N 秒」表示に切り替える)', () => {
@@ -22,9 +15,9 @@ describe('日 ↔ 秒', () => {
     expect(secondsToDays(1)).toBeNull()
   })
 
-  it('境界: 0 秒は 0 日(割り切れる)、9 桁の日数でも往復できる', () => {
+  it('境界: 0 秒は 0 日(割り切れる)、9 桁の日数に相当する秒も日に戻せる', () => {
     expect(secondsToDays(0)).toBe(0)
-    expect(secondsToDays(daysToSeconds(999_999_999))).toBe(999_999_999)
+    expect(secondsToDays(999_999_999 * 86_400)).toBe(999_999_999)
   })
 })
 

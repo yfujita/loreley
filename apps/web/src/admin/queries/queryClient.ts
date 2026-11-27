@@ -6,6 +6,14 @@ import { isApiError } from '@/shared/api/apiError'
 /** `invalid_response` のうち、Nginx 由来の一時的な失敗(502・503・504。FARC-P-43)。 */
 const TRANSIENT_GATEWAY_STATUSES: ReadonlySet<number> = new Set([502, 503, 504])
 
+/**
+ * `'always'`: ブラウザのオンライン判定(`navigator.onLine`)に関わらず要求を送る。
+ * 既定の `'online'` だと、オフライン中は mutation が paused になり、ダイアログが固まったまま、
+ * 再接続後に削除・取消・ロック解放が**遅れて実行**されうる。社内の同一オリジン API なので、失敗は通信断(`network`)として
+ * その場で返す方が安全(結果不明の導線に載る。E 6.5)。
+ */
+const NETWORK_MODE = 'always'
+
 const MAX_READ_RETRIES = 1
 const RETRY_DELAY_MS = 1000
 
@@ -35,6 +43,7 @@ export function shouldRetryRead(failureCount: number, error: unknown): boolean {
  * - staleTime 0: マウント時(画面を開く・戻る)は再取得する。戻る操作で古い一覧が最新の状態を隠さないため
  * - フォーカス・再接続では再取得しない: 「手動更新のみ」の画面で予期しない再取得をしない(更新は更新ボタン・マウント時・D1 と J2 のポーリングだけ)
  * - 書き込みは再送しない(E 5.3)
+ * - networkMode は always(上記)
  * - グローバルの通知(QueryCache・MutationCache の onError)は置かない。自動更新の失敗はページ内の警告に留め、操作の失敗は各ダイアログが扱う
  */
 export function createAppQueryClient(): QueryClient {
@@ -47,8 +56,9 @@ export function createAppQueryClient(): QueryClient {
         refetchOnWindowFocus: false,
         refetchOnReconnect: false,
         gcTime: 5 * 60 * 1000,
+        networkMode: NETWORK_MODE,
       },
-      mutations: { retry: 0 },
+      mutations: { retry: 0, networkMode: NETWORK_MODE },
     },
   })
 }

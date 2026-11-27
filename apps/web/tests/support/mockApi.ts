@@ -48,6 +48,8 @@ function parseJson(text: string | null): unknown {
 }
 
 async function fulfill(route: Route, mock: MockResponse): Promise<void> {
+  // 履行も中断もしない。要求は取得中のまま残る(ページを閉じるときに破棄される)。
+  if (mock.kind === 'hang') return
   if (mock.kind === 'network-error') {
     await route.abort('failed')
     return

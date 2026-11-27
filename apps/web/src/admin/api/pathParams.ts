@@ -4,6 +4,8 @@
 // 値全体が `.` なら一覧の EP(`/jobs/`)、`..` なら 1 階層上、空文字なら `/jobs/` に、ブラウザの URL の正規化で
 // 化けて別の EP を叩く。`undefined` はプレースホルダ(`{job_id}`)が残る。このため送る前に弾く。
 
+import { hasLoneSurrogate } from '@/shared/api/unicode'
+
 const DOT_SEGMENTS: ReadonlySet<string> = new Set(['.', '..'])
 
 function hasControlCharacter(value: string): boolean {
@@ -17,7 +19,7 @@ function hasControlCharacter(value: string): boolean {
 
 /**
  * パスに入れてよい値か。次のどれかに当たる値を拒否する:
- * 文字列でない・空・値全体が `.` か `..`・制御文字(U+0000〜U+001F・U+007F)を 1 文字でも含む。
+ * 文字列でない・空・値全体が `.` か `..`・制御文字(U+0000〜U+001F・U+007F)を 1 文字でも含む・孤児サロゲートを含む。
  *
  * `.` を含むだけの値(`my.source`・`a.b`・`..a`・`a..`)は拒否しない。URL の `.`・`..` の正規化が働くのは、
  * パスの 1 区間が値全体として `.`・`..` のときだけで、正当な `source_id` がありうるため。
@@ -27,6 +29,8 @@ export function isValidPathId(value: unknown): value is string {
   if (typeof value !== 'string') return false
   if (value === '') return false
   if (DOT_SEGMENTS.has(value)) return false
+  // 孤児サロゲートは `encodeURIComponent` が URIError を投げ、別の経路(network 扱い)に落ちるため、ここで弾く。
+  if (hasLoneSurrogate(value)) return false
   return !hasControlCharacter(value)
 }
 

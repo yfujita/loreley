@@ -24,6 +24,10 @@ export type WriteOperation =
 /** 文脈: 読み取り(Query)か、書き込み(mutation)の操作。 */
 export type ErrorContext = { operation: 'read' } | { operation: WriteOperation }
 
+/**
+ * 表示先。`field` は暫定: 表にない `field`・対応できない `reason`・`detail` は、features の `fieldMap`
+ * (F 3.5。フェーズ 6)が `form-alert`(想定外の応答+診断)に落とす。ここは `details.errors` が返ってきたかだけで決める。
+ */
 export type DisplayTarget =
   // 読み取りの失敗(状態ブロック。E 6.2)
   | 'state-block'

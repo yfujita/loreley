@@ -6,6 +6,7 @@ import type { Page } from '@playwright/test'
 
 import {
   apiErrorResponse,
+  hangResponse,
   jsonResponse,
   networkErrorResponse,
   nginxHtmlResponse,
@@ -14,16 +15,7 @@ import { expect, test } from '../support/e2eTest'
 import { dashboard } from '../support/fixtures/dashboard'
 import { meta } from '../support/fixtures/meta'
 import { mockApi } from '../support/mockApi'
-
-/** ページの中で `source`(async 関数の本体)を実行する。dev サーバーのモジュール(`@/` の別名・Vue Query を含む)を読み込める。 */
-async function evaluateInBrowser<T>(page: Page, source: string): Promise<T> {
-  return page.evaluate(async (code) => {
-    const AsyncFunction = Object.getPrototypeOf(async () => {}).constructor as new (
-      body: string,
-    ) => () => Promise<unknown>
-    return new AsyncFunction(code)()
-  }, source) as Promise<T>
-}
+import { evaluateInBrowser, waitForViteReady } from '../support/viteReady'
 
 /** `configureApiClient()` を呼んだ公開口(`api`)と、アプリの QueryClient(`queryClient`)を使える状態で `body` を実行する。 */
 async function inBrowser<T>(page: Page, body: string): Promise<T> {
@@ -40,21 +32,11 @@ async function inBrowser<T>(page: Page, body: string): Promise<T> {
   )
 }
 
+// dev サーバーは globalSetup で温めてある(依存の最適化・再読み込みは済んでいる)。念のため、各テストでも
+// モジュールが読み込める状態であることを確かめる(落ち着かないときは、原因が分かるメッセージで失敗する)。
 test.beforeEach(async ({ page }) => {
   await page.goto('./')
-  // Vite の dev サーバーは、起動後に初めて読み込む依存(Vue Query)を見つけると、最適化してページを再読み込みする
-  // (今の main.ts は Vue Query を import しないため)。再読み込みが落ち着くまで、読み込みを繰り返して待つ。
-  // フェーズ 3 で main.ts が Vue Query を import するようになれば、起動時に最適化されるので不要になる。
-  await expect
-    .poll(
-      () =>
-        evaluateInBrowser<boolean>(
-          page,
-          `await import('/admin/src/admin/queries/queryClient.ts'); return true`,
-        ).catch(() => false),
-      { timeout: 30_000 },
-    )
-    .toBe(true)
+  await waitForViteReady(page)
 })
 
 test('相対 baseUrl(/api/admin/v1)の Request が、実ブラウザでは解決される(jsdom では解決されない)', async ({
@@ -153,30 +135,45 @@ test('パス値の検証: `..` のジョブ ID は送信せずに、合成の 40
   expect(mock.requests).toEqual([])
 })
 
-test('`a.b` のように `.` を含むだけの ID は、そのまま送られる', async ({ page }) => {
-  const mock = await mockApi(page, { 'GET /jobs/a.b': jsonResponse({ job_id: 'a.b' }) })
-
-  await inBrowser(
+// FMOD-U-9: `.` を含むだけの ID は、値全体が `.`・`..` ではないので、ブラウザの URL の正規化に化けず、そのまま送られる。
+for (const jobId of ['a.b', '..a', 'a..', '...']) {
+  test(`\`.\` を含むだけの ID(${jobId})は拒否されず、そのままのパスで送られる`, async ({
     page,
-    `return await queryClient.fetchQuery(api.getJobOptions({ path: { job_id: 'a.b' } }))`,
-  )
+  }) => {
+    const mock = await mockApi(page, { [`GET /jobs/${jobId}`]: jsonResponse({ job_id: jobId }) })
 
-  expect(mock.requests.map((request) => request.path)).toEqual(['/jobs/a.b'])
-})
+    await inBrowser(
+      page,
+      `return await queryClient.fetchQuery(api.getJobOptions({ path: { job_id: '${jobId}' } }))`,
+    )
+
+    expect(mock.requests.map((request) => request.path)).toEqual([`/jobs/${jobId}`])
+  })
+}
 
 test('利用者側の中断(AbortError)は、timeout にならず ApiError にもならない', async ({ page }) => {
-  // 応答しない(取得中のまま)
-  await page.route('**/api/admin/v1/meta', () => {})
+  const mock = await mockApi(page, { 'GET /meta': hangResponse() })
 
-  const result = await inBrowser<{ name: string | null; hasKind: boolean }>(
+  // 取得を始める(完了を待たない)。
+  await inBrowser(
     page,
     `
     const controller = new AbortController()
     const options = api.getMetaOptions()
-    const pending = options.queryFn({ queryKey: options.queryKey, signal: controller.signal }).catch((e) => e)
-    await new Promise((resolve) => setTimeout(resolve, 100))
-    controller.abort()
-    const error = await pending
+    window.__abortTest = {
+      controller,
+      pending: options.queryFn({ queryKey: options.queryKey, signal: controller.signal }).catch((e) => e),
+    }
+    return true
+    `,
+  )
+  // fetch が実際に通信中(要求がサーバー側に届き、応答待ち)になってから中断する。
+  await expect.poll(() => mock.requests.length).toBe(1)
+  const result = await evaluateInBrowser<{ name: string | null; hasKind: boolean }>(
+    page,
+    `
+    window.__abortTest.controller.abort()
+    const error = await window.__abortTest.pending
     return { name: error?.name ?? null, hasKind: 'kind' in (error ?? {}) }
     `,
   )
@@ -187,21 +184,29 @@ test('利用者側の中断(AbortError)は、timeout にならず ApiError に�
 test('45 秒で時間切れになり timeout になる(読み取り。Playwright の時計で進める)', async ({
   page,
 }) => {
-  await page.clock.install()
-  // 応答しない(取得中のまま)
-  await page.route('**/api/admin/v1/meta', () => {})
+  const mock = await mockApi(page, { 'GET /meta': hangResponse() })
+  // 時計を止める(実時間で進まないようにする)。境界(44,999 ミリ秒と 45,000 ミリ秒)を、実時間のずれなしに確かめるため。
+  await page.clock.install({ time: new Date('2026-01-01T00:00:00Z') })
+  await page.clock.pauseAt(new Date('2026-01-01T00:00:10Z'))
 
+  // 取得を始める(完了を待たない)。結果は Node 側で受ける。
+  let outcome: unknown = 'pending'
   const pending = inBrowser<unknown>(
     page,
     `return await queryClient.fetchQuery(api.getMetaOptions()).catch((e) => e)`,
-  )
-  // 取得が始まるまで待ってから、時間を進める。
-  await page.waitForTimeout(300)
-  await page.clock.fastForward(44_999)
-  await page.waitForTimeout(100)
-  await page.clock.fastForward(1)
+  ).then((value) => (outcome = value))
+  // fetch が実際に通信中になってから(タイマーは fetch の前に登録される)、時計を進める。
+  await expect.poll(() => mock.requests.length).toBe(1)
 
-  expect(await pending).toEqual({ kind: 'timeout' })
+  // 境界: 44,999 ミリ秒ではまだ時間切れにならない(ページとの往復を 2 回挟んで、時間切れの結果が届く余地を与える)。
+  await page.clock.fastForward(44_999)
+  await page.evaluate(() => 0)
+  await page.evaluate(() => 0)
+  expect(outcome).toBe('pending')
+
+  await page.clock.fastForward(1)
+  await pending
+  expect(outcome).toEqual({ kind: 'timeout' })
 })
 
 test('withKey の key の差し替え: 取得はドメインの key で QueryCache に入り、prefix の invalidate で再取得される(実ブラウザ)', async ({

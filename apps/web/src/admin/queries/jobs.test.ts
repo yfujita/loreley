@@ -8,7 +8,8 @@ import { useFetchStub } from '../../../tests/support/fetchStub'
 import { jobDetails, jobList } from '../../../tests/support/fixtures/jobs'
 import { createTestQueryClient } from '../../../tests/support/queryTesting'
 import { keys } from './keys'
-import { useJobDetailQuery, useJobsListQuery, type JobsQuery } from './jobs'
+import { useJobDetailQuery, useJobsListQuery } from './jobs'
+import type { JobsQuery } from './params'
 import { rowActionsDisabled } from './placeholder'
 
 const stub = useFetchStub()
@@ -122,6 +123,17 @@ describe('useJobsListQuery(EP-09。J1)', () => {
       expect(result.isLoading.value).toBe(true)
     })
 
+    it('データソース(sourceId)の絞り込みが変わったときも、別のデータソースの行を引き継がない', async () => {
+      const { params, result } = await mountWithPendingSecondRequest()
+
+      params.value = { ...DEFAULT_PARAMS, sourceId: 'other-source' }
+      await flushPromises()
+
+      expect(result.isPlaceholderData.value).toBe(false)
+      expect(result.data.value).toBeUndefined()
+      expect(result.isLoading.value).toBe(true)
+    })
+
     it('件数(size)が変わったときも、見せない', async () => {
       const { params, result } = await mountWithPendingSecondRequest()
 
@@ -165,6 +177,10 @@ describe('useJobDetailQuery(EP-10。J2)', () => {
 
     expect(stub.requests).toEqual([])
     expect(result.fetchStatus.value).toBe('idle')
+    // 取得しなかった(request interceptor に任せて通ったのではない): 待機中のまま、エラーも取得中もない
+    expect(result.status.value).toBe('pending')
+    expect(result.error.value).toBeNull()
+    expect(result.isLoading.value).toBe(false)
   })
 
   it('実行中は 10 秒ごとに取り直し、終端になったら止まる(取消の要求後も終端まで続く)', async () => {

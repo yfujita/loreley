@@ -37,7 +37,7 @@ describe('invalidate の表(E 5.8)', () => {
   })
 
   it('invalidateAfter は、表の prefix に一致するクエリだけを invalid にして再取得する', async () => {
-    stub.respondWith(jsonResponse({}))
+    stub.respondWith(jsonResponse({ ok: true }))
     const queryClient = createTestQueryClient()
     await runComposable(
       () => ({
@@ -266,6 +266,67 @@ describe('mutation(EP-03〜08)', () => {
     await pending
 
     expect(result.isPending.value).toBe(false)
+  })
+})
+
+describe('取消の 409 job_already_finished(成功扱い)でも invalidate する(E 5.8・6.3)', () => {
+  async function cancelWith(mock: Parameters<typeof stub.respondWith>[0]) {
+    stub.respondWith(mock)
+    const queryClient = createTestQueryClient()
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries')
+    const { result } = await runComposable(() => useCancelJobMutation(), { queryClient })
+
+    const error = await result.mutateAsync({ path: { job_id: 'job-3' } }).then(
+      () => null,
+      (caught: unknown) => caught,
+    )
+    await flushPromises()
+
+    const prefixes = invalidate.mock.calls.map(
+      ([filters]) => (filters as { queryKey: readonly unknown[] }).queryKey[0],
+    )
+    return { error, prefixes }
+  }
+
+  it('409 job_already_finished は、mutation としては失敗(呼び出し側が成功扱いにする)だが、jobs・sources を invalidate する', async () => {
+    const { error, prefixes } = await cancelWith(
+      apiErrorResponse(409, 'job_already_finished', { details: { status: 'failed' } }),
+    )
+
+    expect(error).toMatchObject({ kind: 'api', status: 409, code: 'job_already_finished' })
+    expect(prefixes).toEqual(['jobs', 'sources'])
+  })
+
+  it('終端済みのジョブが J2 で running のまま残らない(409 の後、表示中の詳細が取り直される)', async () => {
+    let calls = 0
+    stub.routes({
+      'GET /jobs/job-3': () =>
+        jsonResponse(calls++ === 0 ? jobDetails.running() : jobDetails.succeeded()),
+      'POST /jobs/job-3/cancel': apiErrorResponse(409, 'job_already_finished', {
+        details: { status: 'succeeded' },
+      }),
+    })
+    const { result } = await runComposable(() => ({
+      detail: useJobDetailQuery('job-3'),
+      cancel: useCancelJobMutation(),
+    }))
+    await flushPromises()
+    expect(result.detail.data.value?.status).toBe('running')
+
+    await result.cancel.mutateAsync({ path: { job_id: 'job-3' } }).catch(() => {})
+    await vi.waitFor(() => expect(result.detail.data.value?.status).toBe('succeeded'))
+  })
+
+  it.each([
+    ['409 job_not_cancellable(想定外)', apiErrorResponse(409, 'job_not_cancellable')],
+    ['404 job_not_found', apiErrorResponse(404, 'job_not_found')],
+    ['503 crawler_unreachable', apiErrorResponse(503, 'crawler_unreachable', { retryable: true })],
+    ['504 crawler_response_lost(結果不明)', apiErrorResponse(504, 'crawler_response_lost')],
+    ['Nginx の HTML の 502', nginxHtmlResponse(502)],
+  ])('他のエラーでは invalidate しない: %s', async (_name, mock) => {
+    const { prefixes } = await cancelWith(mock)
+
+    expect(prefixes).toEqual([])
   })
 })
 

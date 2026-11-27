@@ -1,6 +1,8 @@
 // Query の結果 + `describeError` の結果 → `viewState`(E 6.2・F 3.7。FMOD-P-27)。
 // `features` の composable が呼び、`templates` は結果の `viewState` だけを props で受けて描く。
 //
+// 取得していない(`enabled: false`。データも取得中もエラーもない)ときは `empty` を返す。X1 のソース未選択のように、
+// 取得しない理由が画面にある場合は、画面がそれを先に判定してから使う(`empty` の文言を出さない)。
 // 入力は構造的な型で受ける(R4: `@tanstack/vue-query` の型に頼らない。`useQuery` の戻り値がそのまま渡せる)。
 import { computed, toValue, type ComputedRef, type MaybeRefOrGetter, type Ref } from 'vue'
 

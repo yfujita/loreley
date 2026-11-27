@@ -6,7 +6,7 @@
 // D1(EP-13)・O1(EP-12)・シェル(EP-14)は `unavailable` を持たないので使わない。
 import type { Unavailable, UnavailableReason } from '@/admin/api'
 
-type WithUnavailable = { unavailable: Unavailable }
+type WithUnavailable = { unavailable?: MaybeUnavailable }
 
 /**
  * パスの文字列(B 2.2 の正式なパス・行内の相対パス)。B の変更に追従する場所をここ 1 か所にする。
@@ -50,7 +50,11 @@ export const UNAVAILABLE_PATH = {
   },
 } as const
 
-function reasonAt(unavailable: Unavailable, path: string): UnavailableReason | undefined {
+// 生成型は `unavailable` を常に存在するオブジェクトとするが、実行時の値は信用しない(欠落しても落とさない。E 5.3)。
+type MaybeUnavailable = Unavailable | null | undefined
+
+function reasonAt(unavailable: MaybeUnavailable, path: string): UnavailableReason | undefined {
+  if (typeof unavailable !== 'object' || unavailable === null) return undefined
   // `in` ではなく自身のキーだけを見る(`constructor` などのプロトタイプのキーを拾わない)。
   return Object.hasOwn(unavailable, path) ? unavailable[path] : undefined
 }
@@ -94,7 +98,7 @@ export type CellOptions = {
 
 /** `unavailable`(引く対象の 1 つ)・パス・値から、セルの表示状態を返す。 */
 export function cellState<T>(
-  unavailable: Unavailable,
+  unavailable: MaybeUnavailable,
   path: string,
   value: T | null | undefined,
   options: CellOptions,

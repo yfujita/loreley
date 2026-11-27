@@ -33,13 +33,13 @@ export function formatLeaseExpiry(
   value: string | null | undefined,
   options: { expired: boolean },
 ): LeaseExpiry {
-  const date = value === null || value === undefined ? null : parseIsoDateTime(value)
-
-  if (date !== null && date.getTime() === SENTINEL_TIME) {
-    return { kind: 'expired', text: LEASE_EXPIRY_TEXT.expired }
-  }
-  if (date !== null && value !== null && value !== undefined) {
-    return { kind: 'datetime', iso: value, text: formatDate(date) }
+  if (typeof value === 'string') {
+    const date = parseIsoDateTime(value)
+    if (date !== null) {
+      if (date.getTime() === SENTINEL_TIME)
+        return { kind: 'expired', text: LEASE_EXPIRY_TEXT.expired }
+      return { kind: 'datetime', iso: value, text: formatDate(date) }
+    }
   }
   return options.expired
     ? { kind: 'unknown-expired', text: LEASE_EXPIRY_TEXT.unknownExpired }

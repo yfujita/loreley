@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  cancelJobMutation,
   configureApiClient,
   getClusterOptions,
   getDashboardOptions,
@@ -9,10 +10,10 @@ import {
   startCrawlMutation,
 } from '@/admin/api'
 
-import { jsonResponse } from '../../../tests/support/apiErrors'
+import { emptyBodyResponse, hangResponse, jsonResponse } from '../../../tests/support/apiErrors'
 import { useFetchStub } from '../../../tests/support/fetchStub'
 import { createTestQueryClient, runMutation } from '../../../tests/support/queryTesting'
-import { READ_TIMEOUT_MS, WRITE_TIMEOUT_MS } from './client'
+import { fetchWithTimeout, READ_TIMEOUT_MS, WRITE_TIMEOUT_MS } from './client'
 // setup(tests/support/setup.ts)が configureApiClient() を呼んだ client そのもの。
 import { client as setupClient } from './generated/client.gen'
 
@@ -94,7 +95,7 @@ describe('EP-12・13・14 は query を付けない(E 5.3)', () => {
       '/api/admin/v1/opensearch/cluster',
     ],
   ])('%s の URL にクエリが付かない', async (_name, fetchEndpoint, expectedPath) => {
-    stub.respondWith(jsonResponse({}))
+    stub.respondWith(jsonResponse({ ok: true }))
 
     await fetchEndpoint()
 
@@ -122,7 +123,7 @@ describe('書き込みのリクエスト', () => {
   })
 
   it('EP-03 の本文は渡したとおりに送る(ttl_days と ttl_seconds の使わない側を足さない)', async () => {
-    stub.respondWith(jsonResponse({}, 201))
+    stub.respondWith(jsonResponse({ ok: true }, 201))
 
     await runMutation(createTestQueryClient(), registerSourceMutation(), {
       body: {
@@ -142,6 +143,89 @@ describe('書き込みのリクエスト', () => {
   })
 })
 
+describe('2xx の本文の検査(空・JSON のオブジェクトでないものは invalid_response)', () => {
+  async function failureFor(mock: Parameters<typeof stub.respondWith>[0]) {
+    stub.respondWith(mock)
+    return createTestQueryClient()
+      .fetchQuery(getMetaOptions())
+      .then(
+        (data) => ({ data }),
+        (error: unknown) => ({ error }),
+      )
+  }
+
+  it('空の本文の 200 は、`{}` を成功として返さず invalid_response(status 200)', async () => {
+    expect(await failureFor(emptyBodyResponse(200))).toEqual({
+      error: { kind: 'invalid_response', status: 200 },
+    })
+  })
+
+  it('空の本文の 202(取消の受付など)も invalid_response(status 202)', async () => {
+    stub.respondWith(emptyBodyResponse(202))
+
+    const error = await runMutation(createTestQueryClient(), cancelJobMutation(), {
+      path: { job_id: 'job-1' },
+    }).catch((caught: unknown) => caught)
+
+    expect(error).toEqual({ kind: 'invalid_response', status: 202 })
+  })
+
+  it.each([
+    ['`{}`(項目のないオブジェクト)', '{}'],
+    ['`null`', 'null'],
+    ['配列', '[1]'],
+    ['文字列', '"ok"'],
+    ['数値', '1'],
+  ])('JSON の本文が %s のときは invalid_response(status 200)', async (_name, body) => {
+    expect(
+      await failureFor({ kind: 'response', status: 200, contentType: 'application/json', body }),
+    ).toEqual({ error: { kind: 'invalid_response', status: 200 } })
+  })
+
+  it('項目を持つオブジェクトは成功として返す', async () => {
+    expect(await failureFor(jsonResponse(META))).toEqual({ data: META })
+  })
+})
+
+describe('タイムアウト付き fetch が返す Response', () => {
+  it('本文を読み切って作り直した Response も、status・statusText・headers・本文を保つ', async () => {
+    stub.respondWith(
+      () =>
+        new Response('{"a":1}', {
+          status: 202,
+          statusText: 'Accepted',
+          headers: { 'content-type': 'application/json', 'x-trace': 'abc' },
+        }),
+    )
+
+    const response = await fetchWithTimeout(new Request('http://localhost/api/admin/v1/meta'))
+
+    expect(response.status).toBe(202)
+    expect(response.statusText).toBe('Accepted')
+    expect(response.headers.get('x-trace')).toBe('abc')
+    expect(response.headers.get('content-type')).toBe('application/json')
+    expect(await response.json()).toEqual({ a: 1 })
+  })
+
+  it('本文を持てないステータス(204・304)でも、例外にならず本文は空', async () => {
+    for (const status of [204, 304]) {
+      stub.respondWith(() => new Response(null, { status }))
+
+      const response = await fetchWithTimeout(new Request('http://localhost/api/admin/v1/meta'))
+
+      expect(response.status).toBe(status)
+      expect(await response.text()).toBe('')
+    }
+  })
+})
+
+describe('タイムアウトの値(設計 E 5.3: 読み取り 45 秒・書き込み 90 秒。実装の定数ではなくリテラルで固定する)', () => {
+  it('定数は 45 秒・90 秒', () => {
+    expect(READ_TIMEOUT_MS).toBe(45_000)
+    expect(WRITE_TIMEOUT_MS).toBe(90_000)
+  })
+})
+
 describe('タイムアウト付き fetch', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -149,8 +233,6 @@ describe('タイムアウト付き fetch', () => {
   afterEach(() => {
     vi.useRealTimers()
   })
-
-  const pendingForever = () => new Promise<never>(() => {})
 
   async function settle<T>(promise: Promise<T>): Promise<{ result: T } | { error: unknown }> {
     return promise.then(
@@ -160,10 +242,10 @@ describe('タイムアウト付き fetch', () => {
   }
 
   it('読み取り(GET)は 45 秒で時間切れになり、timeout として投げられる', async () => {
-    stub.respondWith(pendingForever)
+    stub.respondWith(hangResponse())
     const outcome = settle(createTestQueryClient().fetchQuery(getMetaOptions()))
 
-    await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS - 1)
+    await vi.advanceTimersByTimeAsync(44_999)
     let settled = false
     void outcome.then(() => (settled = true))
     await vi.advanceTimersByTimeAsync(0)
@@ -174,7 +256,7 @@ describe('タイムアウト付き fetch', () => {
   })
 
   it('書き込みは 90 秒で時間切れになる(45 秒では切れない)', async () => {
-    stub.respondWith(pendingForever)
+    stub.respondWith(hangResponse())
     const outcome = settle(
       runMutation(createTestQueryClient(), startCrawlMutation(), {
         path: { source_id: 'demo' },
@@ -184,10 +266,10 @@ describe('タイムアウト付き fetch', () => {
 
     let settled = false
     void outcome.then(() => (settled = true))
-    await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS)
+    await vi.advanceTimersByTimeAsync(45_000)
     expect(settled).toBe(false)
 
-    await vi.advanceTimersByTimeAsync(WRITE_TIMEOUT_MS - READ_TIMEOUT_MS - 1)
+    await vi.advanceTimersByTimeAsync(44_999)
     expect(settled).toBe(false)
     await vi.advanceTimersByTimeAsync(1)
     expect(await outcome).toEqual({ error: { kind: 'timeout' } })
@@ -204,7 +286,7 @@ describe('タイムアウト付き fetch', () => {
     )
     const outcome = settle(createTestQueryClient().fetchQuery(getMetaOptions()))
 
-    await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS - 1)
+    await vi.advanceTimersByTimeAsync(44_999)
     let settled = false
     void outcome.then(() => (settled = true))
     await vi.advanceTimersByTimeAsync(0)
@@ -228,7 +310,7 @@ describe('タイムアウト付き fetch', () => {
     })
     const outcome = settle(createTestQueryClient().fetchQuery(getMetaOptions()))
 
-    await vi.advanceTimersByTimeAsync(READ_TIMEOUT_MS)
+    await vi.advanceTimersByTimeAsync(45_000)
 
     expect(await outcome).toEqual({ error: { kind: 'timeout' } })
   })
@@ -275,7 +357,7 @@ describe('利用者側の中断(AbortError)とタイムアウトの区別', () =
   }
 
   it('fetch の待ち中に中断すると AbortError(timeout にならず、ApiError にもならない)', async () => {
-    stub.respondWith(() => new Promise<never>(() => {}))
+    stub.respondWith(hangResponse())
     const controller = new AbortController()
 
     const outcome = queryWithSignal(controller.signal)
@@ -288,19 +370,24 @@ describe('利用者側の中断(AbortError)とタイムアウトの区別', () =
   })
 
   it('本文の受信中に中断しても AbortError(本文の取得完了まで中断が伝わる)', async () => {
+    // `pull` は、本文の読み取りが始まったときに呼ばれる。ヘッダーは返るが、本文は終わらない。
+    let bodyReadStarted = false
     stub.respondWith(
       () =>
-        new Response(new ReadableStream({ start() {} }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        }),
+        new Response(
+          new ReadableStream({
+            pull() {
+              bodyReadStarted = true
+              return new Promise<void>(() => {})
+            },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
     )
     const controller = new AbortController()
 
     const outcome = queryWithSignal(controller.signal)
-    await vi.waitFor(() => expect(stub.requests).toHaveLength(1))
-    // 本文の読み取りに入るまで少し待つ。
-    await new Promise((resolve) => setTimeout(resolve, 10))
+    await vi.waitFor(() => expect(bodyReadStarted).toBe(true))
     controller.abort()
 
     expect(await outcome).toMatchObject({ name: 'AbortError' })
@@ -316,7 +403,7 @@ describe('利用者側の中断(AbortError)とタイムアウトの区別', () =
   })
 
   it('中断の理由(reason)をそのまま通す', async () => {
-    stub.respondWith(() => new Promise<never>(() => {}))
+    stub.respondWith(hangResponse())
     const controller = new AbortController()
 
     const outcome = queryWithSignal(controller.signal)

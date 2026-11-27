@@ -281,13 +281,20 @@ describe('書き込み: code ごとの扱い(E 6.3)', () => {
     })
   })
 
-  it('lock_in_use(EP-08)も lock_state の variant を使う', () => {
+  it.each([
+    ['orphan', 'warning'],
+    ['lease_expired', 'warning'],
+    ['just_acquired', 'error'],
+    ['held_crawl', 'error'],
+    ['held_delete', 'error'],
+    ['unknown', 'error'],
+  ] as const)('lock_in_use(EP-08)も lock_state=%s の variant(%s)を使う', (lockState, variant) => {
     const description = describeError(
-      apiError('lock_in_use', { status: 409, details: { lock_state: 'unknown' } }),
+      apiError('lock_in_use', { status: 409, details: { lock_state: lockState } }),
       { operation: 'releaseLock' },
     )
 
-    expect(description).toMatchObject({ variant: 'error', lockState: 'unknown' })
+    expect(description).toMatchObject({ target: 'dialog-alert', variant, lockState })
   })
 
   it('lock_state がない・未知の値のときは error(lockState は null)', () => {
@@ -458,5 +465,319 @@ describe('全 20 code × 読み取り・書き込み', () => {
       // 結果不明の code は、retryable=true と返ってきても再試行を出さない(確認の導線を出す)
       expect(retryable, code).toBe(code !== 'crawler_response_lost')
     }
+  })
+})
+
+// E 6.3 の表からの手書きの期待値(実装のコピーにしない)。20 code × {読み取り・フォーム(S3 の保存)・ダイアログ(DLG-1 の起動)}。
+describe('20 code × 文脈の期待値(E 6.2・6.3・6.5)', () => {
+  const FORM: ErrorContext = { operation: 'registerSource' }
+  const DIALOG: ErrorContext = { operation: 'startCrawl' }
+
+  type Expected = { target: string; variant: string; unexpected: boolean }
+  type Row = {
+    code: KnownErrorCode
+    status: number
+    /** 入力に付ける details(項目別・lock_state・結果不明など、その code が実際に運ぶもの) */
+    details?: Record<string, unknown>
+    retryable?: boolean
+    read: { notFound: boolean; unexpected: boolean }
+    form: Expected
+    dialog: Expected
+  }
+
+  const FIELD_ERRORS = { errors: [{ field: 'ttl_days', reason: 'range' }] }
+  const alertError = (unexpected = false, target = 'dialog-alert'): Expected => ({
+    target,
+    variant: 'error',
+    unexpected,
+  })
+  const formAlert = (unexpected = false): Expected => alertError(unexpected, 'form-alert')
+
+  const ROWS: Row[] = [
+    // ── Admin 固有 14 種
+    {
+      code: 'config_invalid',
+      status: 400,
+      details: { ...FIELD_ERRORS, crawler_message: 'root: x' },
+      read: { notFound: false, unexpected: true },
+      form: { target: 'field', variant: 'error', unexpected: false },
+      dialog: alertError(),
+    },
+    {
+      code: 'source_config_not_found',
+      status: 404,
+      read: { notFound: true, unexpected: false },
+      form: formAlert(),
+      dialog: alertError(),
+    },
+    {
+      code: 'job_not_found',
+      status: 404,
+      read: { notFound: true, unexpected: false },
+      form: formAlert(),
+      dialog: alertError(),
+    },
+    {
+      code: 'lock_held',
+      status: 409,
+      details: { lock_state: 'orphan' },
+      read: { notFound: false, unexpected: true },
+      form: { target: 'form-alert', variant: 'warning', unexpected: false },
+      dialog: { target: 'dialog-alert', variant: 'warning', unexpected: false },
+    },
+    {
+      code: 'lock_in_use',
+      status: 409,
+      details: { lock_state: 'lease_expired' },
+      read: { notFound: false, unexpected: true },
+      form: { target: 'form-alert', variant: 'warning', unexpected: false },
+      dialog: { target: 'dialog-alert', variant: 'warning', unexpected: false },
+    },
+    {
+      code: 'source_deleting',
+      status: 409,
+      read: { notFound: false, unexpected: true },
+      form: formAlert(),
+      dialog: alertError(),
+    },
+    {
+      code: 'maintenance_enabled',
+      status: 409,
+      read: { notFound: false, unexpected: true },
+      form: formAlert(),
+      dialog: alertError(),
+    },
+    {
+      code: 'source_already_exists',
+      status: 409,
+      details: { status: 'deleting' },
+      read: { notFound: false, unexpected: true },
+      form: { target: 'field', variant: 'error', unexpected: false },
+      dialog: alertError(),
+    },
+    {
+      code: 'job_not_cancellable',
+      status: 409,
+      read: { notFound: false, unexpected: true },
+      form: formAlert(true),
+      dialog: alertError(true),
+    },
+    {
+      code: 'job_already_finished',
+      status: 409,
+      details: { status: 'failed' },
+      read: { notFound: false, unexpected: true },
+      form: { target: 'success', variant: 'info', unexpected: false },
+      dialog: { target: 'success', variant: 'info', unexpected: false },
+    },
+    {
+      code: 'crawler_error',
+      status: 502,
+      read: { notFound: false, unexpected: true },
+      form: formAlert(true),
+      dialog: alertError(true),
+    },
+    {
+      code: 'crawler_unavailable',
+      status: 503,
+      retryable: true,
+      read: { notFound: false, unexpected: true },
+      form: formAlert(),
+      dialog: alertError(),
+    },
+    {
+      code: 'crawler_unreachable',
+      status: 503,
+      retryable: true,
+      read: { notFound: false, unexpected: true },
+      form: formAlert(),
+      dialog: alertError(),
+    },
+    {
+      code: 'crawler_response_lost',
+      status: 504,
+      details: { outcome_unknown: true },
+      read: { notFound: false, unexpected: true },
+      form: { target: 'form-alert', variant: 'warning', unexpected: false },
+      dialog: { target: 'dialog-alert', variant: 'warning', unexpected: false },
+    },
+    // ── 共通 6 種
+    {
+      code: 'invalid_request',
+      status: 400,
+      details: FIELD_ERRORS,
+      read: { notFound: true, unexpected: false },
+      form: { target: 'field', variant: 'error', unexpected: false },
+      // ダイアログ系は画面が送らない値の違反なので想定外
+      dialog: alertError(true),
+    },
+    {
+      code: 'not_found',
+      status: 404,
+      read: { notFound: true, unexpected: false },
+      form: formAlert(true),
+      dialog: alertError(true),
+    },
+    {
+      code: 'method_not_allowed',
+      status: 405,
+      read: { notFound: false, unexpected: true },
+      form: formAlert(true),
+      dialog: alertError(true),
+    },
+    {
+      code: 'http_error',
+      status: 418,
+      read: { notFound: false, unexpected: true },
+      form: formAlert(true),
+      dialog: alertError(true),
+    },
+    {
+      code: 'internal_error',
+      status: 500,
+      read: { notFound: false, unexpected: true },
+      form: formAlert(true),
+      dialog: alertError(true),
+    },
+    {
+      code: 'unavailable',
+      status: 503,
+      retryable: true,
+      read: { notFound: false, unexpected: false },
+      form: formAlert(true),
+      dialog: alertError(true),
+    },
+  ]
+
+  const input = (row: Row) =>
+    apiError(row.code, {
+      status: row.status,
+      retryable: row.retryable ?? false,
+      ...(row.details !== undefined && { details: row.details }),
+    })
+
+  it('表は 20 code を過不足なく持つ', () => {
+    expect(ROWS.map((row) => row.code).sort()).toEqual(
+      [...ADMIN_ERROR_CODES, ...COMMON_ERROR_CODES].sort(),
+    )
+  })
+
+  it.each(ROWS)('$code: 読み取り', (row) => {
+    expect(describeError(input(row), READ)).toMatchObject({
+      target: 'state-block',
+      notFound: row.read.notFound,
+      unexpected: row.read.unexpected,
+      outcomeUnknown: false,
+      resendSafe: false,
+    })
+  })
+
+  it.each(ROWS)('$code: フォーム(S3 の保存)', (row) => {
+    const description = describeError(input(row), FORM)
+
+    expect(description).toMatchObject({ ...row.form, notFound: false })
+    // 結果不明(crawler_response_lost)だけが、保存系の「もう一度保存」(resendSafe)を持つ
+    expect(description.resendSafe).toBe(row.code === 'crawler_response_lost')
+    expect(description.outcomeUnknown).toBe(row.code === 'crawler_response_lost')
+  })
+
+  it.each(ROWS)('$code: ダイアログ(DLG-1 の起動)', (row) => {
+    const description = describeError(input(row), DIALOG)
+
+    expect(description).toMatchObject({ ...row.dialog, notFound: false })
+    // ダイアログ系は「もう一度保存」を出さない(起動系は確認の導線)
+    expect(description.resendSafe).toBe(false)
+    expect(description.outcomeUnknown).toBe(row.code === 'crawler_response_lost')
+  })
+
+  it.each(ALL_WRITE_OPERATIONS)(
+    'crawler_response_lost(api の JSON): %s の resendSafe は、保存系(registerSource・updateSource)だけ true',
+    (operation) => {
+      const description = describeError(
+        apiError('crawler_response_lost', { status: 504, details: { outcome_unknown: true } }),
+        { operation },
+      )
+
+      expect(description.outcomeUnknown).toBe(true)
+      expect(description.retryable).toBe(false)
+      expect(description.resendSafe).toBe(
+        operation === 'registerSource' || operation === 'updateSource',
+      )
+    },
+  )
+
+  describe('未知の code', () => {
+    it.each([
+      ['読み取り', READ],
+      ['フォーム', FORM],
+      ['ダイアログ', DIALOG],
+    ] as const)('%s: 想定外として扱い、診断に code と HTTP ステータスを出す', (_name, context) => {
+      expect(describeError(apiError('brand_new_code', { status: 418 }), context)).toMatchObject({
+        unexpected: true,
+        notFound: false,
+        diagnostic: { code: 'brand_new_code', status: 418 },
+      })
+    })
+
+    it('書き込みの未知の code は、フォームでもダイアログでも消えないアラート(error)', () => {
+      expect(describeError(apiError('brand_new_code'), FORM)).toMatchObject({
+        target: 'form-alert',
+        variant: 'error',
+      })
+      expect(describeError(apiError('brand_new_code'), DIALOG)).toMatchObject({
+        target: 'dialog-alert',
+        variant: 'error',
+      })
+    })
+  })
+
+  describe('details.outcome_unknown', () => {
+    it('false のとき、結果不明の code(crawler_response_lost)は表の指定どおり結果不明のまま', () => {
+      const description = describeError(
+        apiError('crawler_response_lost', { status: 504, details: { outcome_unknown: false } }),
+        DIALOG,
+      )
+
+      expect(description).toMatchObject({ outcomeUnknown: true, retryable: false })
+    })
+
+    it('false のとき、ほかの code は結果不明にならない', () => {
+      const description = describeError(
+        apiError('crawler_unavailable', {
+          status: 503,
+          retryable: true,
+          details: { outcome_unknown: false },
+        }),
+        DIALOG,
+      )
+
+      expect(description).toMatchObject({ outcomeUnknown: false, retryable: true })
+    })
+
+    it('表にない code に outcome_unknown: true が付いたときは、結果不明(再試行を出さない)', () => {
+      for (const context of [FORM, DIALOG]) {
+        expect(
+          describeError(
+            apiError('brand_new_code', {
+              status: 504,
+              retryable: true,
+              details: { outcome_unknown: true },
+            }),
+            context,
+          ),
+        ).toMatchObject({ outcomeUnknown: true, retryable: false, unexpected: true })
+      }
+    })
+
+    it('outcome_unknown が true 以外の値(文字列・1)は結果不明にしない', () => {
+      for (const value of ['true', 1, null]) {
+        expect(
+          describeError(
+            apiError('crawler_unavailable', { status: 503, details: { outcome_unknown: value } }),
+            DIALOG,
+          ).outcomeUnknown,
+        ).toBe(false)
+      }
+    })
   })
 })

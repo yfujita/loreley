@@ -39,6 +39,9 @@ export function toApiError(error: unknown, response?: Response): unknown {
   if (isAbortError(error)) return error
   if (isTimeoutError(error)) return { kind: 'timeout' } satisfies ApiError
   if (error instanceof InvalidPathParamError) return REJECTED_PATH_PARAM
+  // パス値に孤児サロゲートがあると、生成 SDK の `encodeURIComponent` が URL の組み立て(request interceptor より前)で
+  // `URIError` を投げる。送信前に失敗した不正なパス値なので、検証の拒否と同じに扱う(通信断にしない)。
+  if (hasName(error, 'URIError')) return REJECTED_PATH_PARAM
   // TypeError は fetch の失敗(接続できない・切断)。realm をまたいでも判定できるよう名前で見る。
   if (hasName(error, 'TypeError')) return { kind: 'network' } satisfies ApiError
 

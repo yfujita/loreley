@@ -2,34 +2,11 @@
 import { useQuery } from '@tanstack/vue-query'
 import { computed, toValue, type MaybeRefOrGetter } from 'vue'
 
-import {
-  isValidPathId,
-  listDocumentsOptions,
-  type DocumentListResponse,
-  type DocumentTab,
-} from '@/admin/api'
-import type { ItemsPerPage } from '@/admin/lib/pagination'
+import { isValidPathId, listDocumentsOptions, type DocumentListResponse } from '@/admin/api'
 import { keys } from '@/admin/queries/keys'
+import { documentsScopeOf, type DocumentsQuery } from '@/admin/queries/params'
 import { keepPreviousWithinScope } from '@/admin/queries/placeholder'
 import { withKey } from '@/admin/queries/withKey'
-
-/**
- * X1 の条件(URL から正規化した型付きの条件。key になる。E 5.6)。
- * `tab` は API の値(snake_case)。URL の kebab-case との対応は features 側の定義表(documentTabs)が持つ。
- */
-export type DocumentsQuery = {
-  tab: DocumentTab
-  page: number
-  itemsPerPage: ItemsPerPage
-  /** タブごとの項目の昇順・降順。`null` は指定なし(タブごとの既定の並び) */
-  sort: string | null
-}
-
-/** ページ・並べ替え以外(同じスコープかの判定)。データソースは key の 2 番目なので別に比べる。 */
-function scopeOf(key: readonly [string, string | null, DocumentsQuery]) {
-  const { tab, itemsPerPage } = key[2]
-  return { sourceId: key[1], tab, itemsPerPage }
-}
 
 /**
  * 文書の一覧(X1)。`source` が未選択(`null`)、または `isValidPathId` が偽のときは取得しない(`enabled: false`)。
@@ -60,7 +37,10 @@ export function useDocumentsQuery(
           key,
         ),
         enabled: sourceId !== null && isValidPathId(sourceId),
-        placeholderData: keepPreviousWithinScope<DocumentListResponse, typeof key>(key, scopeOf),
+        placeholderData: keepPreviousWithinScope<DocumentListResponse, typeof key>(
+          key,
+          documentsScopeOf,
+        ),
       }
     }),
   )

@@ -3,7 +3,7 @@
 // 差し替えるのは `globalThis.fetch`。`configureApiClient()` が `client.setConfig` に渡すタイムアウト付き fetch は
 // 差し替えず、その内側(呼び出しのたびに `globalThis.fetch` を引く)でこの stub が呼ばれる。
 // このため、後始末は `vi.unstubAllGlobals()` だけで、client の設定には触れない(元に戻す設定がない)。
-import { afterEach, beforeEach, vi } from 'vitest'
+import { afterEach, beforeEach, expect, vi } from 'vitest'
 
 import type { MockResponse } from './apiErrors'
 
@@ -86,6 +86,7 @@ export function useFetchStub(): FetchStub {
     const result = typeof responder === 'function' ? await responder(recorded) : responder
     if (result instanceof Response) return result
     if (result.kind === 'network-error') throw new TypeError('Failed to fetch')
+    if (result.kind === 'hang') return new Promise<Response>(() => {})
     return toResponse(result)
   }
 
@@ -97,6 +98,8 @@ export function useFetchStub(): FetchStub {
   })
   afterEach(() => {
     vi.unstubAllGlobals()
+    // `routes()` の表にない要求は、404 を返して黙って進んでしまう。テストが気づけるよう、残っていれば失敗させる。
+    expect(unmatched, '`routes()` の表にない要求がありました').toEqual([])
   })
 
   return {

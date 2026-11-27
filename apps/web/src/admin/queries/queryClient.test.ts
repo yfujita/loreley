@@ -1,6 +1,7 @@
-import { describe, expect, it, vi } from 'vitest'
+import { onlineManager } from '@tanstack/vue-query'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { getMetaOptions } from '@/admin/api'
+import { cancelJobMutation, getMetaOptions } from '@/admin/api'
 import type { ApiError } from '@/shared/api/apiError'
 
 import {
@@ -10,6 +11,7 @@ import {
   nginxHtmlResponse,
 } from '../../../tests/support/apiErrors'
 import { useFetchStub } from '../../../tests/support/fetchStub'
+import { runMutation } from '../../../tests/support/queryTesting'
 import { createAppQueryClient, shouldRetryRead } from './queryClient'
 
 describe('shouldRetryRead(読み取りの再試行は 1 回だけ。E 5.4・6.5)', () => {
@@ -83,6 +85,11 @@ describe('createAppQueryClient の既定値(E 5.4)', () => {
     expect(defaults.mutations?.retry).toBe(0)
   })
 
+  it('networkMode は query・mutation とも always(オフラインでも paused にしない)', () => {
+    expect(defaults.queries?.networkMode).toBe('always')
+    expect(defaults.mutations?.networkMode).toBe('always')
+  })
+
   it('グローバルの通知を置かない(QueryCache・MutationCache の onError)', () => {
     const queryClient = createAppQueryClient()
 
@@ -150,5 +157,77 @@ describe('実際の取得での再試行(1 回・1 秒後)', () => {
     const { requests } = await fetchWithRetry(nginxHtmlResponse(413))
 
     expect(requests).toBe(1)
+  })
+})
+
+describe('オフライン(navigator.onLine=false 相当)でも要求を送る(networkMode: always)', () => {
+  const stub = useFetchStub()
+
+  afterEach(() => {
+    onlineManager.setOnline(true)
+  })
+
+  it('query: 送信され、通信断なら network のエラーになる(paused のまま待たない)', async () => {
+    onlineManager.setOnline(false)
+    stub.respondWith(networkErrorResponse())
+    const queryClient = createAppQueryClient()
+
+    const error = await queryClient
+      .fetchQuery({ ...getMetaOptions(), retry: false })
+      .catch((e: unknown) => e)
+
+    expect(stub.requests).toHaveLength(1)
+    expect(error).toEqual({ kind: 'network' })
+  })
+
+  it('query: オフラインでも、サーバーが応答すれば取得できる', async () => {
+    onlineManager.setOnline(false)
+    stub.respondWith(jsonResponse({ cron_timezone: null, dashboards_url: null }))
+
+    const data = await createAppQueryClient().fetchQuery(getMetaOptions())
+
+    expect(data).toEqual({ cron_timezone: null, dashboards_url: null })
+  })
+
+  it('mutation: 送信され、通信断なら network のエラーになる。paused にならず、再接続後に遅れて実行されない', async () => {
+    onlineManager.setOnline(false)
+    stub.respondWith(networkErrorResponse())
+    const queryClient = createAppQueryClient()
+
+    const error = await runMutation(queryClient, cancelJobMutation(), {
+      path: { job_id: 'job-1' },
+    }).catch((e: unknown) => e)
+
+    expect(stub.requests).toHaveLength(1)
+    expect(error).toEqual({ kind: 'network' })
+    expect(
+      queryClient
+        .getMutationCache()
+        .getAll()
+        .map((mutation) => mutation.state.isPaused),
+    ).toEqual([false])
+
+    // 再接続しても、再送されない(削除・取消・ロック解放が遅れて実行されない)。
+    onlineManager.setOnline(true)
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    expect(stub.requests).toHaveLength(1)
+  })
+
+  it('対照: 既定の networkMode(online)の QueryClient だと、オフライン中の mutation は paused のまま送られない', async () => {
+    onlineManager.setOnline(false)
+    stub.respondWith(networkErrorResponse())
+    const queryClient = createAppQueryClient()
+    queryClient.setDefaultOptions({ mutations: { networkMode: 'online' } })
+
+    const pending = runMutation(queryClient, cancelJobMutation(), {
+      path: { job_id: 'job-1' },
+    }).catch(() => {})
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(stub.requests).toHaveLength(0)
+    expect(queryClient.getMutationCache().getAll()[0]?.state.isPaused).toBe(true)
+    // 再接続で遅れて実行されないよう、キャッシュから外す(テストの後始末)。
+    queryClient.getMutationCache().clear()
+    void pending
   })
 })

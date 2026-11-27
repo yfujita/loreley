@@ -60,6 +60,27 @@ describe('cellState(E 5.9 の 4 状態)', () => {
   })
 })
 
+describe('unavailable が欠落しても落とさない(生成型を信用しない。E 5.3)', () => {
+  it('cellState: unavailable が undefined・null のとき、キーなしと同じに扱う', () => {
+    expect(cellState(undefined, 'x', null, EXPECTED)).toEqual({ kind: 'unreadable' })
+    expect(cellState(null, 'x', null, OPTIONAL)).toEqual({ kind: 'none' })
+    expect(cellState(undefined, 'x', 3, EXPECTED)).toEqual({ kind: 'value', value: 3 })
+  })
+
+  it('行・最上位の参照も、unavailable がない応答で undefined を返す', () => {
+    const missing = {} as { unavailable: Unavailable }
+
+    expect(rowUnavailableReason(missing, 'document_count')).toBeUndefined()
+    expect(topUnavailableReason(missing, 'lock')).toBeUndefined()
+    expect(rowCell(missing, 'document_count', null, OPTIONAL)).toEqual({ kind: 'none' })
+    expect(topCell(missing, 'lock', null, EXPECTED)).toEqual({ kind: 'unreadable' })
+  })
+
+  it('unavailable がオブジェクトでない(文字列など)ときも、キーなしと同じ', () => {
+    expect(cellState('oops' as never, 'x', null, OPTIONAL)).toEqual({ kind: 'none' })
+  })
+})
+
 describe('行の unavailable(一覧の EP。EP-01・09・11)', () => {
   it('source-a の未実行(キーなし)と source-b の読み取り失敗(キーあり)を区別する', () => {
     const [sourceA, sourceB] = sourceList.neverCrawledAndFailedMixed().items

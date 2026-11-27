@@ -22,7 +22,7 @@ describe('withKey', () => {
   })
 
   it('key を差し替えても、生成された queryFn は options の引数から URL を作り、正しい URL へ送る', async () => {
-    stub.respondWith(jsonResponse({}))
+    stub.respondWith(jsonResponse({ ok: true }))
     const options = withKey(
       getSourceOptions({ path: { source_id: 'a/b' } }),
       keys.sources.detail('a/b'),
@@ -36,7 +36,7 @@ describe('withKey', () => {
   })
 
   it('queryKey[0] が文字列でも(生成 queryFn は ...queryKey[0] を展開する)、リクエストに影響しない', async () => {
-    stub.respondWith(jsonResponse({}))
+    stub.respondWith(jsonResponse({ ok: true }))
     const options = withKey(getJobOptions({ path: { job_id: 'j1' } }), keys.jobs.detail('j1'))
 
     await createTestQueryClient().fetchQuery(options)
@@ -50,7 +50,7 @@ describe('withKey', () => {
   })
 
   it('key は QueryCache にドメインの key のまま入り、prefix の invalidate が意図どおり働く', async () => {
-    stub.respondWith(jsonResponse({}))
+    stub.respondWith(jsonResponse({ ok: true }))
     const queryClient = createTestQueryClient()
     await queryClient.fetchQuery(
       withKey(getSourceOptions({ path: { source_id: 'a' } }), keys.sources.detail('a')),
@@ -72,7 +72,7 @@ describe('withKey', () => {
   })
 
   it('1 つの詳細の key だけを invalidate できる(同じ EP でも詳細と編集は別)', async () => {
-    stub.respondWith(jsonResponse({}))
+    stub.respondWith(jsonResponse({ ok: true }))
     const queryClient = createTestQueryClient()
     await queryClient.fetchQuery(
       withKey(getSourceOptions({ path: { source_id: 'a' } }), keys.sources.detail('a')),

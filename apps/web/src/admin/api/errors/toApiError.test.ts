@@ -135,6 +135,16 @@ describe('toApiError(E 5.3 の表の各行)', () => {
     })
   })
 
+  it('孤児サロゲートのパス値で SDK が投げる URIError(送信前の失敗)→ 合成の 400 invalid_request(network にしない)', () => {
+    expect(toApiError(new URIError('URI malformed'), undefined)).toEqual({
+      kind: 'api',
+      status: 400,
+      code: 'invalid_request',
+      retryable: false,
+      outcomeUnknown: false,
+    })
+  })
+
   it.each([
     ['undefined', undefined],
     ['null', null],

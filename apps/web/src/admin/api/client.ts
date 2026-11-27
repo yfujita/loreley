@@ -81,6 +81,22 @@ export async function fetchWithTimeout(
 }
 
 /**
+ * 2xx の本文の検査: 空・JSON のオブジェクトでないものは、成功として返さず `invalid_response`(status 2xx)にする。
+ * 生成クライアントは、2xx で本文が空だと `{}` を成功として返す(`parseAs: 'json'` でも)。Admin API の正常応答は、
+ * すべて必須の項目を持つオブジェクトで、`{}`(項目なし)を返す EP はない(OpenAPI で確認。16 件の 2xx)ため、
+ * 空の本文・`null`・配列・文字列は、プロキシの誤配信などの異常として扱う。
+ * (204・`Content-Length: 0` の応答は、生成クライアントがこの検査を通さず `{}` を返す。Admin API はどちらも返さない。)
+ */
+export async function validateResponseBody(data: unknown): Promise<void> {
+  const isNonEmptyObject =
+    typeof data === 'object' &&
+    data !== null &&
+    !Array.isArray(data) &&
+    Object.keys(data).length > 0
+  if (!isNonEmptyObject) throw new SyntaxError('the response body is empty or not a JSON object')
+}
+
+/**
  * クライアントを設定する。`main.ts` が 1 回呼ぶ(単体テストの setup も同じ関数を呼ぶ)。
  * 冪等: 設定済みなら何もしない(interceptor が二重に登録されない)。設定済みかは interceptor の登録で判定する。
  */
@@ -90,7 +106,11 @@ export function configureApiClient(): void {
   // `parseAs: 'auto'`(生成の既定)は Content-Type で本文の読み方を決めるため、2xx で `text/html` の本文(誤配信の HTML)は
   // 失敗にならず、文字列のまま `data` に載る(FARC-U-22 の確認で判明)。JSON に固定して、JSON でない 2xx を
   // SyntaxError → error interceptor → `invalid_response`(E 5.3 の表)にする。
-  client.setConfig({ fetch: fetchWithTimeout, parseAs: 'json' })
+  client.setConfig({
+    fetch: fetchWithTimeout,
+    parseAs: 'json',
+    responseValidator: validateResponseBody,
+  })
   // 最終防衛(E 5.3): パス値が不正なら送信せずに例外にする。例外は error interceptor を通って合成の 400 になる。
   client.interceptors.request.use((request, options) => {
     assertValidPathParams(options.path)

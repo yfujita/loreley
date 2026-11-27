@@ -79,7 +79,9 @@ export function resolveViewState(input: ViewStateInput): ViewState {
     return { ...base, kind: 'loading', diagnostic: null }
   }
   if (!input.hasData) {
-    // 取得していない(`enabled: false`)。表示する値がないので空として扱う(画面側で別の状態を出す)。
+    // 取得していない(`enabled: false`)。表示する値がないので空として扱う。
+    // 呼び出し側(X1 のソース未選択など)は、この状態になる前に自分の状態(「データソースを選択」など)を先に判定する前提。
+    // 6 種の kind に「未取得(idle)」は足さない(足す案はフェーズ 6 以降で再検討)。
     return { ...base, kind: 'empty', diagnostic: null }
   }
   return { ...base, kind: input.isEmpty ? 'empty' : 'ready', diagnostic: null }

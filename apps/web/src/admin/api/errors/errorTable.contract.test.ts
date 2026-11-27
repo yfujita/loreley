@@ -46,9 +46,11 @@ function collectCodesFromDescriptions(): Map<string, Set<string>> {
 }
 
 describe('errorTable ↔ OpenAPI の description', () => {
-  const codesInOpenApi = collectCodesFromDescriptions()
+  // 説明文の書式が変わったとき、収集の検査が it の失敗(名前つき)として現れるよう、it の中で収集する。
+  const collect = () => collectCodesFromDescriptions()
 
   it('OpenAPI の説明文に出る code は、Admin 固有 14 種 + invalid_request・unavailable の計 16 種', () => {
+    const codesInOpenApi = collect()
     expect([...codesInOpenApi.keys()].sort()).toEqual(
       [...ADMIN_ERROR_CODES, 'invalid_request', 'unavailable'].sort(),
     )
@@ -56,18 +58,21 @@ describe('errorTable ↔ OpenAPI の description', () => {
   })
 
   it('(1) OpenAPI に出る code は、すべて errorTable にある', () => {
+    const codesInOpenApi = collect()
     for (const code of codesInOpenApi.keys()) {
       expect(ERROR_TABLE, `OpenAPI の code ${code} が errorTable にない`).toHaveProperty(code)
     }
   })
 
   it('(2) errorTable の Admin 固有 14 種は、OpenAPI のどれかの説明文に出る', () => {
+    const codesInOpenApi = collect()
     for (const code of ADMIN_ERROR_CODES) {
       expect(codesInOpenApi.has(code), `${code} が OpenAPI の説明文にない`).toBe(true)
     }
   })
 
   it('共通 6 種のうち OpenAPI に宣言がない 4 種(not_found など)は、表の側だけで網羅する', () => {
+    const codesInOpenApi = collect()
     const commonNotInOpenApi = COMMON_ERROR_CODES.filter((code) => !codesInOpenApi.has(code))
 
     expect([...commonNotInOpenApi].sort()).toEqual([
@@ -80,6 +85,7 @@ describe('errorTable ↔ OpenAPI の description', () => {
   })
 
   it('EP と code の対応が B 2.3 の EP 列と一致する(代表)', () => {
+    const codesInOpenApi = collect()
     expect([...(codesInOpenApi.get('lock_held') ?? [])].sort()).toEqual([
       'start_crawl',
       'start_source_delete',
