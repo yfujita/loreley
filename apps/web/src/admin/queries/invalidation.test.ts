@@ -37,7 +37,11 @@ describe('invalidate の表(E 5.8)', () => {
   })
 
   it('invalidateAfter は、表の prefix に一致するクエリだけを invalid にして再取得する', async () => {
-    stub.respondWith(jsonResponse({ ok: true }))
+    stub.routes({
+      'GET /sources': jsonResponse(sourceList.normal()),
+      'GET /sources/a': jsonResponse(sourceDetails.normal()),
+      'GET /jobs/j': jsonResponse(jobDetails.succeeded()),
+    })
     const queryClient = createTestQueryClient()
     await runComposable(
       () => ({

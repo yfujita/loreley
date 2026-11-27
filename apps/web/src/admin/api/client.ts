@@ -7,6 +7,7 @@ import { client } from './generated/client.gen'
 
 import { toApiError } from '@/admin/api/errors/toApiError'
 import { assertValidPathParams } from '@/admin/api/pathParams'
+import { findShapeProblem, RESPONSE_SHAPES, ResponseShapeError } from '@/admin/api/responseShapes'
 
 /** 読み取り(GET)のタイムアウト。`api` 側の OpenSearch の最悪の待ち時間より先に切らない仮値(FARC-U-16)。 */
 export const READ_TIMEOUT_MS = 45_000
@@ -85,14 +86,14 @@ export async function fetchWithTimeout(
 }
 
 /**
- * 2xx の本文の検査: 空・JSON のオブジェクトでないものは、成功として返さず `invalid_response`(status 2xx)にする。
- * 生成クライアントは、2xx で本文が空だと `{}` を成功として返す(`parseAs: 'json'` でも)。Admin API の正常応答は、
- * すべて必須の項目を持つオブジェクトで、`{}`(項目なし)を返す EP はない(OpenAPI で確認。16 件の 2xx)ため、
- * 空の本文・`null`・配列・文字列は、プロキシの誤配信・本文の欠落などの異常として扱う。
+ * 2xx の本文の検査(生成クライアントの `responseValidator`): 空・JSON のオブジェクトでないものは、成功として返さず
+ * `invalid_response`(status 2xx)にする。生成クライアントは、2xx で本文が空だと `{}` を成功として返す(`parseAs: 'json'` でも)。
+ * Admin API の正常応答は、すべて必須の項目を持つオブジェクトで、`{}`(項目なし)を返す EP はない
+ * (OpenAPI で確認。16 件の 2xx)ため、空の本文・`null`・配列・文字列は、プロキシの誤配信・本文の欠落などの異常として扱う。
  *
+ * 項目の検査(EP ごとの最小限の形)は `validateSuccessResponse`。
  * 生成クライアントは、`Content-Length: 0` の 2xx も検証せずに `{}` を返す。サーバーやプロキシが付けた `content-length: 0`
  * で検査を迂回されないよう、fetchWithTimeout が Response を作り直すときに `content-length` を外している。
- * 実際の 204(本文なし)は、SDK の挙動のとおり検査を通らず `{}` になる(Admin API は 204 を返さない。client.test.ts で固定)。
  */
 export async function validateResponseBody(data: unknown): Promise<void> {
   const isNonEmptyObject =
@@ -104,8 +105,43 @@ export async function validateResponseBody(data: unknown): Promise<void> {
 }
 
 /**
+ * 生成クライアントの response interceptor。2xx の応答を、成功として返す前に検査する。
+ * 生成クライアントでは、204 の判定(本文を読まず・`responseValidator` も通さず `{}` を返す分岐)より前に走る。
+ *
+ * - 204・205: Admin API は返さない(OpenAPI に 204 がない)。成功として `{}` を返すと、結果不明のまま成功通知を出しうるため、
+ *   `invalid_response`(status 204・205)にする
+ * - EP の最小限の形(responseShapes.ts)を満たさない本文: `invalid_response`(status 2xx)
+ * - 表にない EP・本文がパースできない応答は、ここでは通す(後者は生成クライアントが SyntaxError にする)
+ *
+ * 投げた例外は error interceptor(toApiError)が、応答の status つきの `invalid_response` にする。
+ */
+export async function validateSuccessResponse(
+  response: Response,
+  request: Request,
+  options: { url?: string },
+): Promise<Response> {
+  if (!response.ok) return response
+  if (response.status === 204 || response.status === 205) {
+    throw new ResponseShapeError(`unexpected ${response.status} (no content)`)
+  }
+
+  const shape = RESPONSE_SHAPES[`${request.method} ${options.url}`]
+  if (shape === undefined) return response
+
+  let data: unknown
+  try {
+    data = JSON.parse(await response.clone().text())
+  } catch {
+    return response
+  }
+  const problem = findShapeProblem(shape, data)
+  if (problem !== null) throw new ResponseShapeError(problem)
+  return response
+}
+
+/**
  * クライアントを設定する。`main.ts` が 1 回呼ぶ(単体テストの setup も同じ関数を呼ぶ)。
- * 冪等: 設定済みなら何もしない(interceptor が二重に登録されない)。設定済みかは interceptor の登録で判定する。
+ * 冪等: 設定済みなら何もしない(interceptor が二重に登録されない)。設定済みかは error interceptor の登録で判定する。
  */
 export function configureApiClient(): void {
   if (client.interceptors.error.exists(toApiError)) return
@@ -123,5 +159,6 @@ export function configureApiClient(): void {
     assertValidPathParams(options.path)
     return request
   })
+  client.interceptors.response.use(validateSuccessResponse)
   client.interceptors.error.use(toApiError)
 }

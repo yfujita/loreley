@@ -299,6 +299,13 @@ describe('O1: 読み込み中・エラー・空(カードの中の領域単位)'
     expect(document.querySelector('.v-snackbar')).toBeNull()
   })
 
+  it('形の合わない 2xx(indices が配列でない)は、マトリクスの組み立てが実行時例外にならず、エラーブロックになる', async () => {
+    const view = await mountOpenSearch(jsonResponse({ ...opensearch.many(), indices: {} }))
+
+    expect(view.card().find('[data-testid="o1-state-error"]').exists()).toBe(true)
+    expect(view.wrapper.find('[data-testid="o1-summary"]').exists()).toBe(false)
+  })
+
   it('「再試行」で取り直し、成功すれば通常の表示に戻る', async () => {
     const view = await mountOpenSearch(apiErrorResponse(500, 'internal_error'))
     stub.respondWith(jsonResponse(opensearch.many()))
@@ -359,6 +366,54 @@ describe('O1: 取得失敗(前回データあり)', () => {
     expect(view.card().find('h2').element.contains(note.element)).toBe(false)
     // アラートには o1-state-stale を付けない(testid の重複を避ける)
     expect(view.wrapper.findAll('[data-testid="o1-state-stale"]')).toHaveLength(1)
+  })
+
+  it('未割り当てのプライマリの警告は、stale 中も残すが、「現在」ではなく前回取得時の状態として書く(通常時の文言は変えない)', async () => {
+    const view = await mountOpenSearch(jsonResponse(opensearch.red()), { width: 982 })
+    const normalTitle = view.wrapper.find('.page-alert__title').text()
+    expect(normalTitle).toBe('未割り当てのプライマリシャードがあります')
+
+    stub.respondWith(apiErrorResponse(500, 'internal_error'))
+    await view.button('更新').trigger('click')
+    await flushPromises()
+
+    const alert = view.wrapper.find('.page-alert[role="status"]')
+    expect(alert.find('.page-alert__title').text()).toBe(
+      '前回取得時に未割り当てのプライマリシャードがありました',
+    )
+    expect(alert.text()).toContain(
+      'demo-docs-000001 のプライマリシャード(P0)が前回の取得時点では割り当てられていませんでした。現在の状態は確認できていません。',
+    )
+    expect(alert.text()).not.toContain('割り当てられていません。このインデックスの検索')
+  })
+
+  it('複数のインデックスが該当するときも、stale 中は前回取得時の状態として書く', async () => {
+    const view = await mountOpenSearch(jsonResponse(opensearch.redMultiple()), { width: 982 })
+    stub.respondWith(apiErrorResponse(500, 'internal_error'))
+    await view.button('更新').trigger('click')
+    await flushPromises()
+
+    const alert = view.wrapper.find('.page-alert[role="status"]')
+    expect(alert.find('.page-alert__title').text()).toBe(
+      '前回取得時に未割り当てのプライマリシャードがありました',
+    )
+    expect(alert.text()).toContain('前回の取得時点の状態です。現在の状態は確認できていません。')
+    expect(alert.findAll('li').length).toBeGreaterThan(1)
+  })
+
+  it('再取得に成功すると、通常の文言に戻る', async () => {
+    const view = await mountOpenSearch(jsonResponse(opensearch.red()), { width: 982 })
+    stub.respondWith(apiErrorResponse(500, 'internal_error'))
+    await view.button('更新').trigger('click')
+    await flushPromises()
+    stub.respondWith(jsonResponse(opensearch.red()))
+
+    await view.button('更新').trigger('click')
+    await flushPromises()
+
+    expect(view.wrapper.find('.page-alert[role="status"] .page-alert__title').text()).toBe(
+      '未割り当てのプライマリシャードがあります',
+    )
   })
 
   it('概況の説明に「前回取得時の値です。」を添える', async () => {

@@ -2,7 +2,11 @@ import { flushPromises } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 
-import { jsonResponse } from '../../../tests/support/apiErrors'
+import {
+  apiErrorResponse,
+  jsonResponse,
+  networkErrorResponse,
+} from '../../../tests/support/apiErrors'
 import { runComposable } from '../../../tests/support/composableTesting'
 import { useFetchStub } from '../../../tests/support/fetchStub'
 import { jobDetails, jobList } from '../../../tests/support/fixtures/jobs'
@@ -214,6 +218,36 @@ describe('useJobDetailQuery(EP-10。J2)', () => {
 
   it('リース切れ(stalled。保存上は running)もポーリングが続く', async () => {
     stub.respondWith(jsonResponse(jobDetails.stalledWithLeaseExpiry()))
+    await runComposable(() => useJobDetailQuery('job-1'))
+    await flushPromises()
+
+    await elapse(30_000)
+
+    expect(stub.requests.length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('前回 running だったジョブが 404 job_not_found になったら、ポーリングを止める(前回のデータが残っていても)', async () => {
+    let calls = 0
+    stub.respondWith(() =>
+      calls++ === 0 ? jsonResponse(jobDetails.running()) : apiErrorResponse(404, 'job_not_found'),
+    )
+    const { result } = await runComposable(() => useJobDetailQuery('job-1'))
+    await flushPromises()
+    expect(result.data.value?.status).toBe('running')
+
+    await elapse(10_000)
+    expect(stub.requests).toHaveLength(2)
+    expect(result.data.value?.status).toBe('running') // 前回のデータは保たれる
+
+    await elapse(120_000)
+    expect(stub.requests).toHaveLength(2)
+  })
+
+  it('一時的な通信障害(network)では、ポーリングを続ける', async () => {
+    let calls = 0
+    stub.respondWith(() =>
+      calls++ === 0 ? jsonResponse(jobDetails.running()) : networkErrorResponse(),
+    )
     await runComposable(() => useJobDetailQuery('job-1'))
     await flushPromises()
 

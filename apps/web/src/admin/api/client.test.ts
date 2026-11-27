@@ -7,6 +7,7 @@ import {
   getDashboardOptions,
   getMetaOptions,
   registerSourceMutation,
+  releaseLockMutation,
   startCrawlMutation,
 } from '@/admin/api'
 
@@ -17,6 +18,11 @@ import {
   type MockResponse,
 } from '../../../tests/support/apiErrors'
 import { useFetchStub } from '../../../tests/support/fetchStub'
+import { dashboard } from '../../../tests/support/fixtures/dashboard'
+import { jobAccepted } from '../../../tests/support/fixtures/jobs'
+import { meta } from '../../../tests/support/fixtures/meta'
+import { opensearch } from '../../../tests/support/fixtures/opensearch'
+import { savedSettings } from '../../../tests/support/fixtures/sources'
 import { createTestQueryClient, runMutation } from '../../../tests/support/queryTesting'
 import { fetchWithTimeout, READ_TIMEOUT_MS, WRITE_TIMEOUT_MS } from './client'
 // setup(tests/support/setup.ts)が configureApiClient() を呼んだ client そのもの。
@@ -54,7 +60,7 @@ describe('configureApiClient: baseUrl と冪等性', () => {
     expect(client.getConfig().parseAs).toBe('json')
   })
 
-  it('2 回呼んでも interceptor が二重に登録されない(request 1 つ・error 1 つ)', async () => {
+  it('2 回呼んでも interceptor が二重に登録されない(request・response・error が 1 つずつ)', async () => {
     const { client, configureApiClient } = await loadFreshModules()
 
     configureApiClient()
@@ -64,7 +70,7 @@ describe('configureApiClient: baseUrl と冪等性', () => {
     const registered = (fns: Array<unknown>) => fns.filter((fn) => fn !== null)
     expect(registered(client.interceptors.request.fns)).toHaveLength(1)
     expect(registered(client.interceptors.error.fns)).toHaveLength(1)
-    expect(registered(client.interceptors.response.fns)).toHaveLength(0)
+    expect(registered(client.interceptors.response.fns)).toHaveLength(1)
   })
 
   it('呼ぶ前の生成クライアントは interceptor を持たない(設定が configureApiClient の仕事であること)', async () => {
@@ -88,19 +94,26 @@ describe('EP-12・13・14 は query を付けない(E 5.3)', () => {
   const queryClient = () => createTestQueryClient()
 
   it.each([
-    ['EP-14 /meta', () => queryClient().fetchQuery(getMetaOptions()), '/api/admin/v1/meta'],
+    [
+      'EP-14 /meta',
+      () => queryClient().fetchQuery(getMetaOptions()),
+      '/api/admin/v1/meta',
+      meta.normal(),
+    ],
     [
       'EP-13 /dashboard',
       () => queryClient().fetchQuery(getDashboardOptions()),
       '/api/admin/v1/dashboard',
+      dashboard.allNormal(),
     ],
     [
       'EP-12 /opensearch/cluster',
       () => queryClient().fetchQuery(getClusterOptions()),
       '/api/admin/v1/opensearch/cluster',
+      opensearch.green(),
     ],
-  ])('%s の URL にクエリが付かない', async (_name, fetchEndpoint, expectedPath) => {
-    stub.respondWith(jsonResponse({ ok: true }))
+  ])('%s の URL にクエリが付かない', async (_name, fetchEndpoint, expectedPath, response) => {
+    stub.respondWith(jsonResponse(response))
 
     await fetchEndpoint()
 
@@ -113,7 +126,7 @@ describe('EP-12・13・14 は query を付けない(E 5.3)', () => {
 
 describe('書き込みのリクエスト', () => {
   it('本文があるとき Content-Type: application/json を付ける(EP-06)', async () => {
-    stub.respondWith(jsonResponse({ job_id: 'job-1' }, 202))
+    stub.respondWith(jsonResponse(jobAccepted.crawl(), 202))
 
     await runMutation(createTestQueryClient(), startCrawlMutation(), {
       path: { source_id: 'demo' },
@@ -128,7 +141,7 @@ describe('書き込みのリクエスト', () => {
   })
 
   it('EP-03 の本文は渡したとおりに送る(ttl_days と ttl_seconds の使わない側を足さない)', async () => {
-    stub.respondWith(jsonResponse({ ok: true }, 201))
+    stub.respondWith(jsonResponse(savedSettings.registered(), 201))
 
     await runMutation(createTestQueryClient(), registerSourceMutation(), {
       body: {
@@ -220,10 +233,23 @@ describe('2xx の本文の検査(空・JSON のオブジェクトでないもの
     expect(data).toEqual({ data: META })
   })
 
-  it('実際の 204(本文なし)は、SDK の挙動のとおり検査を通らず `{}` を成功として返す(Admin API は 204 を返さない)', async () => {
-    expect(await failureFor(() => new Response(null, { status: 204 }) as never)).toEqual({
-      data: {},
-    })
+  it.each([204, 205])(
+    '%i(本文なし)は、`{}` を成功として返さず invalid_response(status つき)。Admin API は返さない(OpenAPI に 204 がない)',
+    async (status) => {
+      expect(await failureFor(() => new Response(null, { status }) as never)).toEqual({
+        error: { kind: 'invalid_response', status },
+      })
+    },
+  )
+
+  it('書き込み(起動・取消・解放)の 204 も invalid_response になり、成功として扱われない(結果不明の導線に載る)', async () => {
+    stub.respondWith(() => new Response(null, { status: 204 }))
+
+    const error = await runMutation(createTestQueryClient(), cancelJobMutation(), {
+      path: { job_id: 'job-1' },
+    }).catch((caught: unknown) => caught)
+
+    expect(error).toEqual({ kind: 'invalid_response', status: 204 })
   })
 
   it.each([
@@ -288,6 +314,84 @@ describe('タイムアウト付き fetch が返す Response', () => {
       expect(response.status).toBe(status)
       expect(await response.text()).toBe('')
     }
+  })
+})
+
+describe('2xx の最小限の形(EP ごと。responseShapes.ts)を満たさない応答は invalid_response', () => {
+  async function readFailure(fetchData: () => Promise<unknown>, mock: MockResponse) {
+    stub.respondWith(mock)
+    return fetchData().then(
+      (data) => ({ data }),
+      (error: unknown) => ({ error }),
+    )
+  }
+
+  it('Dashboard が {"status":"ok"} のとき、成功として view model に渡さず invalid_response(status 200)', async () => {
+    expect(
+      await readFailure(
+        () => createTestQueryClient().fetchQuery(getDashboardOptions()),
+        jsonResponse({ status: 'ok' }),
+      ),
+    ).toEqual({
+      error: { kind: 'invalid_response', status: 200 },
+    })
+  })
+
+  it.each([
+    ['indices が配列でない', { ...opensearch.green(), indices: {} }],
+    ['nodes がない', { ...opensearch.green(), nodes: undefined }],
+    [
+      'shards の要素に node のキーがない(未割り当てと取り違えない)',
+      {
+        ...opensearch.green(),
+        shards: [{ index: 'a', shard: 0, role: 'primary', state: 'started' }],
+      },
+    ],
+    [
+      'cluster の件数が文字列',
+      { ...opensearch.green(), cluster: { ...opensearch.green().cluster, node_count: '1' } },
+    ],
+  ])('O1: %s', async (_name, body) => {
+    expect(
+      await readFailure(
+        () => createTestQueryClient().fetchQuery(getClusterOptions()),
+        jsonResponse(body),
+      ),
+    ).toEqual({
+      error: { kind: 'invalid_response', status: 200 },
+    })
+  })
+
+  it('形の合った応答は、そのまま成功として返す(フィクスチャの正常な応答)', async () => {
+    expect(
+      await readFailure(
+        () => createTestQueryClient().fetchQuery(getClusterOptions()),
+        jsonResponse(opensearch.green()),
+      ),
+    ).toEqual({
+      data: opensearch.green(),
+    })
+  })
+
+  it('書き込みの受付(202)で job_id がないとき、成功にせず invalid_response(status 202)', async () => {
+    stub.respondWith(jsonResponse({ status: 'queued' }, 202))
+
+    const error = await runMutation(createTestQueryClient(), startCrawlMutation(), {
+      path: { source_id: 'demo' },
+      body: { force_delete: false, rewrite_mode: false },
+    }).catch((caught: unknown) => caught)
+
+    expect(error).toEqual({ kind: 'invalid_response', status: 202 })
+  })
+
+  it('ロック解放(200)で released がないとき、成功にしない', async () => {
+    stub.respondWith(jsonResponse({ source_id: 'demo' }))
+
+    const error = await runMutation(createTestQueryClient(), releaseLockMutation(), {
+      path: { source_id: 'demo' },
+    }).catch((caught: unknown) => caught)
+
+    expect(error).toEqual({ kind: 'invalid_response', status: 200 })
   })
 })
 
@@ -404,14 +508,6 @@ describe('タイムアウト付き fetch', () => {
       .catch(() => {})
 
     expect(vi.getTimerCount()).toBe(0)
-  })
-
-  it('本文のないステータス(204)でも例外にならず、空の応答として読める', async () => {
-    stub.respondWith(() => new Response(null, { status: 204 }))
-
-    const data = await createTestQueryClient().fetchQuery(getMetaOptions())
-
-    expect(data).toEqual({})
   })
 })
 

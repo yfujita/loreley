@@ -1,5 +1,5 @@
 // ポーリング(E 5.5・F 3.4)。`refetchInterval` に渡す値と関数。
-import type { JobStatus } from '@/admin/api'
+import { describeError, type JobStatus } from '@/admin/api'
 
 /** D1 の定期更新(30 秒。承認済み(ゲート C。#26))。 */
 export const DASHBOARD_POLL_INTERVAL_MS = 30_000
@@ -15,10 +15,21 @@ export function dashboardRefetchInterval(autoRefresh: boolean): number | false {
  * J2: 直近のデータの `status` が `queued`・`running` のときだけ 10 秒ごと。終端(`succeeded` など)で止める。
  * 取消を要求した後も、終端になるまで続ける。`stalled`(保存上は `running` でリース切れ)も `running` のため続く。
  * データがまだない・`status=null`(読めない値)のときは続けない(確認できない状態でポーリングし続けない)。
+ *
+ * 再取得が失敗したとき: TanStack Query は前回のデータを保つので、`status` だけ見ると、ジョブが消えた(404 `job_not_found`)後も
+ * 続けてしまう。「見つかりません」(ジョブが存在しない)なら止める。一時的な通信障害(network・timeout・5xx)では、
+ * 回復を待つために続ける。
  */
 export function jobDetailRefetchInterval(query: {
-  state: { data: { status: JobStatus | null } | undefined }
+  state: { data: { status: JobStatus | null } | undefined; error?: unknown }
 }): number | false {
-  const status = query.state.data?.status
-  return status === 'queued' || status === 'running' ? JOB_POLL_INTERVAL_MS : false
+  const { data, error } = query.state
+  if (
+    error !== null &&
+    error !== undefined &&
+    describeError(error, { operation: 'read' }).notFound
+  ) {
+    return false
+  }
+  return data?.status === 'queued' || data?.status === 'running' ? JOB_POLL_INTERVAL_MS : false
 }

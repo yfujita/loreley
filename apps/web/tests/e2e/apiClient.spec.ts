@@ -14,7 +14,9 @@ import {
 import { gotoBlankPage } from '../support/blankPage'
 import { expect, test } from '../support/e2eTest'
 import { dashboard } from '../support/fixtures/dashboard'
+import { jobDetails } from '../support/fixtures/jobs'
 import { meta } from '../support/fixtures/meta'
+import { sourceDetails } from '../support/fixtures/sources'
 import { mockApi } from '../support/mockApi'
 import { evaluateInBrowser } from '../support/browser'
 
@@ -139,7 +141,9 @@ for (const jobId of ['a.b', '..a', 'a..', '...']) {
   test(`\`.\` を含むだけの ID(${jobId})は拒否されず、そのままのパスで送られる`, async ({
     page,
   }) => {
-    const mock = await mockApi(page, { [`GET /jobs/${jobId}`]: jsonResponse({ job_id: jobId }) })
+    const mock = await mockApi(page, {
+      [`GET /jobs/${jobId}`]: jsonResponse({ ...jobDetails.succeeded(), job_id: jobId }),
+    })
 
     await inBrowser(
       page,
@@ -212,7 +216,7 @@ test('withKey の key の差し替え: 取得はドメインの key で QueryCac
   page,
 }) => {
   const mock = await mockApi(page, {
-    'GET /sources/demo': jsonResponse({ source_id: 'demo' }),
+    'GET /sources/demo': jsonResponse({ ...sourceDetails.normal(), source_id: 'demo' }),
     'GET /dashboard': jsonResponse(dashboard.allNormal()),
   })
 

@@ -5,11 +5,22 @@ import { getJobOptions, getSourceOptions } from '@/admin/api'
 
 import { jsonResponse } from '../../../tests/support/apiErrors'
 import { useFetchStub } from '../../../tests/support/fetchStub'
+import { jobDetails } from '../../../tests/support/fixtures/jobs'
+import { sourceDetails } from '../../../tests/support/fixtures/sources'
 import { createTestQueryClient } from '../../../tests/support/queryTesting'
 import { keys } from './keys'
 import { withKey } from './withKey'
 
 const stub = useFetchStub()
+
+// EP-02(データソース詳細)と EP-10(ジョブ詳細)の、形の合った応答(E 5.3 の最小限の形の検査を通る)。
+function respondWithFixtures() {
+  stub.respondWith((request) =>
+    jsonResponse(
+      request.pathname.includes('/jobs/') ? jobDetails.succeeded() : sourceDetails.normal(),
+    ),
+  )
+}
 
 describe('withKey', () => {
   it('key だけを差し替える(他の項目はそのまま)', () => {
@@ -22,7 +33,7 @@ describe('withKey', () => {
   })
 
   it('key を差し替えても、生成された queryFn は options の引数から URL を作り、正しい URL へ送る', async () => {
-    stub.respondWith(jsonResponse({ ok: true }))
+    respondWithFixtures()
     const options = withKey(
       getSourceOptions({ path: { source_id: 'a/b' } }),
       keys.sources.detail('a/b'),
@@ -36,7 +47,7 @@ describe('withKey', () => {
   })
 
   it('queryKey[0] が文字列でも(生成 queryFn は ...queryKey[0] を展開する)、リクエストに影響しない', async () => {
-    stub.respondWith(jsonResponse({ ok: true }))
+    respondWithFixtures()
     const options = withKey(getJobOptions({ path: { job_id: 'j1' } }), keys.jobs.detail('j1'))
 
     await createTestQueryClient().fetchQuery(options)
@@ -50,7 +61,7 @@ describe('withKey', () => {
   })
 
   it('key は QueryCache にドメインの key のまま入り、prefix の invalidate が意図どおり働く', async () => {
-    stub.respondWith(jsonResponse({ ok: true }))
+    respondWithFixtures()
     const queryClient = createTestQueryClient()
     await queryClient.fetchQuery(
       withKey(getSourceOptions({ path: { source_id: 'a' } }), keys.sources.detail('a')),
@@ -72,7 +83,7 @@ describe('withKey', () => {
   })
 
   it('1 つの詳細の key だけを invalidate できる(同じ EP でも詳細と編集は別)', async () => {
-    stub.respondWith(jsonResponse({ ok: true }))
+    respondWithFixtures()
     const queryClient = createTestQueryClient()
     await queryClient.fetchQuery(
       withKey(getSourceOptions({ path: { source_id: 'a' } }), keys.sources.detail('a')),

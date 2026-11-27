@@ -214,6 +214,25 @@ describe('D1: 初回から取得できない(データなし)', () => {
     expect(document.querySelector('.v-snackbar')).toBeNull()
   })
 
+  it('形の合わない 2xx({"status":"ok"})は、view model が実行時例外にならず、エラーブロックになる(想定外の応答として診断つき)', async () => {
+    const { wrapper } = await mountDashboard(jsonResponse({ status: 'ok' }))
+
+    const error = wrapper.find('[data-testid="d1-state-error"]')
+    expect(error.exists()).toBe(true)
+    expect(error.find('h2').text()).toBe('コンポーネントの状態を取得できません')
+    expect(wrapper.find('[data-testid="d1-summary"]').exists()).toBe(false)
+  })
+
+  it('取得できた後に、形の合わない 2xx が返っても、前回の値の stale になる(例外にならない)', async () => {
+    const view = await mountDashboard()
+    stub.respondWith(jsonResponse({ status: 'ok' }))
+
+    await clickUpdate(view)
+
+    expect(view.wrapper.find('[data-testid="d1-state-stale"]').exists()).toBe(true)
+    expect(view.summary().exists()).toBe(true)
+  })
+
   it('見出しの下の操作行(自動更新・更新)は、エラーでも出す', async () => {
     const { wrapper, switchInput } = await mountDashboard(apiErrorResponse(500, 'internal_error'))
 

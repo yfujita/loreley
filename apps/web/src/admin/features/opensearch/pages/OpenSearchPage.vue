@@ -96,19 +96,34 @@ const singlePrimary = computed(() =>
     </template>
 
     <ViewStateBody :view-state="outerState" :texts="TEXTS" card @retry="refresh">
+      <!-- stale(再取得に失敗)中は、前回取得した値からの警告なので、「現在」の状態として言い切らない -->
       <PageAlert
         v-if="unassignedPrimaries.length > 0"
         type="error"
         role="status"
-        title="未割り当てのプライマリシャードがあります"
+        :title="
+          isStale
+            ? '前回取得時に未割り当てのプライマリシャードがありました'
+            : '未割り当てのプライマリシャードがあります'
+        "
       >
         <p v-if="singlePrimary !== undefined">
           {{ singlePrimary.index }} のプライマリシャード({{
             formatShardNumbers(singlePrimary.shardNumbers)
-          }})が割り当てられていません。このインデックスの検索や登録に影響する可能性があります。
+          }})が{{
+            isStale
+              ? '前回の取得時点では割り当てられていませんでした。現在の状態は確認できていません。'
+              : '割り当てられていません。このインデックスの検索や登録に影響する可能性があります。'
+          }}
         </p>
         <template v-else>
-          <p>該当するインデックスの検索や登録に影響する可能性があります。</p>
+          <p>
+            {{
+              isStale
+                ? '前回の取得時点の状態です。現在の状態は確認できていません。該当するインデックスの検索や登録に影響している可能性があります。'
+                : '該当するインデックスの検索や登録に影響する可能性があります。'
+            }}
+          </p>
           <ul class="o1-page__alert-list">
             <li v-for="item in shownPrimaries" :key="item.index">
               {{ item.index }}({{ formatShardNumbers(item.shardNumbers) }})
