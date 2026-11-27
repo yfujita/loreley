@@ -5,13 +5,17 @@
 - 状態: in_progress(**ユーザー指示によりフェーズ 4 完了時点で一旦中断**。PR 作成・レビュー・振り返り待ち)
 - 現在工程: 実施(フェーズ 1〜4 完了 → PR レビュー・振り返り → フェーズ 5 開始前)
 - 最終更新: 2026-11-28
-- 最新作業記録: 0008-process-decisions-after-pr27.md
+- 最新作業記録: 0009-pr27-review-response.md
 
 ## 現在の状況
 
 プラン(0002 + 0003、承認済み)の**フェーズ 1〜4 が完了**した。作業ブランチ `feature/implement-admin-view`(基準 `8a20d67`)。フェーズ 4(D1・O1。読み取り専用)は 3 コミット(`0182323`・`0e9e744`・`91098e3`)+ 記録コミット。code-reviewer・test-reviewer の指摘を修正し、中間 UI レビュー(`web-ui-reviewer`。専用 compose 環境+dev サーバー)の Important(スイッチ・チェックボックスのフォーカスリング)も修正して再確認済み(可)。検証(typecheck・lint・format:check・test 1890 件・gen:api:check・build・test:e2e 178 件・docker build)はメインエージェントが再実行して成功。専用 compose 環境(`loreley-adminview`)と dev サーバーは後始末済み。
 
 ユーザー指示: フェーズ 4 が完了したら一旦作業を止め、PR を作成する。PR のレビューはユーザーが行い、ここまでを振り返る。**PR #27 を作成済み**(https://github.com/yfujita/loreley/pull/27)。
+
+## PR #27 のレビュー対応(2026-11-28。詳細は 0009)
+
+ユーザーのレビュー(Request Changes 推奨。Important 2・Minor 2)に対応済み: 成功応答の形の検証(EP ごとの最小限の形の表+契約テスト)と 204・205 の拒否を追加、O1 の stale 文言、J2 のポーリングの 404 停止。code-reviewer・test-reviewer の再レビューは Critical・Important なし。実 API の実応答 32 件(表の全 14 EP)で誤検出 0 件を確認(専用環境は後始末済み)。テストは重複を整理して差し引き減。PR #27 に push 済み。**ユーザーの再レビュー待ち。**
 
 ## ユーザーの決定(2026-11-28。詳細は 0008)
 
@@ -31,4 +35,5 @@
 
 ## ユーザー判断待ち
 
-- PR #27 のレビュー結果の報告(ユーザーが後で報告する)。報告後にフェーズ 5 を開始する
+- PR #27 の再レビューの結果。その後にフェーズ 5 を開始する
+- 既存テストの削減(`fixtures.test.ts` 780 行・`dependencyRules.test.ts` 1026 行・`dependencyMatrix.test.ts` 451 行・E2E の 3 本など。0009 の 5 章)を、フェーズ 5 の前に行うか、フェーズ 5 以降の方針適用だけにするか
