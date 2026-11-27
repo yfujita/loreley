@@ -10,10 +10,10 @@
     -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN',
     'Yu Gothic UI', 'Meiryo UI', 'Noto Sans JP', sans-serif;
   --v-font-heading: var(--v-font-body);
-  /* 識別子・cron 式・パス専用(DS 2.2。ラベルや装飾には使わない) */
   /* DS 2.1 の「その他」の色(theme の色名にはしない): スナックバー(ink)上のリンク、入力のプレースホルダー */
   --color-ink-link: #9cc9ee;
   --color-placeholder: #66727e;
+  /* 識別子・cron 式・パス専用の等幅(DS 2.2。ラベルや装飾には使わない) */
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
 }
 
@@ -27,9 +27,9 @@ html {
   letter-spacing: normal;
 }
 
-/* 本文中のリンク。Vuetify の部品(`v-list-item`・`v-tab` など、class に `v-` を含む `<a>`)の色は上書きしない
+/* 本文中のリンク。Vuetify の部品(`v-list-item`・`v-tab` など、class が `v-` で始まる単語を持つ `<a>`。`nav-link`・`dev-link` のような独自 class は除外しない)の色は上書きしない
    (レイヤーなしの規則は、`@layer` 内の Vuetify の規則より常に強いため、範囲を絞る) */
-:where(a:not([class*='v-'])) {
+:where(a:not([class^='v-']):not([class*=' v-'])) {
   color: rgb(var(--v-theme-primary));
 }
 

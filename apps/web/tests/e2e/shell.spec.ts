@@ -201,6 +201,24 @@ test.describe('840px の境(DS 5.1・7。FARC-U-14)', () => {
     })
   }
 
+  test('スクリム(背面)を押して閉じても、フォーカスはメニューのボタンへ戻る(DS 8)', async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport(700))
+    await mockMeta(page, meta.noDashboards())
+    await page.goto('sources')
+    const menu = page.getByRole('button', { name: 'メニューを開く' })
+    await menu.click()
+    await expectDrawerOpen(page)
+    await expect(sideNav(page).getByRole('link').first()).toBeFocused()
+
+    // ドロワー(幅 272px)の外側のスクリムを押す
+    await page.mouse.click(600, 400)
+
+    await expectDrawerClosed(page)
+    await expect(menu).toBeFocused()
+  })
+
   test('Esc 以外のキー(Tab・Enter・a)では、ドロワーは閉じない', async ({ page }) => {
     await page.setViewportSize(viewport(700))
     await mockMeta(page, meta.noDashboards())
@@ -608,6 +626,39 @@ test.describe('スタイル(global.css・scoped CSS の優先関係)', () => {
     expect(await color(page.getByRole('link', { name: 'ダッシュボードへ戻る' }))).toBe(
       'rgb(29, 91, 135)',
     )
+  })
+
+  test('本文中のリンクの色は、class が v- で始まる Vuetify の部品の <a> には及ばず、独自 class(nav-link・dev-link)には付く', async ({
+    page,
+  }) => {
+    await mockMeta(page, meta.noDashboards())
+    await page.goto('sources')
+
+    const colors = await page.evaluate(() => {
+      const colorOf = (className: string | null) => {
+        const link = document.createElement('a')
+        link.href = '#'
+        if (className !== null) link.className = className
+        document.body.append(link)
+        return getComputedStyle(link).color
+      }
+      return {
+        plain: colorOf(null),
+        navLink: colorOf('nav-link'),
+        devLink: colorOf('dev-link'),
+        prevLink: colorOf('prev-link'),
+        vuetify: colorOf('v-list-item'),
+        vuetifySecond: colorOf('foo v-tab'),
+      }
+    })
+
+    const primary = 'rgb(29, 91, 135)'
+    expect(toRgb(colors.plain)).toBe(primary)
+    expect(toRgb(colors.navLink)).toBe(primary)
+    expect(toRgb(colors.devLink)).toBe(primary)
+    expect(toRgb(colors.prevLink)).toBe(primary)
+    expect(toRgb(colors.vuetify)).not.toBe(primary)
+    expect(toRgb(colors.vuetifySecond)).not.toBe(primary)
   })
 
   test('main.ts が vuetify/styles と global.css を読み込んでいる(本文フォント・sr-only・本文色)', async ({

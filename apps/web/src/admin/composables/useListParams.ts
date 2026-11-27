@@ -80,6 +80,9 @@ export function useListParams<TParams extends object>(
   let latestUpdateId = 0
 
   async function update(patch: Partial<TParams>): Promise<void> {
+    // 画面を離れた後の呼び出し(debounce された絞り込みなど)は、別の画面に query を書き込まないよう無視する。
+    if (route.name !== ownerRouteName) return
+
     const current = pending ?? params.value
     const next = { ...current, ...patch }
 

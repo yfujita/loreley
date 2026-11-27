@@ -15,4 +15,10 @@ describe('TopProgress(DS 4.5)', () => {
 
     expect(wrapper.find('[role="progressbar"]').exists()).toBe(false)
   })
+
+  it('進行バー(.top-progress__bar)は .top-progress の中にある(reduced-motion の上書きが効く構造)', async () => {
+    const { wrapper } = await mountInLayout(TopProgress, { props: { active: true } })
+
+    expect(wrapper.find('.top-progress > .top-progress__bar').exists()).toBe(true)
+  })
 })

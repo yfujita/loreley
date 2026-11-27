@@ -214,6 +214,23 @@ describe('AppShell(DS 5.1。FARC-U-14: mobileBreakpoint・permanent)', () => {
     input.remove()
   })
 
+  it('アンマウントすると、ドロワーのフォーカス待ち(requestAnimationFrame の繰り返し)を打ち切る', async () => {
+    const raf = vi.spyOn(window, 'requestAnimationFrame')
+    const { wrapper } = await mountShell('/sources', 700)
+    // inert が外れないまま待ち続ける状況にするため、ドロワーに inert を付けてから開く。
+    document.querySelector('.app-shell__drawer')?.setAttribute('inert', '')
+    await wrapper.find('button[aria-label="メニューを開く"]').trigger('click')
+    await nextTick()
+
+    wrapper.unmount()
+    const afterUnmount = raf.mock.calls.length
+    await new Promise((resolve) => window.setTimeout(resolve, 150))
+
+    // アンマウント後に、新しいフレーム待ちを増やさない(最大 20 フレームまで回り続けない)
+    expect(raf.mock.calls.length - afterUnmount).toBeLessThanOrEqual(1)
+    raf.mockRestore()
+  })
+
   it('一時表示のドロワーは、ナビの項目を選んで画面が変わると閉じる', async () => {
     const { wrapper, router } = await mountShell('/sources', 700)
     await wrapper.find('button[aria-label="メニューを開く"]').trigger('click')

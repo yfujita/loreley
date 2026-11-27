@@ -281,4 +281,81 @@ describe('条件の変更(update)', () => {
       expect(router.currentRoute.value.fullPath).toBe('/jobs?page=3&sort=-queued_at')
     })
   })
+
+  describe('反映待ちの条件(pending)の解除と競合', () => {
+    /** 遷移の完了を、テストから制御できるガード(`beforeEach` が返す Promise)。 */
+    function holdNavigations(router: Router) {
+      const gates: (() => void)[] = []
+      const remove = router.beforeEach(
+        () =>
+          new Promise<void>((resolve) => {
+            gates.push(resolve)
+          }),
+      )
+      return { gates, remove }
+    }
+
+    it('反映済みの update の後、履歴を戻っても、前の条件(sort)は復活しない(pending が URL と食い違って残らない)', async () => {
+      const { result, router } = await mountAt('/jobs')
+      await result.update({ sort: 'queued_at' })
+      expect(router.currentRoute.value.fullPath).toBe('/jobs?sort=queued_at')
+
+      expect(await goBack(router)).toBe('/jobs')
+      await result.update({ page: 4 })
+
+      expect(router.currentRoute.value.fullPath).toBe('/jobs?page=4')
+    })
+
+    it('遷移が拒否された update の後は、次の update が(拒否された条件でなく)今の URL を土台にする', async () => {
+      const { result, router } = await mountAt('/jobs')
+      const remove = router.beforeEach(() => false)
+
+      await result.update({ sort: 'queued_at' })
+      expect(router.currentRoute.value.fullPath).toBe('/jobs')
+      remove()
+      await result.update({ page: 4 })
+
+      expect(router.currentRoute.value.fullPath).toBe('/jobs?page=4')
+    })
+
+    it('古い update の後始末は、新しい update の pending を消さない(A の完了後に C を足しても、B の条件が残る)', async () => {
+      const { result, router } = await mountAt('/jobs')
+      const { gates } = holdNavigations(router)
+
+      const a = result.update({ sort: 'queued_at' })
+      const b = result.update({ status: 'failed' })
+      await flushPromises()
+      // A だけ先に解放する。A は B に置き換えられて取り消され、A の後始末が走る。
+      gates[0]?.()
+      await a
+      const c = result.update({ page: 2 })
+      await flushPromises()
+      for (const release of gates) release()
+      await Promise.all([b, c])
+      await flushPromises()
+
+      expect(router.currentRoute.value.fullPath).toBe('/jobs?page=2&sort=queued_at&status=failed')
+    })
+  })
+
+  describe('画面を離れた後の update', () => {
+    it('別の画面へ遷移した後の update(debounce の発火など)は無視し、その画面の URL に query を書き込まない', async () => {
+      const { result, router } = await mountAt('/jobs')
+      await router.push('/other')
+
+      await result.update({ status: 'failed' })
+
+      expect(router.currentRoute.value.fullPath).toBe('/other')
+    })
+
+    it('離れた画面に戻れば、また update できる', async () => {
+      const { result, router } = await mountAt('/jobs')
+      await router.push('/other')
+      await router.push('/jobs')
+
+      await result.update({ status: 'failed' })
+
+      expect(router.currentRoute.value.fullPath).toBe('/jobs?status=failed')
+    })
+  })
 })

@@ -21,6 +21,9 @@ defineProps<{ navGroups: readonly NavGroupDefinition[] }>()
 /** ドロワーの `inert` が外れるのを待つ最大のフレーム数 */
 const FOCUS_WAIT_FRAMES = 20
 
+// アンマウント後は、フォーカス待ちのフレーム送りを打ち切る(`focusFirstNavItem`)
+let isUnmounted = false
+
 const { mobile } = useDisplay()
 // `null`: 既定(常時表示なら開、一時表示なら閉)。Vuetify が幅の切替に合わせて決める。
 const drawerOpen = ref<boolean | null>(null)
@@ -38,7 +41,7 @@ async function toggleDrawer(): Promise<void> {
 // 閉じている間のドロワーは `inert` で、開いた直後はまだ外れていない(フォーカスできない)ので、外れるまでの数フレームを待つ。
 async function focusFirstNavItem(): Promise<void> {
   await nextTick()
-  for (let frame = 0; frame < FOCUS_WAIT_FRAMES; frame++) {
+  for (let frame = 0; frame < FOCUS_WAIT_FRAMES && !isUnmounted; frame++) {
     const element = drawerElement()
     if (element !== null && !element.hasAttribute('inert')) {
       element.querySelector<HTMLElement>('a[href]')?.focus()
@@ -78,7 +81,10 @@ function closeDrawerOnEscape(event: KeyboardEvent): void {
   onDrawerModelUpdate(false, { userInitiated: true })
 }
 onMounted(() => document.addEventListener('keydown', closeDrawerOnEscape))
-onBeforeUnmount(() => document.removeEventListener('keydown', closeDrawerOnEscape))
+onBeforeUnmount(() => {
+  isUnmounted = true
+  document.removeEventListener('keydown', closeDrawerOnEscape)
+})
 </script>
 
 <template>

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // 再取得中(更新ボタン・定期更新)の、カード上端の細い進行バー(DS 4.5)。親(カード)の上端に置く。
-// 動きは `prefers-reduced-motion: reduce` で止まり、静止した帯で示す(global.css)。
+// 動きは `prefers-reduced-motion: reduce` で止まり、静止した帯で示す(このファイルの scoped CSS。global.css に置くと詳細度で負ける)。
 defineProps<{ active: boolean }>()
 </script>
 
