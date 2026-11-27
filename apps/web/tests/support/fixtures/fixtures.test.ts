@@ -79,6 +79,14 @@ describe('dashboard', () => {
     })
   })
 
+  it('mixed: crawler が異常・indexer が判定不能(接続エラー)', () => {
+    expect(stateOf(dashboard.mixed(), 'crawler')?.state).toBe('abnormal')
+    expect(stateOf(dashboard.mixed(), 'indexer')).toMatchObject({
+      state: 'undetermined',
+      reason: 'connection_error',
+    })
+  })
+
   it('allConfigured: 任意のコンポーネントも正常', () => {
     expect(
       dashboard.allConfigured().components.every((component) => component.state === 'normal'),
@@ -116,11 +124,74 @@ describe('opensearch', () => {
     })
   })
 
-  it('truncated: truncated=true で total_indices が返却件数を超える。empty: 0 件', () => {
+  it('truncated: truncated=true で、先頭 1,000 件のインデックスと全 1,500 件。empty: 0 件', () => {
     const truncated = opensearch.truncated()
     expect(truncated.truncated).toBe(true)
-    expect(truncated.total_indices).toBeGreaterThan(truncated.indices.length)
+    expect(truncated.indices).toHaveLength(1000)
+    expect(truncated.total_indices).toBe(1500)
     expect(opensearch.empty()).toMatchObject({ indices: [], shards: [], total_indices: 0 })
+  })
+
+  /** アクティブ + 初期化中 + 未割り当て = 全シャード(移動中はアクティブの内数。opensearch 3.0) */
+  const expectSummaryMatchesShards = (response: ReturnType<typeof opensearch.many>) => {
+    const { cluster, shards } = response
+    expect(cluster.active_shards + cluster.initializing_shards + cluster.unassigned_shards).toBe(
+      shards.length,
+    )
+    expect(cluster.relocating_shards).toBeLessThanOrEqual(cluster.active_shards)
+  }
+
+  it('unassignedAndMoving: 未割り当て・移動中・初期化中が 1 つずつ(アクティブ 4・うち移動中 1)', () => {
+    const response = opensearch.unassignedAndMoving()
+
+    expect(response.cluster).toMatchObject({
+      active_shards: 4,
+      relocating_shards: 1,
+      unassigned_shards: 1,
+      initializing_shards: 1,
+    })
+    expectSummaryMatchesShards(response)
+  })
+
+  it('red: 未割り当てのプライマリがあり、red のインデックスの件数は null。redMultiple: 2 インデックスの 3 シャード', () => {
+    const red = opensearch.red()
+    expect(red.cluster.status).toBe('red')
+    expect(red.shards.some((s) => s.role === 'primary' && s.state === 'unassigned')).toBe(true)
+    expect(red.indices[0]).toMatchObject({ status: 'red', document_count: null })
+    expectSummaryMatchesShards(red)
+    expect(
+      opensearch
+        .redMultiple()
+        .shards.filter((s) => s.role === 'primary' && s.state === 'unassigned'),
+    ).toHaveLength(3)
+  })
+
+  it('multiNode: 2 ノード・green・未割り当てなし', () => {
+    const response = opensearch.multiNode()
+
+    expect(response.nodes).toHaveLength(2)
+    expect(response.cluster).toMatchObject({ status: 'green', unassigned_shards: 0 })
+    expectSummaryMatchesShards(response)
+  })
+
+  it('many: 25 件・3 ノード。API と同じ並び(yellow が先、同じ状態は名前の昇順)で、件数 null・10 桁・システムインデックスを含む', () => {
+    const response = opensearch.many()
+
+    expect(response.indices).toHaveLength(25)
+    expect(response.total_indices).toBe(25)
+    expect(response.nodes).toHaveLength(3)
+    expect(response.indices.slice(0, 2).map((entry) => entry.status)).toEqual(['yellow', 'yellow'])
+    const greens = response.indices.filter((entry) => entry.status === 'green')
+    expect(greens.map((entry) => entry.name)).toEqual([...greens.map((entry) => entry.name)].sort())
+    expect(greens[0]?.name).toBe('.demo-sys-tasks')
+    expect(response.indices.find((entry) => entry.document_count === null)?.name).toBe(
+      'demo-logs-2026.11.16',
+    )
+    expect(response.indices.some((entry) => (entry.document_count ?? 0) >= 1_000_000_000)).toBe(
+      true,
+    )
+    expect(response.shards.some((s) => s.state === 'relocating')).toBe(true)
+    expectSummaryMatchesShards(response)
   })
 })
 

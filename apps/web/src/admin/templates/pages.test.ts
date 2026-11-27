@@ -234,6 +234,23 @@ describe('DashboardPage(DS 6.4)', () => {
     }
   })
 
+  it('aside スロットは、見出しの右(見出し領域の中。toolbar とは別)に置く(O1 の「最終更新+更新」)', async () => {
+    const { wrapper } = await mountPage(DashboardPage, viewStates.ready(), {
+      aside: () => h('div', { id: 'aside' }, '更新'),
+    })
+
+    expect(wrapper.find('.page-header__row #aside').exists()).toBe(true)
+    expect(wrapper.find('.dashboard-page__toolbar').exists()).toBe(false)
+  })
+
+  it('stale-message スロットは、stale のアラートの本文に差し替わる', async () => {
+    const { wrapper } = await mountPage(DashboardPage, viewStates.stale(), {
+      'stale-message': () => h('p', { id: 'own-stale' }, '前回の状態を添えています。'),
+    })
+
+    expect(wrapper.find('[data-testid="x-state-stale"] #own-stale').exists()).toBe(true)
+  })
+
   it('再取得中(更新・自動更新)は、本文を消さず、進行バーを出す', async () => {
     const { wrapper } = await mountPage(DashboardPage, viewStates.refreshing())
 

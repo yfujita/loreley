@@ -47,6 +47,12 @@ export const dashboard = {
   abnormal: () => build({ crawler: component('crawler', 'abnormal', 'connection_refused') }),
   /** indexer が判定不能(タイムアウト) */
   undetermined: () => build({ indexer: component('indexer', 'undetermined', 'timeout') }),
+  /** crawler が異常・indexer が判定不能(異常を優先して表示する) */
+  mixed: () =>
+    build({
+      crawler: component('crawler', 'abnormal', 'connection_refused'),
+      indexer: component('indexer', 'undetermined', 'connection_error'),
+    }),
   /** 任意のコンポーネントがすべて設定済みで正常 */
   allConfigured: () =>
     build({

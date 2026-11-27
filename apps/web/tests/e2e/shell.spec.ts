@@ -8,15 +8,26 @@ import type { MetaResponse } from '@/admin/api'
 import { apiErrorResponse, jsonResponse } from '../support/apiErrors'
 import { expect, test } from '../support/e2eTest'
 import { E2E_BASE_URL, E2E_HOST } from '../support/e2eServer'
+import { dashboard } from '../support/fixtures/dashboard'
 import { meta } from '../support/fixtures/meta'
+import { opensearch } from '../support/fixtures/opensearch'
 import { mockApi } from '../support/mockApi'
 
-/** シェルは `GET /meta`(EP-14)を取る。外部リンク領域の出し分けを、テストごとに決める。 */
+/**
+ * シェルは `GET /meta`(EP-14)を取る。外部リンク領域の出し分けを、テストごとに決める。
+ * 画面(D1・O1)は、シェルのテストが移動しても要求が漏れないよう、固定の応答を返す(画面の中身はここでは確かめない)。
+ */
 async function mockMeta(page: Page, body: MetaResponse | null = null) {
   await mockApi(page, {
     'GET /meta': body === null ? apiErrorResponse(503, 'unavailable') : jsonResponse(body),
+    ...SCREEN_RESPONSES,
   })
 }
+
+const SCREEN_RESPONSES = {
+  'GET /dashboard': jsonResponse(dashboard.allNormal()),
+  'GET /opensearch/cluster': jsonResponse(opensearch.green()),
+} as const
 
 const sideNav = (page: Page) => page.getByRole('navigation', { name: 'メインメニュー' })
 
@@ -487,7 +498,10 @@ test.describe('外部リンク領域(AF-20)', () => {
   test('/meta は、どの画面でも 1 回だけ取る(シェルの EP-14。画面を移っても取り直さない)', async ({
     page,
   }) => {
-    const api = await mockApi(page, { 'GET /meta': jsonResponse(meta.normal()) })
+    const api = await mockApi(page, {
+      'GET /meta': jsonResponse(meta.normal()),
+      ...SCREEN_RESPONSES,
+    })
     await page.goto('./')
     await expect(sideNav(page).getByRole('link', { name: /OpenSearch Dashboards/ })).toBeVisible()
 

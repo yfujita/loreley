@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatDate, formatDateTime, parseIsoDateTime } from './datetime'
+import { formatDate, formatDateTime, formatTimeOfDay, parseIsoDateTime } from './datetime'
 
 // TZ は Asia/Tokyo(vite.config.ts の test.env)。UTC の 0 時が JST の 9 時。
 describe('formatDateTime', () => {
@@ -46,5 +46,15 @@ describe('formatDate', () => {
     expect(formatDate(new Date(Date.UTC(2026, 10, 22, 0, 5, 9)), { withSeconds: true })).toBe(
       '2026-11-22 09:05:09',
     )
+  })
+})
+
+describe('formatTimeOfDay', () => {
+  it('ブラウザのローカル時刻の HH:mm:ss(日付なし)にする', () => {
+    expect(formatTimeOfDay(new Date('2026-11-22T01:48:02.999Z'))).toBe('10:48:02')
+  })
+
+  it('0 時は 00(24 にならない)で、時・分・秒を 0 埋めする', () => {
+    expect(formatTimeOfDay(new Date('2026-11-21T15:00:05.000Z'))).toBe('00:00:05')
   })
 })

@@ -32,6 +32,12 @@ export function formatDate(date: Date, options: FormatOptions = {}): string {
   return options.withSeconds === true ? `${day} ${time}:${parts.get('second')}` : `${day} ${time}`
 }
 
+/** `Date` を、ブラウザのローカル時刻の `HH:mm:ss`(日付なし)にする。D1 のタイルの「確認 10:48:02」のように、同じ日の時刻だけを添える箇所用。 */
+export function formatTimeOfDay(date: Date): string {
+  const parts = new Map(PARTS_FORMAT.formatToParts(date).map((part) => [part.type, part.value]))
+  return `${parts.get('hour')}:${parts.get('minute')}:${parts.get('second')}`
+}
+
 /**
  * ISO 8601 の文字列を、ブラウザのローカル時刻の `YYYY-MM-DD HH:mm`(`withSeconds` なら `:ss` つき)にする。
  * 日時として読めない文字列は null(呼び出し側が「—」などにする)。

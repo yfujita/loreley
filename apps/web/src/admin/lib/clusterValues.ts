@@ -32,3 +32,35 @@ export function toShardRole(value: string | null | undefined): ShardRole | null 
 export function toShardState(value: string | null | undefined): ShardState | null {
   return narrow(SHARD_STATES, value)
 }
+
+/**
+ * シャードのチップの種類(O1。opensearch 3.3)。`role`・`state` の組から決める。
+ * - 未割り当て: プライマリは error、それ以外(レプリカ・未知の役割)は warning の点線
+ * - 初期化中・移動中: info(見た目は同じ。読み上げだけ分ける)
+ * - 割り当て済み(`started`): プライマリ・レプリカ。役割が未知なら unknown
+ * - 状態が未知: unknown(中立表示。値はそのまま出す)
+ */
+export type ShardChipKind =
+  | 'primary'
+  | 'replica'
+  | 'unassigned-primary'
+  | 'unassigned-replica'
+  | 'initializing'
+  | 'relocating'
+  | 'unknown'
+
+export function classifyShard(role: string, state: string): ShardChipKind {
+  const knownRole = toShardRole(role)
+  switch (toShardState(state)) {
+    case 'unassigned':
+      return knownRole === 'primary' ? 'unassigned-primary' : 'unassigned-replica'
+    case 'initializing':
+      return 'initializing'
+    case 'relocating':
+      return 'relocating'
+    case 'started':
+      return knownRole ?? 'unknown'
+    case null:
+      return 'unknown'
+  }
+}

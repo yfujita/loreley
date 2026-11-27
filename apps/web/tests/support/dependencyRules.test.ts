@@ -961,6 +961,20 @@ describe('ゾーンの所属', () => {
     ['src/admin/features/jobs/jobActions.ts', 'admin-feature-jobs-ts'],
     ['src/admin/features/documents/documentsParams.ts', 'admin-feature-documents-ts'],
     ['src/admin/features/opensearch/matrixModel.ts', 'admin-feature-opensearch-ts'],
+    // フェーズ 4(D1・O1)で足したファイル
+    ['src/admin/components/dashboard-parts/SummaryBand.vue', 'admin-components-vue'],
+    ['src/admin/components/dashboard-parts/types.ts', 'admin-components-ts'],
+    ['src/admin/components/auto-refresh-switch/AutoRefreshSwitch.vue', 'admin-components-vue'],
+    ['src/admin/components/shard-matrix/ShardMatrix.vue', 'admin-components-vue'],
+    ['src/admin/components/shard-matrix/columnsPerPage.ts', 'admin-components-ts'],
+    ['src/admin/features/dashboard/models/dashboardViewModel.ts', 'admin-feature-dashboard-ts'],
+    ['src/admin/features/dashboard/composables/useDashboardPage.ts', 'admin-feature-dashboard-ts'],
+    ['src/admin/features/opensearch/models/indexFilter.ts', 'admin-feature-opensearch-ts'],
+    [
+      'src/admin/features/opensearch/composables/useOpenSearchPage.ts',
+      'admin-feature-opensearch-ts',
+    ],
+    ['src/admin/features/opensearch/pages/OpenSearchPage.vue', 'admin-feature-opensearch-vue'],
     ['src/admin/router/routes.ts', 'admin-router'],
     ['src/admin/router/NotFoundPage.vue', 'admin-router'],
     // 型宣言(.d.ts)は、未所属の検査(unclassified)の例外だが、router の規則は適用される(`RouteMeta` の拡張)。

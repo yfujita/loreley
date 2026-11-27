@@ -8,6 +8,7 @@ export {
   mdiAlertOutline,
   mdiCancel,
   mdiCheckCircleOutline,
+  mdiChevronLeft,
   mdiChevronRight,
   mdiClockOutline,
   mdiClose,
@@ -25,6 +26,7 @@ export {
   mdiPlaylistCheck,
   mdiRefresh,
   mdiServer,
+  mdiSwapHorizontal,
   mdiTimerSand,
   mdiViewDashboardOutline,
 } from '@mdi/js'

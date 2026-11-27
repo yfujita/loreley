@@ -5,6 +5,7 @@ import { jsonResponse } from '../support/apiErrors'
 import { E2E_HOST } from '../support/e2eServer'
 import { gotoBlankPage } from '../support/blankPage'
 import { expect, test } from '../support/e2eTest'
+import { dashboard } from '../support/fixtures/dashboard'
 import { meta } from '../support/fixtures/meta'
 import { mockApi } from '../support/mockApi'
 import { guardUnmockedApi } from '../support/unmockedApi'
@@ -13,7 +14,10 @@ test('dev サーバーが /admin/ を配信し、SPA(シェルとダッシュボ
   page,
 }) => {
   // シェルは GET /meta(EP-14)を取る。未モックの /api/ は失敗になるので、モックする。
-  await mockApi(page, { 'GET /meta': jsonResponse(meta.noDashboards()) })
+  await mockApi(page, {
+    'GET /meta': jsonResponse(meta.noDashboards()),
+    'GET /dashboard': jsonResponse(dashboard.allNormal()),
+  })
 
   await page.goto('./')
 

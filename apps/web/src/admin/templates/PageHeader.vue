@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // ページ見出し領域(DS 5.1・6): パンくず(inject)・`h1`・状態タグ・説明・操作。
 // `h1` は `tabindex="-1"`: 遷移後に router の `afterEach` がフォーカスを移す(DS 8)。
+// `aside` スロット: 見出しの右に置く操作以外のもの(O1 の「最終更新+更新ボタン」。DS 6.4)。
 // パンくずは `AppShell` が provide する(`templates`(層 3)は `shell`(層 4)を import しない。F 3.7)。
 import { inject, ref } from 'vue'
 
@@ -47,6 +48,7 @@ const breadcrumbs = inject(breadcrumbsKey, ref([]))
         :primary-id="primaryActionId"
         @action="emit('action', $event)"
       />
+      <slot name="aside" />
     </div>
   </header>
 </template>

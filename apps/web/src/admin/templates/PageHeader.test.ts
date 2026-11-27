@@ -55,6 +55,16 @@ describe('PageHeader(DS 5.1・6)', () => {
     expect(wrapper.find('h1 .tag').text()).toBe('成功')
   })
 
+  it('aside スロットは、見出しと同じ行の右に置く(操作 actions とは別)', async () => {
+    const { wrapper } = await mountHeader(
+      { title: 'OpenSearch' },
+      { slots: { aside: () => h('div', { id: 'aside' }, '更新') } },
+    )
+
+    expect(wrapper.find('.page-header__row #aside').exists()).toBe(true)
+    expect(wrapper.find('.page-actions').exists()).toBe(false)
+  })
+
   it('説明(description)を出す。なければ出さない', async () => {
     const withDescription = await mountHeader({
       title: 'ジョブ',

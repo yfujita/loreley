@@ -10,7 +10,12 @@ import { viewStates } from '../../../tests/support/viewStates'
 
 async function mountBody(
   viewState: ViewState,
-  options: { texts?: StateTexts; card?: boolean; testidPrefix?: string } = {},
+  options: {
+    texts?: StateTexts
+    card?: boolean
+    testidPrefix?: string
+    extraSlots?: Record<string, () => unknown>
+  } = {},
 ) {
   const retries: number[] = []
   const state = ref(viewState)
@@ -29,6 +34,7 @@ async function mountBody(
           default: () => h('div', { id: 'content' }, '本文'),
           'empty-actions': () => h('button', { id: 'empty-action' }, 'データソースを登録'),
           'notfound-actions': () => h('a', { id: 'notfound-action' }, '一覧へ戻る'),
+          ...options.extraSlots,
         },
       ),
   })
@@ -136,6 +142,21 @@ describe('ViewStateBody(E 6.2・DS 4.5)', () => {
     expect(retries).toHaveLength(1)
   })
 
+  it('stale: stale-message スロットで本文を置き換えられる(画面仕様で文言が決まっている D1)。「再読み込み」はそのまま', async () => {
+    const { wrapper } = await mountBody(viewStates.stale(), {
+      texts: { staleNote: '使われない注記' },
+      extraSlots: {
+        'stale-message': () => h('p', { id: 'own' }, 'タイルに前回の状態を添えています。'),
+      },
+    })
+
+    const alert = wrapper.find('[data-testid="s1-state-stale"]')
+    expect(alert.find('#own').text()).toBe('タイルに前回の状態を添えています。')
+    expect(alert.text()).not.toContain('前回取得したデータ(')
+    expect(alert.text()).not.toContain('使われない注記')
+    expect(alert.find('button').text()).toBe('再読み込み')
+  })
+
   it('stale で再試行できないときは「再読み込み」を出さない', async () => {
     const { wrapper } = await mountBody(
       viewStates.stale({
@@ -164,6 +185,51 @@ describe('ViewStateBody(E 6.2・DS 4.5)', () => {
     expect(carded.wrapper.find('.view-state-body__card').exists()).toBe(true)
     expect(plain.wrapper.find('.view-state-body__card').exists()).toBe(false)
     expect(ready.wrapper.find('.view-state-body__card').exists()).toBe(false)
+  })
+
+  it('card: 読み込み中に画面が自前のスケルトン(loading スロット)を渡すときは、外側をカードで包まない(二重の枠にしない)', async () => {
+    const custom = await mountBody(viewStates.loading(), {
+      card: true,
+      extraSlots: { loading: () => h('div', { id: 'own-skeleton' }, 'skeleton') },
+    })
+    const standard = await mountBody(viewStates.loading(), { card: true })
+
+    expect(custom.wrapper.find('#own-skeleton').exists()).toBe(true)
+    expect(custom.wrapper.find('.view-state-body__card').exists()).toBe(false)
+    // スロットがなければ、標準のスケルトンをカードで包む
+    expect(standard.wrapper.find('.view-state-body__card').exists()).toBe(true)
+  })
+
+  it('card: stale のアラートは、カードのないページでは他のブロックと同じ幅(内側の余白を付けない)。カードの中では余白を付ける', async () => {
+    const pageLevel = await mountBody(viewStates.stale(), { card: true })
+    const inCard = await mountBody(viewStates.stale(), { card: false })
+
+    expect(pageLevel.wrapper.find('.page-alert').classes()).not.toContain(
+      'view-state-body__stale--in-card',
+    )
+    expect(inCard.wrapper.find('.page-alert').classes()).toContain(
+      'view-state-body__stale--in-card',
+    )
+  })
+
+  it('error-actions スロット: 「再試行」の隣に操作を足せる(O1 の「ダッシュボードを開く」)。再試行できないときも出す', async () => {
+    const extraSlots = { 'error-actions': () => h('a', { id: 'extra' }, 'ダッシュボードを開く') }
+    const retryable = await mountBody(viewStates.error(), { extraSlots })
+    const notRetryable = await mountBody(
+      viewStates.error({
+        notFound: false,
+        retryable: false,
+        unexpected: false,
+        diagnostic: { code: null, status: null },
+      }),
+      { extraSlots },
+    )
+    const without = await mountBody(viewStates.error())
+
+    const buttons = retryable.wrapper.findAll('.state-block__actions > *')
+    expect(buttons.map((el) => el.text())).toEqual(['再試行', 'ダッシュボードを開く'])
+    expect(notRetryable.wrapper.find('.state-block__actions').text()).toBe('ダッシュボードを開く')
+    expect(without.wrapper.find('#extra').exists()).toBe(false)
   })
 
   it('状態が変わると表示が追従する(loading → ready)', async () => {
