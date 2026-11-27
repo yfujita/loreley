@@ -11,11 +11,11 @@
 
 プラン(0002 + 0003、承認済み)の**フェーズ 1〜4 が完了**した。作業ブランチ `feature/implement-admin-view`(基準 `8a20d67`)。フェーズ 4(D1・O1。読み取り専用)は 3 コミット(`0182323`・`0e9e744`・`91098e3`)+ 記録コミット。code-reviewer・test-reviewer の指摘を修正し、中間 UI レビュー(`web-ui-reviewer`。専用 compose 環境+dev サーバー)の Important(スイッチ・チェックボックスのフォーカスリング)も修正して再確認済み(可)。検証(typecheck・lint・format:check・test 1890 件・gen:api:check・build・test:e2e 178 件・docker build)はメインエージェントが再実行して成功。専用 compose 環境(`loreley-adminview`)と dev サーバーは後始末済み。
 
-ユーザー指示: フェーズ 4 が完了したら一旦作業を止め、PR を作成する。PR のレビューはユーザーが行い、ここまでを振り返る。
+ユーザー指示: フェーズ 4 が完了したら一旦作業を止め、PR を作成する。PR のレビューはユーザーが行い、ここまでを振り返る。**PR #27 を作成済み**(https://github.com/yfujita/loreley/pull/27)。
 
 ## 次のアクション
 
-1. PR を作成する(push はユーザー指示済み)。ユーザーが PR をレビューする
+1. PR #27(https://github.com/yfujita/loreley/pull/27)をユーザーがレビューする(作成済み。フェーズ 1〜4、325 ファイル)
 2. ここまでの振り返りを行い、フェーズ 5 以降の進め方(プランの見直しの要否)を相談する
 3. フェーズ 5(S1・S2 と DLG-1/2/5)に進む場合は、0007 の「後続フェーズへの申し送り」を依頼に含める。フェーズ 5 でも専用 compose 環境が要る場合は、0003 3 章の事前確認・停止前確認と scratchpad の `adminview-env.sh`(再作成が必要な場合あり)を使う
 
