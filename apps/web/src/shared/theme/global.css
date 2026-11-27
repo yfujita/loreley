@@ -117,6 +117,26 @@ html {
   outline: none;
 }
 
+/* スイッチ・チェックボックス・ラジオ(`VSelectionControl`): ネイティブの `<input>` は `opacity: 0` で、上の `:focus-visible` の
+   リングが描かれない。Vuetify の既定は入力部の円(`::before`)を不透明度 0.12 で重ねるだけで、見えにくい(DS 2.6)ので、
+   その重ねを消し、見えている部品(スイッチはトラック、チェックボックス・ラジオはボックス)の周囲に 2px のリングを描く。
+   フォーカスの判定は Vuetify が付ける `v-selection-control--focus-visible`(キーボード操作のときだけ)に従う。 */
+.v-selection-control--focus-visible .v-selection-control__input::before {
+  opacity: 0;
+}
+.v-selection-control--focus-visible .v-selection-control__input > .v-icon {
+  outline: 2px solid rgb(var(--v-theme-focus));
+  outline-offset: 0;
+  border-radius: 4px;
+}
+.v-radio .v-selection-control--focus-visible .v-selection-control__input > .v-icon {
+  border-radius: 50%;
+}
+.v-selection-control--focus-visible .v-switch__track {
+  outline: 2px solid rgb(var(--v-theme-focus));
+  outline-offset: 2px;
+}
+
 /* ===== ボタン(DS 4.2) ===== */
 .v-btn {
   font-weight: 600;

@@ -4,7 +4,7 @@
 // サイドバーに静的な `permanent` は付けない(840px 未満でもドロワーにならなくなる)。常時表示・一時表示の切替は
 // Vuetify の既定の挙動に任せる: `display.mobileBreakpoint: 'md'`(`shared/theme/display.ts`)の `mobile` で決まる(FARC-U-14)。
 // パンくずは `useBreadcrumbs` で作って provide する(`PageHeader`(層 3)が `shell`(層 4)を import せずに受け取るため)。
-import { nextTick, onBeforeUnmount, onMounted, provide, ref, useTemplateRef } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, provide, ref, useTemplateRef, watch } from 'vue'
 import { useDisplay } from 'vuetify'
 
 import { useBreadcrumbs } from '@/admin/composables/useBreadcrumbs'
@@ -56,22 +56,44 @@ function drawerElement(): HTMLElement | null {
   return document.querySelector<HTMLElement>('.app-shell__drawer')
 }
 
-function isFocusInsideDrawerOrNowhere(): boolean {
-  const active = document.activeElement
-  return active === null || active === document.body || drawerElement()?.contains(active) === true
+function isFocusInsideDrawer(): boolean {
+  return drawerElement()?.contains(document.activeElement) === true
 }
+
+function isFocusNowhere(): boolean {
+  const active = document.activeElement
+  return active === null || active === document.body
+}
+
+// 幅の変化(`mobile` の切替)で閉じる通知かを見分ける。`mobile` が変わった同じ tick(同期の watcher で印を付け、次の tick で外す)に
+// 来た「閉じる」はリサイズ由来。スクリムのクリックは `mobile` が変わらないので、リサイズとは区別できる(どちらもフォーカスは body になりうる)。
+let isViewportChanging = false
+watch(
+  mobile,
+  () => {
+    isViewportChanging = true
+    window.setTimeout(() => {
+      isViewportChanging = false
+    }, 0)
+  },
+  { flush: 'sync' },
+)
 
 // 一時表示のドロワーが閉じたら、フォーカスをメニューのボタンへ戻す(DS 8)。スクリム・項目の選択(画面遷移)でも閉じる。
 // 項目の選択では、続けて遷移後の処理(`afterEach`)が `h1` へフォーカスを移す。
-// 幅の変化(840px 未満へのリサイズ・回転)でも閉じる通知が来るが、そのときは入力欄などのフォーカスを奪わない:
-// フォーカスがドロワーの中(またはどこにもない)ときだけ戻す。Esc は利用者の操作なので、常に戻す。
+// 戻す条件:
+// - Esc などの利用者の操作(`userInitiated`): 常に戻す
+// - スクリムのクリックなど `mobile` が変わっていない閉じ方: フォーカスがドロワーの中、またはどこにもない(body)とき
+// - 幅の変化(840px 未満へのリサイズ・回転)で自動的に閉じたとき: フォーカスがドロワーの中にあったときだけ。
+//   何も操作していない(body)・入力欄などにあるときは、フォーカスを動かさない(操作していないのにリングが出ないように)
 function onDrawerModelUpdate(open: boolean, options: { userInitiated?: boolean } = {}): void {
   const wasOpen = drawerOpen.value === true
   drawerOpen.value = open
   if (!wasOpen || open || !mobile.value) return
-  if (options.userInitiated === true || isFocusInsideDrawerOrNowhere()) {
-    appBar.value?.focusMenuButton()
-  }
+  const shouldRestoreFocus =
+    options.userInitiated === true ||
+    (isViewportChanging ? isFocusInsideDrawer() : isFocusInsideDrawer() || isFocusNowhere())
+  if (shouldRestoreFocus) appBar.value?.focusMenuButton()
 }
 
 // Esc で閉じる(DS 8)。`VNavigationDrawer` は Esc を扱わない(Vuetify 4.3.4 で確認)ので、ここで受ける。

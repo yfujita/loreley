@@ -592,6 +592,28 @@ test.describe('レスポンシブ・キーボード', () => {
     await expect(updateButton(page)).toBeFocused()
   })
 
+  test('スイッチにキーボードでフォーカスすると、トラックの周囲に 2px のフォーカスリング(#0B57D0)が出る。Vuetify の 12% の重ねは消える(DS 2.6)', async ({
+    page,
+  }) => {
+    await openDashboard(page)
+    await expect(summary(page)).toBeVisible()
+
+    await updateButton(page).focus()
+    await page.keyboard.press('Shift+Tab')
+    await expect(switchControl(page)).toBeFocused()
+
+    const track = page.locator('.v-switch__track')
+    await expect(track).toHaveCSS('outline-style', 'solid')
+    await expect(track).toHaveCSS('outline-width', '2px')
+    await expect(track).toHaveCSS('outline-color', 'rgb(11, 87, 208)')
+    const overlay = await page.evaluate(
+      () =>
+        getComputedStyle(document.querySelector('.v-selection-control__input')!, '::before')
+          .opacity,
+    )
+    expect(overlay).toBe('0')
+  })
+
   test('フォーカスの順序(タイル内のリンク): crawler → indexer → opensearch(定義表の順)', async ({
     page,
   }) => {

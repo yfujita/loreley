@@ -214,6 +214,33 @@ describe('AppShell(DS 5.1。FARC-U-14: mobileBreakpoint・permanent)', () => {
     input.remove()
   })
 
+  it('幅の変化で閉じるとき、何もフォーカスしていなければ(body)、メニューのボタンへフォーカスを移さない(操作していないのにリングを出さない)', async () => {
+    const { wrapper } = await mountShell('/sources', 1000)
+    ;(document.activeElement as HTMLElement | null)?.blur()
+    expect(document.activeElement).toBe(document.body)
+
+    window.innerWidth = 700
+    window.dispatchEvent(new Event('resize'))
+    await flushPromises()
+
+    expect(wrapper.find('.mobile-app-bar').exists()).toBe(true)
+    expect(document.activeElement).toBe(document.body)
+  })
+
+  it('幅の変化で閉じるとき、フォーカスがドロワーの中(ナビのリンク)にあったときだけ、メニューのボタンへ戻す', async () => {
+    const { wrapper } = await mountShell('/sources', 1000)
+    wrapper.find<HTMLElement>('.app-shell__drawer a[href]').element.focus()
+    expect(document.querySelector('.app-shell__drawer')?.contains(document.activeElement)).toBe(
+      true,
+    )
+
+    window.innerWidth = 700
+    window.dispatchEvent(new Event('resize'))
+    await flushPromises()
+
+    expect(document.activeElement).toBe(wrapper.find('button[aria-label="メニューを開く"]').element)
+  })
+
   it('アンマウントすると、ドロワーのフォーカス待ち(requestAnimationFrame の繰り返し)を打ち切る', async () => {
     const raf = vi.spyOn(window, 'requestAnimationFrame')
     const { wrapper } = await mountShell('/sources', 700)

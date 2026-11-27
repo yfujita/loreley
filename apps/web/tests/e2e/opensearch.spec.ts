@@ -577,6 +577,35 @@ test.describe('キーボード・アクセシビリティ', () => {
     await expect(pager(page).getByRole('button', { name: /^次へ/ })).toBeFocused()
   })
 
+  test('チェックボックスにキーボードでフォーカスすると、ボックスの周囲に 2px のフォーカスリング(#0B57D0)が出る。12% の重ねは消える(DS 2.6)', async ({
+    page,
+  }) => {
+    await openOpenSearch(page)
+    await nameBox(page).focus()
+    await page.keyboard.press('Tab')
+    await expect(stateCheck(page, 'red')).toBeFocused()
+
+    const box = page
+      .locator('.index-filter__check')
+      .first()
+      .locator('.v-selection-control__input > .v-icon')
+    await expect(box).toHaveCSS('outline-style', 'solid')
+    await expect(box).toHaveCSS('outline-width', '2px')
+    await expect(box).toHaveCSS('outline-color', 'rgb(11, 87, 208)')
+    const overlay = await page.evaluate(
+      () =>
+        getComputedStyle(
+          document.querySelector('.index-filter__check .v-selection-control__input')!,
+          '::before',
+        ).opacity,
+    )
+    expect(overlay).toBe('0')
+
+    // フォーカスが移ったら、リングは消える
+    await page.keyboard.press('Tab')
+    await expect(box).toHaveCSS('outline-style', 'none')
+  })
+
   test('名前の入力で Enter はすぐ絞り込む(ページは移動しない)', async ({ page }) => {
     await openOpenSearch(page)
     await nameBox(page).fill('logs')

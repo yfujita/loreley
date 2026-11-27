@@ -244,6 +244,36 @@ test.describe('840px の境(DS 5.1・7。FARC-U-14)', () => {
     await expectDrawerOpen(page)
   })
 
+  test('ウィンドウ幅の変化(840px 未満へのリサイズ)で、何も操作していなければ、メニューのボタンにフォーカス(リング)が移らない', async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport(1280))
+    await mockMeta(page, meta.noDashboards())
+    await page.goto('no/such/page')
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur())
+
+    await page.setViewportSize(viewport(700))
+    await expect(page.getByRole('button', { name: 'メニューを開く' })).toBeVisible()
+    await expectDrawerClosed(page)
+
+    await expect(page.getByRole('button', { name: 'メニューを開く' })).not.toBeFocused()
+    expect(await page.evaluate(() => document.activeElement === document.body)).toBe(true)
+  })
+
+  test('ウィンドウ幅の変化で閉じるとき、フォーカスがドロワーの中にあったときだけ、メニューのボタンへ戻る', async ({
+    page,
+  }) => {
+    await page.setViewportSize(viewport(1280))
+    await mockMeta(page, meta.noDashboards())
+    await page.goto('no/such/page')
+    await sideNav(page).getByRole('link', { name: 'ジョブ' }).focus()
+
+    await page.setViewportSize(viewport(700))
+
+    await expect(page.getByRole('button', { name: 'メニューを開く' })).toBeFocused()
+  })
+
   test('ウィンドウ幅の変化(840px 未満へのリサイズ)で、入力欄など本文のフォーカスを奪わない', async ({
     page,
   }) => {
@@ -298,6 +328,9 @@ test.describe('SPA 内の 404(admin-view 4.2)', () => {
 
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('ページが見つかりません')
     await expect(page).toHaveTitle('ページが見つかりません - Loreley 管理')
+    // 「ページが見つかりません」は h1 の 1 回だけ。ブロックの見出しは次の行動(同じ文を 2 回出さない)
+    await expect(page.getByRole('main').getByText('ページが見つかりません')).toHaveCount(1)
+    await expect(page.getByRole('heading', { level: 2 })).toHaveText('URL を確認してください')
     await expect(sideNav(page)).toBeVisible()
     await expect(sideNav(page).locator('[aria-current]')).toHaveCount(0)
     await page.getByRole('link', { name: 'ダッシュボードへ戻る' }).click()
@@ -454,6 +487,34 @@ test.describe('スキップリンクとランドマーク(DS 8)', () => {
     await expect(page.getByRole('link', { name: 'メインコンテンツへ移動' })).toBeFocused()
     await page.keyboard.press('Tab')
     await expect(sideNav(page).getByRole('link', { name: 'ダッシュボード' })).toBeFocused()
+  })
+})
+
+test.describe('favicon', () => {
+  test('<link rel="icon"> はインライン(data URI)。/favicon.ico を要求せず、コンソールエラー・失敗した要求がない', async ({
+    page,
+  }) => {
+    const consoleErrors: string[] = []
+    const failedRequests: string[] = []
+    page.on('console', (message) => {
+      if (message.type() === 'error') consoleErrors.push(message.text())
+    })
+    page.on('requestfailed', (request) => failedRequests.push(request.url()))
+    page.on('response', (response) => {
+      if (response.status() >= 400) failedRequests.push(`${response.status()} ${response.url()}`)
+    })
+    const requested: string[] = []
+    page.on('request', (request) => requested.push(new URL(request.url()).pathname))
+    await mockMeta(page, meta.noDashboards())
+
+    await page.goto('./')
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible()
+    await page.waitForLoadState('networkidle')
+
+    await expect(page.locator('link[rel="icon"]')).toHaveAttribute('href', /^data:image\/svg\+xml,/)
+    expect(requested).not.toContain('/favicon.ico')
+    expect(failedRequests).toEqual([])
+    expect(consoleErrors).toEqual([])
   })
 })
 

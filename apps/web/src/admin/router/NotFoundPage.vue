@@ -6,6 +6,7 @@ import ListPage from '@/admin/templates/ListPage.vue'
 import StateBlock from '@/shared/ui/StateBlock.vue'
 import { READY_VIEW_STATE } from '@/admin/lib/viewState'
 
+// 「ページが見つかりません」は route の title(h1。admin-view 4.2)に出すので、ブロックの見出しは次の行動(文言違い)にして、同じ文を 2 回出さない。
 // 一覧の「データなし」ではなく、固定のエラーブロックを出す。ready にして、本文のスロットに StateBlock を置く。
 const viewState = READY_VIEW_STATE
 </script>
@@ -14,7 +15,7 @@ const viewState = READY_VIEW_STATE
   <ListPage title="ページが見つかりません" :view-state="viewState">
     <StateBlock
       kind="notfound"
-      title="ページが見つかりません"
+      title="URL を確認してください"
       message="URL が間違っているか、ページが移動した可能性があります。ダッシュボードから目的の画面を開いてください。"
     >
       <router-link :to="{ name: ROUTE_NAMES.dashboard }">ダッシュボードへ戻る</router-link>
