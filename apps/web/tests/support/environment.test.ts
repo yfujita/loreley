@@ -4,12 +4,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { h } from 'vue'
 import { VDataTableServer, VDialog, VNavigationDrawer } from 'vuetify/components'
 
-// 公開口(`@/admin/api`)が client と SDK を再 export したら、そこからの import に切り替え、disable を外す(フェーズ 2)。
-// eslint-disable-next-line no-restricted-imports -- 公開口が client を再 export するまでの暫定(R2)
-import { client } from '../../src/admin/api/generated/client.gen'
-// eslint-disable-next-line no-restricted-imports -- 同上。SDK は公開口に出さない予定なので、フェーズ 2 でテストの組み立てを見直す
-import { getMeta } from '../../src/admin/api/generated/sdk.gen'
+import { getMetaOptions } from '@/admin/api'
+
+import { jsonResponse } from './apiErrors'
+import { useFetchStub } from './fetchStub'
 import { mountInLayout } from './mount'
+import { createTestQueryClient } from './queryTesting'
 
 describe('jsdom 上の Vuetify', () => {
   it('VDataTableServer がマウントでき、@update:options が初期に 1 回発火する', async () => {
@@ -62,6 +62,8 @@ describe('jsdom 上の Vuetify', () => {
 })
 
 describe('相対 baseUrl', () => {
+  const stub = useFetchStub()
+
   it('jsdom 環境でも Request は Node(undici)のもので、相対 URL を解決しない(setup が絶対 URL に差し替える理由)', () => {
     expect(() => new Request('/api/admin/v1/meta')).toThrow(TypeError)
   })
@@ -69,23 +71,21 @@ describe('相対 baseUrl', () => {
   it('生成クライアントの baseUrl は /api/admin/v1(setup の差し替え前の値)', async () => {
     // setup が差し替えたクライアントとは別の、生成直後のインスタンスを読み込む。
     vi.resetModules()
-    // eslint-disable-next-line no-restricted-syntax -- 生成直後のインスタンスが要るため。公開口が再 export したら見直す(R2)
+    // 生成直後のインスタンスが要るため、公開口(client を出さない設計。F 3.3)ではなく直接読む(R2 の例外)。
+    // eslint-disable-next-line no-restricted-syntax -- 上記の理由
     const { client: freshClient } = await import('../../src/admin/api/generated/client.gen')
 
     expect(freshClient.getConfig().baseUrl).toBe('/api/admin/v1')
   })
 
-  it('setup 後の生成クライアントは絶対 URL で Request を作れる', async () => {
-    const fetchStub = vi.fn(async (request: Request) => {
-      void request
-      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
-    })
-    client.setConfig({ fetch: fetchStub as typeof fetch })
+  it('setup 後の生成クライアントは絶対 URL で Request を作れる(公開口の Options → fetch の差し替え先まで届く)', async () => {
+    stub.respondWith(jsonResponse({ cron_timezone: null, dashboards_url: null }))
 
-    await getMeta()
+    await createTestQueryClient().fetchQuery(getMetaOptions())
 
-    expect(fetchStub).toHaveBeenCalledTimes(1)
-    expect(fetchStub.mock.calls[0]?.[0].url).toBe('http://localhost/api/admin/v1/meta')
+    expect(stub.requests.map((request) => request.url)).toEqual([
+      'http://localhost/api/admin/v1/meta',
+    ])
   })
 })
 

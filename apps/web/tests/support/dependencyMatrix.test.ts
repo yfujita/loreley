@@ -69,6 +69,13 @@ const ROWS: Row[] = [
     path: 'src/shared/theme/tokens.ts',
     allow: [...SHARED, 'vue', 'vuetify'],
   },
+  // icons.ts は @mdi/js を import できる唯一のファイル(R12)で、別のゾーン。それ以外の import は shared/theme と同じ(R1)。
+  // この行がないと、icons.ts に admin/ などを許す変更を検出できない。
+  {
+    zone: 'shared/theme/icons.ts(R1・R12)',
+    path: 'src/shared/theme/icons.ts',
+    allow: [...SHARED, 'vue', 'vuetify'],
+  },
   {
     zone: 'shared/ui の .ts(R1。R13: .vue 以外は型だけ)',
     path: 'src/shared/ui/statusMaps.ts',
@@ -372,7 +379,8 @@ const ROWS: Row[] = [
     zone: '未所属のファイル',
     path: 'src/admin/foo/sample.ts',
     allow: [],
-    unspecified: ['vue', 'vueRouter', 'vueQuery', 'vuetify'],
+    // vue は設計に規定がなく、検査しない(vue-router・vue-query・vuetify は禁止)。
+    unspecified: ['vue'],
   },
 ]
 

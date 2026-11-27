@@ -793,6 +793,64 @@ const SAMPLES: Sample[] = [
     code: `export const target = process.env.LORELEY_DEV_API_TARGET\n`,
   },
 
+  // ── タイマーは window.setTimeout / window.setInterval で書く(戻り値の型を number にそろえる)
+  {
+    title: 'src の lib が素の setTimeout を使う',
+    path: 'src/admin/lib/sample.ts',
+    code: `export const timer = setTimeout(() => {}, 1)\n`,
+    violation: violates('タイマー', GLOBALS, 'window.setTimeout'),
+  },
+  {
+    title: 'src の composables が素の setInterval を使う',
+    path: 'src/admin/composables/sample.ts',
+    code: `export const timer = setInterval(() => {}, 1)\n`,
+    violation: violates('タイマー', GLOBALS, 'window.setTimeout'),
+  },
+  {
+    title: 'src の features の .vue が素の setTimeout を使う',
+    path: 'src/admin/features/jobs/pages/SampleJobPage.vue',
+    code: vueFile(`const timer = setTimeout(() => {}, 1)\nvoid timer`),
+    violation: violates('タイマー', GLOBALS, 'window.setTimeout'),
+  },
+  {
+    title: 'main.ts が素の setTimeout を使う',
+    path: 'src/main.ts',
+    code: `export const timer = setTimeout(() => {}, 1)\n`,
+    violation: violates('タイマー', GLOBALS, 'window.setTimeout'),
+  },
+  {
+    title: 'src の lib が globalThis.setTimeout を使う',
+    path: 'src/admin/lib/sample.ts',
+    code: `export const timer = globalThis.setTimeout(() => {}, 1)\n`,
+    violation: violates('タイマー', PROPERTIES, 'window.setTimeout'),
+  },
+  {
+    title: 'src の lib が globalThis.setInterval を使う',
+    path: 'src/admin/lib/sample.ts',
+    code: `export const timer = globalThis.setInterval(() => {}, 1)\n`,
+    violation: violates('タイマー', PROPERTIES, 'window.setTimeout'),
+  },
+  {
+    title: 'window.setTimeout は使ってよい(許される)',
+    path: 'src/admin/lib/sample.ts',
+    code: `export const timer = window.setTimeout(() => {}, 1)\n`,
+  },
+  {
+    title: 'window.setInterval は使ってよい(許される)',
+    path: 'src/admin/composables/sample.ts',
+    code: `export const timer = window.setInterval(() => {}, 1)\n`,
+  },
+  {
+    title: 'テストは素の setTimeout を使ってよい(許される)',
+    path: 'src/admin/lib/sample.test.ts',
+    code: `export const timer = setTimeout(() => {}, 1)\n`,
+  },
+  {
+    title: 'tests/ は素の setTimeout を使ってよい(許される)',
+    path: 'tests/support/sample.ts',
+    code: `export const timer = setTimeout(() => {}, 1)\n`,
+  },
+
   // ── テストの相対 import: admin/api の中身は禁止(公開口そのものは可)
   {
     title: 'テストが admin/api/errors を相対パスで import',
@@ -883,6 +941,10 @@ describe('ゾーンの所属', () => {
     ['src/admin/api/client.ts', 'admin-api'],
     ['src/admin/api/errors/errorTable.ts', 'admin-api'],
     ['src/admin/lib/viewState.ts', 'admin-lib'],
+    ['src/admin/lib/validation/rules.ts', 'admin-lib'],
+    ['src/admin/lib/pagination.ts', 'admin-lib'],
+    ['src/admin/queries/keys.ts', 'admin-queries'],
+    ['src/admin/composables/useDebouncedRef.ts', 'admin-composables'],
     ['src/admin/queries/mutations/cancelJob.ts', 'admin-queries'],
     ['src/admin/composables/useListParams.ts', 'admin-composables'],
     ['src/admin/composables/useViewState.ts', 'admin-composables-use-view-state'],

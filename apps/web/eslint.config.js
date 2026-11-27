@@ -41,6 +41,11 @@ const withChildren = (moduleName) => [moduleName, `${moduleName}/**`]
 
 const TEST_FILES = ['**/*.test.ts', 'tests/**/*.ts']
 const PARENT_RELATIVE_IMPORT = '(?:^|/)\\.\\.(?:/|$)'
+// タイマーは `window.setTimeout`・`window.setInterval` で書く。`src/` の非テストには Node の型が効かないが、
+// テストの型検査(tsconfig.test.json)では効くため、素の `setTimeout` は戻り値の型が環境で変わる(number と Timeout)。
+const BARE_TIMER_NAMES = ['setTimeout', 'setInterval']
+const BARE_TIMER_MESSAGE =
+  'タイマーは window.setTimeout / window.setInterval で書きます(戻り値の型を number にそろえるため)。'
 const SYNC_IMPORT_MESSAGE =
   '動的 import() と import.meta.glob は使いません(ルートはすべて同期 import。FMOD-P-17)。'
 const GENERATED_DIR = 'src/admin/api/generated/'
@@ -219,6 +224,7 @@ function buildRules(zone) {
       message:
         'src/ はブラウザで動く。Node の API(Buffer)は使いません(型は vite/client だけ。tsconfig.app.json)。',
     },
+    ...BARE_TIMER_NAMES.map((name) => ({ name, message: BARE_TIMER_MESSAGE })),
     {
       name: 'localStorage',
       message: '依存ルール(R14): ユーザー設定を持たないので、localStorage は使いません。',
@@ -230,6 +236,12 @@ function buildRules(zone) {
   ]
   rules['no-restricted-properties'] = [
     'error',
+    // `window.setTimeout` は許す(戻り値が number)。`globalThis.*` は、テストの型検査(Node の型が効く)では Timeout になる。
+    ...BARE_TIMER_NAMES.map((property) => ({
+      object: 'globalThis',
+      property,
+      message: BARE_TIMER_MESSAGE,
+    })),
     ...['window', 'globalThis'].flatMap((object) => [
       ...(allowHttp
         ? []
