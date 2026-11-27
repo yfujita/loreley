@@ -147,6 +147,41 @@ describe('buildMatrixModel(行=ノード・列=インデックス)', () => {
     })
   })
 
+  it('初期化中だけ(移動中なし)でも、凡例の「初期化中・移動中」を出す', () => {
+    const response = opensearch.green()
+    response.shards = [
+      {
+        index: 'loreley-documents-000001',
+        shard: 0,
+        role: 'replica',
+        state: 'initializing',
+        node: 'node-1',
+      },
+    ]
+
+    expect(buildMatrixModel(response, response.indices).legend).toEqual({
+      unassignedReplica: false,
+      unassignedPrimary: false,
+      inTransit: true,
+    })
+  })
+
+  it('同じセルに同じ役割・番号のシャードが 2 つあっても、どちらも残す(重複を落とさない)', () => {
+    const response = opensearch.green()
+    const shard = {
+      index: 'loreley-documents-000001',
+      shard: 1,
+      role: 'replica',
+      state: 'started',
+      node: 'node-1',
+    }
+    response.shards = [shard, { ...shard }]
+
+    const model = buildMatrixModel(response, response.indices)
+
+    expect(chipsAt(model.columns[0]!, 'node-1')).toEqual(['replica1:started', 'replica1:started'])
+  })
+
   it('インデックスが 0 件なら、列も数も 0。ノードの行だけが残る', () => {
     const model = modelOf(opensearch.empty())
 

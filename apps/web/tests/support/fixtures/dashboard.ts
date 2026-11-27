@@ -3,6 +3,9 @@ import type { ComponentId, ComponentState, ComponentStatus, DashboardResponse } 
 
 const CHECKED_AT = '2026-11-22T01:00:00.000Z'
 
+/** OpenAPI の列挙にない値(実行時は来うる。未知の理由は一般的な文言にする) */
+const UNKNOWN_REASON = 'brand_new_reason' as ComponentStatus['reason']
+
 const COMPONENT_IDS = [
   'crawler',
   'indexer',
@@ -60,12 +63,19 @@ export const dashboard = {
       embedding: component('embedding', 'normal'),
       llm: component('llm', 'normal'),
     }),
-  /** 未知の `reason`(一般的な文言で出す。B 8.1) */
+  /** 未知の `reason`(一般的な文言で出す。B 8.1)。crawler は異常、indexer は判定不能 */
   unknownReason: () =>
     build({
-      crawler: {
-        ...component('crawler', 'abnormal'),
-        reason: 'brand_new_reason' as ComponentStatus['reason'],
-      },
+      crawler: { ...component('crawler', 'abnormal'), reason: UNKNOWN_REASON },
+      indexer: { ...component('indexer', 'undetermined'), reason: UNKNOWN_REASON },
+    }),
+  /** 必須 5 つがすべて判定不能(タイムアウト)。任意は未設定。異常はない */
+  allUndetermined: () =>
+    build({
+      crawler: component('crawler', 'undetermined', 'timeout'),
+      indexer: component('indexer', 'undetermined', 'timeout'),
+      opensearch: component('opensearch', 'undetermined', 'connection_error'),
+      api: component('api', 'undetermined', 'timeout'),
+      web: component('web', 'undetermined', 'timeout'),
     }),
 }

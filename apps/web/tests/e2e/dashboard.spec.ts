@@ -3,7 +3,7 @@
 // 手動更新・自動更新のオン/オフ・外部リンク(AF-20)・進行バーの reduced-motion・レスポンシブ・キーボード。
 import type { Page } from '@playwright/test'
 
-import type { DashboardResponse, MetaResponse } from '@/admin/api'
+import type { MetaResponse } from '@/admin/api'
 
 import { apiErrorResponse, hangResponse, jsonResponse } from '../support/apiErrors'
 import { expect, test } from '../support/e2eTest'
@@ -168,17 +168,44 @@ test.describe('異常・判定不能・未設定', () => {
     await expect(summary(page)).toContainText('未設定 0')
   })
 
-  test('未知の reason は「状態を取得できませんでした」だけ(一般的な文言)', async ({ page }) => {
-    const response: DashboardResponse = dashboard.allNormal()
-    response.components[1] = {
-      ...response.components[1]!,
-      state: 'undetermined',
-      reason: 'brand_new_reason' as never,
-    }
-    await openDashboard(page, jsonResponse(response))
+  test('未知の reason は一般的な文言だけ(判定不能は「状態を取得できませんでした。」。異常は固定の文)', async ({
+    page,
+  }) => {
+    await openDashboard(page, jsonResponse(dashboard.unknownReason()))
 
     await expect(tile(page, 'indexer')).toContainText('状態を取得できませんでした。')
     await expect(tile(page, 'indexer')).not.toContainText('(')
+    await expect(tile(page, 'crawler')).toContainText(
+      '応答がありません。コンテナが停止している可能性があります。',
+    )
+  })
+
+  test('必須がすべて判定不能: 概況は warning「状態を確認できないコンポーネントがあります(5 件)」', async ({
+    page,
+  }) => {
+    await openDashboard(page, jsonResponse(dashboard.allUndetermined()))
+
+    await expect(summary(page)).toContainText('状態を確認できないコンポーネントがあります(5 件)')
+    await expect(summary(page)).toContainText('判定不能: crawler、indexer、opensearch、api、web')
+    await expect(summary(page)).toContainText('異常 0')
+  })
+
+  test('タイルの実 CSS: 異常は左 4px の error の帯、判定不能は warning の帯、未設定は破線', async ({
+    page,
+  }) => {
+    await openDashboard(page, jsonResponse(dashboard.mixed()))
+
+    const abnormal = tile(page, 'crawler')
+    await expect(abnormal).toHaveCSS('border-left-width', '4px')
+    await expect(abnormal).toHaveCSS('border-left-color', 'rgb(179, 38, 30)')
+    const undetermined = tile(page, 'indexer')
+    await expect(undetermined).toHaveCSS('border-left-width', '4px')
+    await expect(undetermined).toHaveCSS('border-left-color', 'rgb(143, 90, 0)')
+    const notConfigured = tile(page, 'embedding')
+    await expect(notConfigured).toHaveCSS('border-top-style', 'dashed')
+    await expect(notConfigured).toHaveCSS('border-left-width', '1px')
+    // 正常のタイルは実線・1px
+    await expect(tile(page, 'opensearch')).toHaveCSS('border-top-style', 'solid')
   })
 })
 
@@ -249,6 +276,20 @@ test.describe('取得失敗(前回データあり)。タイルを判定不能に
     await expect(summary(page)).toContainText('判定不能 5')
     await expect(summary(page)).toContainText('未設定 3(前回取得時の設定)')
     await expect(summary(page)).toContainText('前回の構成と同じ 8 件')
+  })
+
+  test('stale のアラートと概況バーの間隔は 16px(他のブロックの間隔と同じ。実測)', async ({
+    page,
+  }) => {
+    await openAndFail(page)
+    await expect(page.locator('.page-alert[role="alert"]')).toBeVisible()
+
+    const gap = await page.evaluate(() => {
+      const alert = document.querySelector('.page-alert[role="alert"]')!.getBoundingClientRect()
+      const band = document.querySelector('[data-testid="d1-summary"]')!.getBoundingClientRect()
+      return Math.round(band.top - alert.bottom)
+    })
+    expect(gap).toBe(16)
   })
 
   test('前回「正常」「異常」だったタイルは判定不能(前回の状態を添える)。未設定は維持。全 8 タイル・任意の節も出す。通知は出さない', async ({
@@ -326,8 +367,17 @@ test.describe('更新(Playwright の時計。FARC-U-8)', () => {
 
     await page.clock.fastForward(2_000)
     await expect.poll(() => api.callCount('GET /dashboard')).toBe(2)
-    await page.clock.fastForward(30_000)
-    await expect.poll(() => api.callCount('GET /dashboard')).toBe(3)
+    // 次の定期更新のタイマーは、直前の取得が終わってから作り直される。進めた時点でまだ無いことがあるので、
+    // 「30 秒進める → 取得が増えたか」を繰り返して確かめる(増えるまでに進めた量は 30 秒単位)。
+    await expect
+      .poll(
+        async () => {
+          await page.clock.fastForward(30_000)
+          return api.callCount('GET /dashboard')
+        },
+        { intervals: [200] },
+      )
+      .toBeGreaterThanOrEqual(3)
   })
 
   test('スイッチをオフにすると止まり、「自動更新は停止中です」を出す。オンに戻すと再開する。保存はしない(再読み込みで入)', async ({
@@ -347,10 +397,20 @@ test.describe('更新(Playwright の時計。FARC-U-8)', () => {
     await page.evaluate(() => 0)
     expect(api.callCount('GET /dashboard')).toBe(1)
 
+    // 「入」に戻すと、次の定期更新(最大 30 秒後)を待たずにすぐ取り直す
     await switchControl(page).click()
     await expect(page.getByText('自動更新は停止中です')).toHaveCount(0)
-    await page.clock.fastForward(31_000)
     await expect.poll(() => api.callCount('GET /dashboard')).toBe(2)
+    // 次の定期更新のタイマーは、直前の取得が終わってから作り直される(進めた時点で無いことがある)ので、増えるまで 30 秒ずつ進める
+    await expect
+      .poll(
+        async () => {
+          await page.clock.fastForward(30_000)
+          return api.callCount('GET /dashboard')
+        },
+        { intervals: [200] },
+      )
+      .toBeGreaterThanOrEqual(3)
 
     // 保存しない: 切って再読み込みすると、既定の「入」に戻る
     await switchControl(page).click()
@@ -481,10 +541,13 @@ test.describe('外部リンク(AF-20)', () => {
 test.describe('レスポンシブ・キーボード', () => {
   for (const [width, columns] of [
     [1280, 3],
+    [1024, 2],
+    [840, 2],
+    [768, 2],
     [375, 1],
     [320, 1],
   ] as const) {
-    test(`幅 ${width}px: タイルは ${columns} 列(最小幅 240px の auto-fill)。横スクロールなし`, async ({
+    test(`幅 ${width}px: タイルは ${columns} 列(最小幅 240px の auto-fill。画面仕様 7 章の 2〜3 列・1 列)。横スクロールなし`, async ({
       page,
     }) => {
       await page.setViewportSize({ width, height: 900 })

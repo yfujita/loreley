@@ -960,7 +960,7 @@ describe('ゾーンの所属', () => {
     ['src/admin/features/sources/form/toRequest.ts', 'admin-feature-sources-ts'],
     ['src/admin/features/jobs/jobActions.ts', 'admin-feature-jobs-ts'],
     ['src/admin/features/documents/documentsParams.ts', 'admin-feature-documents-ts'],
-    ['src/admin/features/opensearch/matrixModel.ts', 'admin-feature-opensearch-ts'],
+    ['src/admin/features/opensearch/models/matrixModel.ts', 'admin-feature-opensearch-ts'],
     // フェーズ 4(D1・O1)で足したファイル
     ['src/admin/components/dashboard-parts/SummaryBand.vue', 'admin-components-vue'],
     ['src/admin/components/dashboard-parts/types.ts', 'admin-components-ts'],

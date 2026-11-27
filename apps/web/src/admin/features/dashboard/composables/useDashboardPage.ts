@@ -1,6 +1,6 @@
 // D1 のページの状態(F 4・5.2)。自動更新のスイッチ(`ref`。永続化しない)・取得・画面の状態・表示モデルをまとめる。
 // 最終取得成功日時は Query の `dataUpdatedAt`(クライアント保持。取得失敗が続いても更新されない。dashboard 4.2)。
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import { useViewState } from '@/admin/composables/useViewState'
 import { useDashboardQuery } from '@/admin/queries/dashboard'
@@ -14,6 +14,12 @@ export function useDashboardPage() {
   const autoRefresh = ref(true)
   const query = useDashboardQuery(autoRefresh)
   const viewState = useViewState(query)
+
+  // 自動更新を止めていた間の表示は古い。「入」に戻したときは、次の定期更新(最大 30 秒後)を待たずにすぐ取り直す
+  // (結果が古いときも「正常」と断定しない。AF-18)。タブへの復帰では取り直さない(フォーカスでの再取得はしない方針。E 5.4)。
+  watch(autoRefresh, (enabled) => {
+    if (enabled) void query.refetch({ cancelRefetch: false })
+  })
 
   const viewModel = computed<DashboardViewModel | null>(() => {
     const data = query.data.value

@@ -151,7 +151,8 @@ const errorNote = computed(() => {
 </template>
 
 <style scoped>
-/* カードの中(一覧のツールバーの下)では、カードの内側の余白に合わせる。ページにカードがない画面(`card`)では、他のブロックと同じ幅 */
+/* カードの中(一覧のツールバーの下)では、カードの内側の余白に合わせる。ページにカードがない画面(`card`)では、他のブロックと同じ幅で余白なし
+   (続く本文との間隔 16px は、`card` を渡す 3 テンプレート(Dashboard・Detail・Form)が `.page-alert` の下に付ける) */
 .view-state-body__stale--in-card {
   margin: 12px 16px;
 }

@@ -42,6 +42,10 @@ const emit = defineEmits<{ action: [id: string]; retry: [] }>()
 .form-page__body {
   max-width: 640px;
 }
+/* stale のアラートと、続くフォームのカードの間隔は 16px */
+.form-page__body > :deep(.page-alert) {
+  margin-bottom: 16px;
+}
 .form-page__card {
   padding: 24px;
 }

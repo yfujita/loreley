@@ -68,7 +68,6 @@ describe('dashboardViewModel: 通常(取得できている)', () => {
   it.each([
     ['timeout', '状態を取得できませんでした(時間内に応答がありませんでした)。'],
     ['connection_error', '状態を取得できませんでした(接続できませんでした)。'],
-    ['brand_new_reason', '状態を取得できませんでした。'],
     [null, '状態を取得できませんでした。'],
   ] as const)('判定不能(reason=%s): %s', (reason, detail) => {
     const response = dashboard.allNormal()
@@ -82,6 +81,15 @@ describe('dashboardViewModel: 通常(取得できている)', () => {
       detail,
       emphasized: true,
     })
+  })
+
+  it('未知の reason(フィクスチャ): 判定不能は「状態を取得できませんでした。」だけ、異常は reason によらず固定の文', () => {
+    const response = dashboard.unknownReason()
+
+    expect(tile(response, 'indexer').detail).toBe('状態を取得できませんでした。')
+    expect(tile(response, 'crawler').detail).toBe(
+      '応答がありません。コンテナが停止している可能性があります。確認 10:00:00',
+    )
   })
 
   it('未設定: 「設定されていません(任意)。」。導線なし', () => {
@@ -128,6 +136,26 @@ describe('dashboardViewModel: 通常(取得できている)', () => {
       status: 'undetermined',
       detail: '状態を取得できませんでした。',
     })
+  })
+
+  it('応答の並びが違っても、定義表の順・区分(必須・任意)でタイルを作る', () => {
+    const response = dashboard.allConfigured()
+    response.components.reverse()
+
+    const model = buildDashboardViewModel(response, FRESH)
+
+    expect(model.required.map((entry) => entry.id)).toEqual([
+      'crawler',
+      'indexer',
+      'opensearch',
+      'api',
+      'web',
+    ])
+    expect(model.optional.map((entry) => entry.id)).toEqual([
+      'opensearch-dashboards',
+      'embedding',
+      'llm',
+    ])
   })
 
   it('定義表にない id は無視する(8 件のまま)', () => {
@@ -186,6 +214,19 @@ describe('dashboardViewModel: 概況(dashboard 3.4)', () => {
       { key: 'abnormal', label: '異常', value: '0' },
       { key: 'not-configured', label: '未設定', value: '3' },
     ])
+  })
+
+  it('必須がすべて判定不能(異常なし): warning「状態を確認できないコンポーネントがあります(5 件)」。名前は定義表の順', () => {
+    const { summary, counts } = buildDashboardViewModel(dashboard.allUndetermined(), FRESH)
+
+    expect(summary.tone).toBe('warning')
+    expect(summary.title).toBe('状態を確認できないコンポーネントがあります(5 件)')
+    expect(summary.items[0]).toEqual({
+      key: 'undetermined-names',
+      label: '判定不能',
+      names: ['crawler', 'indexer', 'opensearch', 'api', 'web'],
+    })
+    expect(counts).toEqual({ normal: 0, abnormal: 0, undetermined: 5, not_configured: 3 })
   })
 
   it('異常と判定不能の両方: 異常を優先して表示し、件数行に両方を並べる', () => {

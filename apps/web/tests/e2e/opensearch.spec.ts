@@ -91,6 +91,22 @@ test.describe('通常の表示(1 カード「クラスタ状態」)', () => {
     await expect(matrix(page).getByText('見出しの「—」は件数を取得できません。')).toBeVisible()
   })
 
+  test('red のアラートは絞り込みの対象外(red のインデックスを除外する条件でも残る)', async ({
+    page,
+  }) => {
+    await openOpenSearch(page, jsonResponse(opensearch.red()))
+    const alert = page.locator('.page-alert[role="status"]')
+    await expect(alert).toContainText('demo-docs-000001 のプライマリシャード(P0)')
+
+    await nameBox(page).fill('store')
+    await expect(count(page)).toContainText('絞り込み後 2 件')
+    await expect(columnHeaders(page).locator('.shard-matrix__index-name')).toHaveText([
+      'demo-store-jobs',
+      'demo-store-sources',
+    ])
+    await expect(alert).toContainText('demo-docs-000001 のプライマリシャード(P0)')
+  })
+
   test('yellow: アラートは出さず、カード内の説明だけ', async ({ page }) => {
     await openOpenSearch(page, jsonResponse(opensearch.yellow()))
 
@@ -198,6 +214,24 @@ test.describe('1 ページの列数(カードの幅から。実ブラウザ。FM
       await expect(count(page)).toContainText(
         columns === 1 ? '1 / 全 25 件のインデックス' : `1–${columns} / 全 25 件のインデックス`,
       )
+    })
+  }
+
+  // 行見出し列の幅 H は viewport 600px で 152px → 112px に切り替わる(DS 4.15)。W(約 565px)では、
+  // H=152 なら 3 列、H=112 なら 4 列。同じ幅の差 1px で列数が変わることを実ブラウザで確かめる。
+  for (const [width, columns] of [
+    [600, 3],
+    [599, 4],
+  ] as const) {
+    test(`幅 ${width}px(行見出し列の境界): 1 ページ ${columns} 列`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 })
+      await openOpenSearch(page)
+
+      await expect(columnHeaders(page)).toHaveCount(columns)
+      const overflow = await page.evaluate(
+        () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+      )
+      expect(overflow).toBeLessThanOrEqual(0)
     })
   }
 
@@ -417,15 +451,19 @@ test.describe('絞り込み(URL の q・state。replace)', () => {
   test('条件を変えると 1 ページ目に戻る。条件が変わらない入力(空白だけ)では、ページを保つ', async ({
     page,
   }) => {
+    // debounce(250ms)は時計で進める(「何も起きない」を実時間の待ちで確かめない)
+    await page.clock.install()
     await openOpenSearch(page)
     await pageSelect(page).selectOption('3')
     await expect(count(page)).toContainText('15–21 /')
 
     await nameBox(page).fill('   ')
-    await page.waitForTimeout(400)
+    await page.clock.fastForward(400)
     await expect(count(page)).toContainText('15–21 /')
+    expect(search(page)).toBe('')
 
     await nameBox(page).fill('logs')
+    await page.clock.fastForward(400)
     await expect(count(page)).toHaveText(
       '1–7 / 絞り込み後 16 件のインデックス(全 25 件中)(ページ 1 / 3)',
     )
@@ -589,6 +627,11 @@ test.describe('キーボード・アクセシビリティ', () => {
     await openOpenSearch(page)
 
     await expect(matrix(page).locator('tbody th').first()).toHaveCSS('position', 'sticky')
+    // 角(thead の「ノード」)も固定(行見出しと一緒に動く)
+    await expect(matrix(page).locator('thead th.shard-matrix__corner')).toHaveCSS(
+      'position',
+      'sticky',
+    )
     await expect(matrix(page).locator('tbody .shard-chip--unassigned-replica .v-icon')).toHaveCount(
       2,
     )

@@ -50,15 +50,19 @@ const SKELETON_TILES = 3
     <template v-if="viewModel !== null">
       <SummaryBand :model="viewModel.summary" />
 
-      <h2 class="text-section-title dashboard-page__section">コンポーネント</h2>
-      <ul class="dashboard-page__tiles" aria-label="コンポーネントの状態">
-        <ComponentTile v-for="tile in viewModel.required" :key="tile.id" :model="tile" />
-      </ul>
+      <section class="dashboard-page__group">
+        <h2 class="text-section-title">コンポーネント</h2>
+        <ul class="dashboard-page__tiles" aria-label="コンポーネントの状態">
+          <ComponentTile v-for="tile in viewModel.required" :key="tile.id" :model="tile" />
+        </ul>
+      </section>
 
-      <h2 class="text-section-title dashboard-page__section">任意のコンポーネント</h2>
-      <ul class="dashboard-page__tiles" aria-label="任意のコンポーネントの状態">
-        <ComponentTile v-for="tile in viewModel.optional" :key="tile.id" :model="tile" />
-      </ul>
+      <section class="dashboard-page__group">
+        <h2 class="text-section-title">任意のコンポーネント</h2>
+        <ul class="dashboard-page__tiles" aria-label="任意のコンポーネントの状態">
+          <ComponentTile v-for="tile in viewModel.optional" :key="tile.id" :model="tile" />
+        </ul>
+      </section>
 
       <section class="dashboard-page__note" aria-labelledby="d1-note-title">
         <h2 id="d1-note-title" class="text-section-title">この表示について</h2>
@@ -108,8 +112,14 @@ const SKELETON_TILES = 3
 </template>
 
 <style scoped>
-.dashboard-page__section {
-  margin: 8px 0 -4px;
+/* 見出しとタイルを 1 組にして、見出しとリストの間隔(12px)を内側の gap で決める。組の上は、ほかのブロックより 8px 広く空ける */
+.dashboard-page__group {
+  display: grid;
+  gap: 12px;
+  margin-top: 8px;
+}
+.dashboard-page__group h2 {
+  margin: 0;
 }
 /* 最小幅 240px の auto-fill・余白 16px(DS 6.4) */
 .dashboard-page__tiles {

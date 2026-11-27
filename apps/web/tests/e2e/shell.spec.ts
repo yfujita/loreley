@@ -513,7 +513,7 @@ test.describe('外部リンク領域(AF-20)', () => {
 })
 
 test.describe('外部通信と相対パス', () => {
-  for (const path of ['./', 'sources', 'jobs/job-0001', 'no/such/page']) {
+  for (const path of ['./', 'sources', 'jobs/job-0001', 'opensearch', 'no/such/page']) {
     test(`同一オリジン以外への要求は 0 件(外部フォント・CDN を使わない。DS 3.1): ${path}`, async ({
       page,
     }) => {

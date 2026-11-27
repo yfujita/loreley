@@ -57,13 +57,14 @@ const cardTitleId = useId()
 const isLoading = computed(() => viewState.value.kind === 'loading')
 const isStale = computed(() => viewState.value.kind === 'stale')
 
-// 外側: stale のアラートだけ。内側: 読み込み中・エラーだけ(stale は内側では通常の表示)。
+// 外側: stale のアラートだけ。内側: カード内の状態ブロック(読み込み中・エラー・見つかりません)だけ。
 function withKind(kind: ViewState['kind']): ViewState {
   return { ...viewState.value, kind, isRefreshing: false }
 }
 const outerState = computed(() => withKind(isStale.value ? 'stale' : 'ready'))
+// stale は外側のアラートが出すので、内側では通常の表示。それ以外(loading・error・notfound など)はそのまま渡す。
 const innerState = computed(() =>
-  withKind(['loading', 'error'].includes(viewState.value.kind) ? viewState.value.kind : 'ready'),
+  withKind(viewState.value.kind === 'stale' ? 'ready' : viewState.value.kind),
 )
 
 const hasNoIndices = computed(() => response.value?.indices.length === 0)

@@ -93,8 +93,27 @@ describe('dashboard', () => {
     ).toBe(true)
   })
 
-  it('unknownReason: 未知の reason を持つ', () => {
-    expect(stateOf(dashboard.unknownReason(), 'crawler')?.reason).toBe('brand_new_reason')
+  it('unknownReason: 異常(crawler)と判定不能(indexer)が、未知の reason を持つ', () => {
+    expect(stateOf(dashboard.unknownReason(), 'crawler')).toMatchObject({
+      state: 'abnormal',
+      reason: 'brand_new_reason',
+    })
+    expect(stateOf(dashboard.unknownReason(), 'indexer')).toMatchObject({
+      state: 'undetermined',
+      reason: 'brand_new_reason',
+    })
+  })
+
+  it('allUndetermined: 必須 5 つがすべて判定不能、任意は未設定。異常はない', () => {
+    const response = dashboard.allUndetermined()
+
+    expect(
+      ['crawler', 'indexer', 'opensearch', 'api', 'web'].map((id) => stateOf(response, id)?.state),
+    ).toEqual(Array(5).fill('undetermined'))
+    expect(
+      ['opensearch-dashboards', 'embedding', 'llm'].map((id) => stateOf(response, id)?.state),
+    ).toEqual(Array(3).fill('not_configured'))
+    expect(response.components.some((component) => component.state === 'abnormal')).toBe(false)
   })
 })
 
@@ -164,6 +183,17 @@ describe('opensearch', () => {
         .redMultiple()
         .shards.filter((s) => s.role === 'primary' && s.state === 'unassigned'),
     ).toHaveLength(3)
+  })
+
+  it('redMany: 12 個の red のインデックスで、プライマリが 1 つずつ未割り当て(計 12 シャード)', () => {
+    const response = opensearch.redMany()
+
+    expect(response.indices).toHaveLength(12)
+    expect(response.indices.every((entry) => entry.status === 'red')).toBe(true)
+    expect(
+      response.shards.filter((s) => s.role === 'primary' && s.state === 'unassigned'),
+    ).toHaveLength(12)
+    expectSummaryMatchesShards(response)
   })
 
   it('multiNode: 2 ノード・green・未割り当てなし', () => {

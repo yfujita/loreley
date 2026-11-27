@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, h, nextTick, reactive } from 'vue'
 
+import type { ShardEntry } from '@/admin/api'
 import { buildMatrixModel } from '@/admin/features/opensearch/models/matrixModel'
 
 import { opensearch } from '../../../../tests/support/fixtures/opensearch'
@@ -141,6 +142,92 @@ describe('ShardMatrix: 1 ページの列数(ResizeObserver の幅から決める
 
     expect(view.names()).toHaveLength(2)
     expect(view.select().findAll('option')).toHaveLength(2)
+  })
+})
+
+describe('ShardMatrix: 境界', () => {
+  const firstN = (n: number) => {
+    const response = opensearch.many()
+    return propsOf(response, {
+      model: buildMatrixModel(response, response.indices.slice(0, n)),
+      totalIndexCount: n,
+    })
+  }
+
+  it('インデックスがちょうど 1 ページ分(7 列・幅 982)なら、ページ送りを出さず「7 件のインデックス」', async () => {
+    const view = await mountMatrix(firstN(7), 982)
+
+    expect(view.names()).toHaveLength(7)
+    expect(
+      view.wrapper.find('[role="group"][aria-label="シャードの配置のページ送り"]').exists(),
+    ).toBe(false)
+    expect(view.count()).toBe('7 件のインデックス')
+  })
+
+  it('8 列分(1 つ超える)なら、ページ送りが出て「1–7 / 全 8 件のインデックス」', async () => {
+    const view = await mountMatrix(firstN(8), 982)
+
+    expect(view.names()).toHaveLength(7)
+    expect(view.select().findAll('option')).toHaveLength(2)
+    expect(view.count()).toBe('1–7 / 全 8 件のインデックス(ページ 1 / 2)')
+  })
+
+  it('行見出し列の幅 H は viewport 600px で切り替わる: W=590 は 600px(wide)で 3 列、599px(narrow)で 4 列', async () => {
+    window.innerWidth = 600
+    const wide = await mountMatrix(propsOf(), 590)
+    expect(wide.names()).toHaveLength(3)
+
+    window.innerWidth = 599
+    const narrow = await mountMatrix(propsOf(), 590)
+    expect(narrow.names()).toHaveLength(4)
+  })
+})
+
+describe('ShardMatrix: 同じ役割・番号のチップの重複', () => {
+  const INDEX = 'loreley-documents-000001'
+  const replica: ShardEntry = {
+    index: INDEX,
+    shard: 1,
+    role: 'replica',
+    state: 'started',
+    node: 'node-1',
+  }
+  const withShards = (shards: ShardEntry[]) => {
+    const response = opensearch.green()
+    response.shards = shards
+    return propsOf(response)
+  }
+
+  it('同じセル・未割り当て行に同じ役割・番号が 2 つあっても、2 つとも描き、更新(差分の描画)で key の重複警告を出さない', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      // 先に別のシャードを描き、重複のある内容へ差し替える(Vue が key の重複を調べるのは、差分が複雑な更新のとき)
+      const view = await mountMatrix(
+        withShards([
+          { ...replica, shard: 9 },
+          { ...replica, shard: 9, state: 'unassigned', node: null },
+        ]),
+        982,
+      )
+
+      view.state.model = withShards([
+        replica,
+        { ...replica },
+        { ...replica, state: 'unassigned', node: null },
+        { ...replica, state: 'unassigned', node: null },
+      ]).model
+      await nextTick()
+
+      const rows = view.wrapper.findAll('tbody tr')
+      expect(rows[0]!.findAll('.shard-chip')).toHaveLength(2)
+      expect(rows[1]!.findAll('.shard-chip')).toHaveLength(2)
+      const duplicateKeyWarnings = warn.mock.calls.filter((call) =>
+        String(call[0]).includes('Duplicate keys'),
+      )
+      expect(duplicateKeyWarnings).toEqual([])
+    } finally {
+      warn.mockRestore()
+    }
   })
 })
 
@@ -382,7 +469,7 @@ describe('ShardMatrix: 行・セル', () => {
     expect(view.wrapper.find('[aria-sort]').exists()).toBe(false)
   })
 
-  it('左端の行見出し(角を含む)は固定(sticky)。角は「ノード」', async () => {
+  it('角(thead の「ノード」)は <th scope=col>。左端の行見出しの sticky は CSS なので E2E で測る', async () => {
     const view = await mountMatrix(propsOf(), 982)
 
     expect(view.wrapper.find('thead th.shard-matrix__corner').text()).toBe('ノード')

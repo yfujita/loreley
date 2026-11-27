@@ -185,6 +185,40 @@ describe('O1: 通常の表示(1 カード「クラスタ状態」)', () => {
     expect(items).toEqual(['demo-a(P0、P1)', 'demo-b(P0)'])
   })
 
+  it('red のインデックスが 12 個のときは、一覧を 10 件で打ち切り、「ほか 2 件のインデックス」を添える', async () => {
+    const view = await mountOpenSearch(jsonResponse(opensearch.redMany()), { width: 982 })
+
+    const alert = view.wrapper.find('.page-alert[role="status"]')
+    const items = alert.findAll('li').map((li) => li.text())
+    expect(items).toHaveLength(10)
+    expect(items[0]).toBe('demo-red-01(P0)')
+    expect(items[9]).toBe('demo-red-10(P0)')
+    expect(alert.text()).toContain('ほか 2 件のインデックス')
+  })
+
+  it('red のアラートは絞り込みの対象外(red のインデックスを除外する条件でも、アラートは残る)', async () => {
+    const view = await mountOpenSearch(jsonResponse(opensearch.red()), { width: 982 })
+    const alertText = () => view.wrapper.find('.page-alert[role="status"]').text()
+    expect(alertText()).toContain('demo-docs-000001 のプライマリシャード(P0)')
+
+    await typeName(view, 'store') // red の demo-docs-000001 は一致しない
+    expect(view.names()).not.toContain('demo-docs-000001')
+    expect(alertText()).toContain('demo-docs-000001 のプライマリシャード(P0)')
+
+    await view.checkbox('yellow').setValue(true)
+    await flushPromises()
+    expect(view.names()).not.toContain('demo-docs-000001')
+    expect(alertText()).toContain('demo-docs-000001 のプライマリシャード(P0)')
+  })
+
+  it('見つかりません(notfound)の状態は、カードの中に出す(見出しだけの空のカードにしない)', async () => {
+    const view = await mountOpenSearch(apiErrorResponse(404, 'not_found'))
+
+    expect(view.card().find('h2').text()).toBe('クラスタ状態')
+    expect(view.card().find('[data-testid="o1-state-notfound"]').exists()).toBe(true)
+    expect(view.wrapper.find('[data-testid="o1-summary"]').exists()).toBe(false)
+  })
+
   it('yellow や、未割り当てのプライマリがなければ、アラートは出さない(説明だけ)', async () => {
     const view = await mountOpenSearch(jsonResponse(opensearch.yellow()), { width: 982 })
 

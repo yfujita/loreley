@@ -60,6 +60,10 @@ const emit = defineEmits<{ action: [id: string]; retry: [] }>()
 .dashboard-page__body {
   position: relative;
 }
+/* stale のアラートと、続く本文(概況・タイル)の間隔は 16px(他のブロックの間隔と同じ)。ViewStateBody はアラートに余白を付けない(`card`) */
+.dashboard-page__body > :deep(.page-alert) {
+  margin-bottom: 16px;
+}
 .dashboard-page__stack {
   display: grid;
   gap: 16px;

@@ -84,6 +84,26 @@ describe.each([
   })
 })
 
+describe.each([
+  ['DashboardPage', DashboardPage, '.dashboard-page__body'],
+  ['DetailPage', DetailPage, '.detail-page__body'],
+  ['FormPage', FormPage, '.form-page__body'],
+] as const)(
+  '%s: stale のアラートと続く本文の間隔(card を渡す 3 テンプレート共通)',
+  (_name, page, body) => {
+    // 16px の間隔は、各テンプレートの scoped CSS(`<body> > .page-alert { margin-bottom: 16px }`)が付ける。
+    // 実寸は E2E(D1 の stale)で測る。ここは、その規則が効く前提(アラートが body の直接の子で、カード内用の余白の class がない)を固定する。
+    it('アラートは本文(body)の直接の子で、カードの中用の余白(--in-card)の class を持たない', async () => {
+      const { wrapper } = await mountPage(page, viewStates.stale())
+
+      const alert = wrapper.find(`${body} > .page-alert`)
+      expect(alert.exists()).toBe(true)
+      expect(alert.classes()).not.toContain('view-state-body__stale--in-card')
+      expect(wrapper.find(`${body} > #body, ${body} > * #body`).exists()).toBe(true)
+    })
+  },
+)
+
 describe('ListPage(DS 6.1)', () => {
   it('カード(aria-label)に、ツールバー・本文(表)・ページング(footer)の順に並べる', async () => {
     const { wrapper } = await mountPage(

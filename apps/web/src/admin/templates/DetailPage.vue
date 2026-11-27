@@ -46,6 +46,10 @@ const emit = defineEmits<{ action: [id: string]; retry: [] }>()
 .detail-page__body {
   position: relative;
 }
+/* stale のアラートと、続く本文の間隔は 16px(本文のブロックの間隔と同じ) */
+.detail-page__body > :deep(.page-alert) {
+  margin-bottom: 16px;
+}
 .detail-page__stack {
   display: grid;
   gap: 16px;

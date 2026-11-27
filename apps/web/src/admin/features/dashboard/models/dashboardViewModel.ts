@@ -214,12 +214,15 @@ export function buildDashboardViewModel(
   options: DashboardViewModelOptions,
 ): DashboardViewModel {
   const byId = new Map(data.components.map((component) => [component.id, component]))
-  const tiles = dashboardComponents.map((definition) =>
-    buildTile(definition, byId.get(definition.id), options),
-  )
+  // 区分(必須・任意)は定義表の行から取る(tiles との添字の一致に頼らない)。
+  const entries = dashboardComponents.map((definition) => ({
+    group: definition.group,
+    tile: buildTile(definition, byId.get(definition.id), options),
+  }))
+  const tiles = entries.map((entry) => entry.tile)
   const counts = countStatuses(tiles)
   const groupOf = (group: DashboardComponentDefinition['group']) =>
-    tiles.filter((_, index) => dashboardComponents[index]?.group === group)
+    entries.filter((entry) => entry.group === group).map((entry) => entry.tile)
 
   return {
     summary: buildSummary(tiles, counts, options.stale),

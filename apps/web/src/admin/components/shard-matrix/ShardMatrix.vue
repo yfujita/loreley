@@ -279,8 +279,8 @@ watch([tableWidthPx, width, visibleColumns, narrow], () => nextTick(measureScrol
             <td v-for="column in visibleColumns" :key="column.name">
               <span v-if="column.shardsByNode.get(node.name)" class="shard-matrix__chips">
                 <ShardChip
-                  v-for="chip in column.shardsByNode.get(node.name)"
-                  :key="`${chip.role}-${chip.number}`"
+                  v-for="(chip, i) in column.shardsByNode.get(node.name)"
+                  :key="`${chip.role}-${chip.number}-${i}`"
                   :chip="chip"
                 />
               </span>
@@ -302,8 +302,8 @@ watch([tableWidthPx, width, visibleColumns, narrow], () => nextTick(measureScrol
             <td v-for="column in visibleColumns" :key="column.name">
               <span v-if="column.unassigned.length > 0" class="shard-matrix__chips">
                 <ShardChip
-                  v-for="chip in column.unassigned"
-                  :key="`${chip.role}-${chip.number}`"
+                  v-for="(chip, i) in column.unassigned"
+                  :key="`${chip.role}-${chip.number}-${i}`"
                   :chip="chip"
                 />
               </span>

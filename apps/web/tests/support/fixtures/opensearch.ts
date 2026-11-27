@@ -205,6 +205,19 @@ export const opensearch = {
     ]
     return response({ cluster: summarize(shards, 1, 'red'), indices, shards, total_indices: 2 })
   },
+  /** red(12 個のインデックスで、プライマリが 1 つずつ未割り当て。アラートの 10 件上限と「ほか 2 件」用) */
+  redMany: () => {
+    const indices = sortIndices(
+      Array.from({ length: 12 }, (_, i) =>
+        index(`demo-red-${String(i + 1).padStart(2, '0')}`, {
+          status: 'red',
+          document_count: null,
+        }),
+      ),
+    )
+    const shards = indices.map((entry) => shard(entry.name, { state: 'unassigned', node: null }))
+    return response({ cluster: summarize(shards, 1, 'red'), indices, shards, total_indices: 12 })
+  },
   /** 25 件のインデックス(3 ノード。yellow 2・green 23。移動中・件数 null・10 桁の件数・システムインデックスを含む) */
   many: () => manyIndices(),
   /** 状態値が未知(中立表示。X-BD2) */

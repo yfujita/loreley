@@ -381,10 +381,52 @@ describe('D1: 手動の更新と自動更新', () => {
     await elapse(120_000)
     expect(view.polls()).toBe(1)
 
+    // 「入」に戻したら、次の定期更新を待たずにすぐ取り直す(停止中の古い表示を、現在の状態として見せ続けない)
     await view.switchInput().setValue(true)
+    await flushPromises()
     expect(view.wrapper.text()).not.toContain('自動更新は停止中です')
-    await elapse(30_000)
     expect(view.polls()).toBe(2)
+    await elapse(30_000)
+    expect(view.polls()).toBe(3)
+  })
+
+  it('「入」に戻した直後の取得は、進行中の取得をやり直さない(取得済みの画面で、更新中にオフ → オン)', async () => {
+    const view = await mountDashboard()
+    stub.respondWith({ kind: 'hang' })
+    await view.button('更新').trigger('click')
+    await flushPromises()
+    const before = view.polls()
+
+    await view.switchInput().setValue(false)
+    await view.switchInput().setValue(true)
+    await flushPromises()
+
+    expect(view.polls()).toBe(before)
+  })
+
+  it('「入」に戻した直後の取得は、進行中の取得をやり直さない。初回の取得中に切り替えても重ならない', async () => {
+    const view = await mountDashboard({ kind: 'hang' })
+
+    await view.switchInput().setValue(false)
+    await view.switchInput().setValue(true)
+    await flushPromises()
+
+    expect(view.polls()).toBe(1)
+  })
+
+  it('「再読み込み」(stale のアラート)を取得中に重ねて押しても、進行中の取得をやり直さない', async () => {
+    const view = await mountDashboard()
+    stub.respondWith(apiErrorResponse(500, 'internal_error'))
+    await clickUpdate(view)
+    const before = view.polls()
+    stub.respondWith({ kind: 'hang' })
+
+    await view.button('再読み込み').trigger('click')
+    await view.button('再読み込み').trigger('click')
+    await view.button('再読み込み').trigger('click')
+    await flushPromises()
+
+    expect(view.polls()).toBe(before + 1)
   })
 
   it('オフでも、手動の「更新」は取得する', async () => {
