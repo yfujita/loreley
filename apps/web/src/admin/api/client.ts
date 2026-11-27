@@ -69,10 +69,14 @@ export async function fetchWithTimeout(
     const body = NULL_BODY_STATUSES.has(response.status)
       ? null
       : await Promise.race([response.arrayBuffer(), rejectedOnAbort])
+    // `content-length` は外す。本文は読み切って(デコード済みで)渡すので、元の値(圧縮後の長さ・`0`)は不正確で、
+    // `0` が残ると生成クライアントが 2xx の本文を読まず・検証せずに `{}` を成功として返してしまう(validateResponseBody)。
+    const headers = new Headers(response.headers)
+    headers.delete('content-length')
     return new Response(body, {
       status: response.status,
       statusText: response.statusText,
-      headers: response.headers,
+      headers,
     })
   } finally {
     window.clearTimeout(timer)
@@ -84,8 +88,11 @@ export async function fetchWithTimeout(
  * 2xx の本文の検査: 空・JSON のオブジェクトでないものは、成功として返さず `invalid_response`(status 2xx)にする。
  * 生成クライアントは、2xx で本文が空だと `{}` を成功として返す(`parseAs: 'json'` でも)。Admin API の正常応答は、
  * すべて必須の項目を持つオブジェクトで、`{}`(項目なし)を返す EP はない(OpenAPI で確認。16 件の 2xx)ため、
- * 空の本文・`null`・配列・文字列は、プロキシの誤配信などの異常として扱う。
- * (204・`Content-Length: 0` の応答は、生成クライアントがこの検査を通さず `{}` を返す。Admin API はどちらも返さない。)
+ * 空の本文・`null`・配列・文字列は、プロキシの誤配信・本文の欠落などの異常として扱う。
+ *
+ * 生成クライアントは、`Content-Length: 0` の 2xx も検証せずに `{}` を返す。サーバーやプロキシが付けた `content-length: 0`
+ * で検査を迂回されないよう、fetchWithTimeout が Response を作り直すときに `content-length` を外している。
+ * 実際の 204(本文なし)は、SDK の挙動のとおり検査を通らず `{}` になる(Admin API は 204 を返さない。client.test.ts で固定)。
  */
 export async function validateResponseBody(data: unknown): Promise<void> {
   const isNonEmptyObject =

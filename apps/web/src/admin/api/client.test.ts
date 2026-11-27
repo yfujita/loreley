@@ -10,7 +10,12 @@ import {
   startCrawlMutation,
 } from '@/admin/api'
 
-import { emptyBodyResponse, hangResponse, jsonResponse } from '../../../tests/support/apiErrors'
+import {
+  emptyBodyResponse,
+  hangResponse,
+  jsonResponse,
+  type MockResponse,
+} from '../../../tests/support/apiErrors'
 import { useFetchStub } from '../../../tests/support/fetchStub'
 import { createTestQueryClient, runMutation } from '../../../tests/support/queryTesting'
 import { fetchWithTimeout, READ_TIMEOUT_MS, WRITE_TIMEOUT_MS } from './client'
@@ -170,6 +175,57 @@ describe('2xx の本文の検査(空・JSON のオブジェクトでないもの
     expect(error).toEqual({ kind: 'invalid_response', status: 202 })
   })
 
+  it('`content-length: 0` を付けた空の 200(読み取り)も、検証を迂回せず invalid_response(status 200)', async () => {
+    const withContentLengthZero = (status: number): MockResponse => ({
+      kind: 'response',
+      status,
+      contentType: 'application/json',
+      body: '',
+      headers: { 'content-length': '0' },
+    })
+
+    expect(await failureFor(withContentLengthZero(200))).toEqual({
+      error: { kind: 'invalid_response', status: 200 },
+    })
+  })
+
+  it('`content-length: 0` を付けた空の 202(書き込み)も invalid_response(status 202)', async () => {
+    stub.respondWith({
+      kind: 'response',
+      status: 202,
+      contentType: 'application/json',
+      body: '',
+      headers: { 'content-length': '0' },
+    })
+
+    const error = await runMutation(createTestQueryClient(), cancelJobMutation(), {
+      path: { job_id: 'job-1' },
+    }).catch((caught: unknown) => caught)
+
+    expect(error).toEqual({ kind: 'invalid_response', status: 202 })
+  })
+
+  it('本文ありの応答は、元の content-length(圧縮後の長さなど不正確な値)が外されても、正常に読める', async () => {
+    const body = JSON.stringify(META)
+
+    // 実際の長さとは違う content-length(圧縮された応答の、圧縮後の長さを想定)
+    const data = await failureFor({
+      kind: 'response',
+      status: 200,
+      contentType: 'application/json',
+      body,
+      headers: { 'content-length': '3' },
+    })
+
+    expect(data).toEqual({ data: META })
+  })
+
+  it('実際の 204(本文なし)は、SDK の挙動のとおり検査を通らず `{}` を成功として返す(Admin API は 204 を返さない)', async () => {
+    expect(await failureFor(() => new Response(null, { status: 204 }) as never)).toEqual({
+      data: {},
+    })
+  })
+
   it.each([
     ['`{}`(項目のないオブジェクト)', '{}'],
     ['`null`', 'null'],
@@ -203,6 +259,22 @@ describe('タイムアウト付き fetch が返す Response', () => {
     expect(response.status).toBe(202)
     expect(response.statusText).toBe('Accepted')
     expect(response.headers.get('x-trace')).toBe('abc')
+    expect(response.headers.get('content-type')).toBe('application/json')
+    expect(await response.json()).toEqual({ a: 1 })
+  })
+
+  it('content-length を外して Response を作り直す(読み切った本文と食い違う値を残さない)', async () => {
+    stub.respondWith({
+      kind: 'response',
+      status: 200,
+      contentType: 'application/json',
+      body: '{"a":1}',
+      headers: { 'content-length': '999' },
+    })
+
+    const response = await fetchWithTimeout(new Request('http://localhost/api/admin/v1/meta'))
+
+    expect(response.headers.has('content-length')).toBe(false)
     expect(response.headers.get('content-type')).toBe('application/json')
     expect(await response.json()).toEqual({ a: 1 })
   })

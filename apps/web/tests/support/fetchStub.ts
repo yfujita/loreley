@@ -31,7 +31,7 @@ const API_PREFIX = '/api/admin/v1'
 function toResponse(mock: Extract<MockResponse, { kind: 'response' }>): Response {
   return new Response(mock.body === '' ? null : mock.body, {
     status: mock.status,
-    headers: { 'content-type': mock.contentType },
+    headers: { 'content-type': mock.contentType, ...mock.headers },
   })
 }
 

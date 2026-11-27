@@ -54,7 +54,12 @@ async function fulfill(route: Route, mock: MockResponse): Promise<void> {
     await route.abort('failed')
     return
   }
-  await route.fulfill({ status: mock.status, contentType: mock.contentType, body: mock.body })
+  await route.fulfill({
+    status: mock.status,
+    contentType: mock.contentType,
+    body: mock.body,
+    ...(mock.headers !== undefined && { headers: mock.headers }),
+  })
 }
 
 /**

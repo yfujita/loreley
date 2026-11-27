@@ -59,6 +59,31 @@ describe('toApiError(E 5.3 の表の各行)', () => {
     })
   })
 
+  it.each([
+    ['false', false],
+    ['文字列 "true"', 'true'],
+    ['数値 1', 1],
+    ['null', null],
+  ])(
+    'details.outcome_unknown が %s のときは outcomeUnknown=false(true のときだけ結果不明)',
+    (_name, value) => {
+      const body = {
+        error: {
+          code: 'crawler_unavailable',
+          message: 'x',
+          retryable: true,
+          details: { outcome_unknown: value },
+        },
+      }
+
+      expect(toApiError(body, responseOf(503))).toMatchObject({
+        kind: 'api',
+        outcomeUnknown: false,
+        details: { outcome_unknown: value },
+      })
+    },
+  )
+
   it('details がなければ details のキーを持たない', () => {
     const result = toApiError({ error: { code: 'unavailable', retryable: true } }, responseOf(503))
 

@@ -12,7 +12,14 @@ import { existingJob, SENTINEL_LEASE_EXPIRES_AT } from './fixtures/jobs'
 
 export type MockResponse =
   // 通常の応答(JSON・HTML・空の本文)
-  | { kind: 'response'; status: number; contentType: string; body: string }
+  | {
+      kind: 'response'
+      status: number
+      contentType: string
+      body: string
+      /** 追加のヘッダー(`content-length` など。プロキシが付けるものの再現用) */
+      headers?: Record<string, string>
+    }
   // 通信断(接続できない・切断)。Vitest は fetch の TypeError、Playwright は route.abort() になる
   | { kind: 'network-error' }
   // 応答しない(接続したまま返ってこない)。タイムアウト・中断の検証用。Vitest は解決しない Promise、Playwright は route を履行しない
