@@ -12,28 +12,31 @@ import { client } from '../../src/admin/api/generated/client.gen'
 client.setConfig({ baseUrl: 'http://localhost/api/admin/v1' })
 
 // jsdom に無い API(Vuetify が参照する)の最小のスタブ。
-class ResizeObserverStub implements ResizeObserver {
-  observe(): void {}
-  unobserve(): void {}
-  disconnect(): void {}
-}
-globalThis.ResizeObserver = ResizeObserverStub
+// node 環境のテスト(dependencyRules.test.ts など)でも setup は読み込まれるので、jsdom のときだけ置く。
+if (typeof window !== 'undefined') {
+  class ResizeObserverStub implements ResizeObserver {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  globalThis.ResizeObserver = ResizeObserverStub
 
-// VOverlay(VDialog など)が位置の計算で `visualViewport` を読む。
-Object.defineProperty(window, 'visualViewport', {
-  configurable: true,
-  value: {
-    width: window.innerWidth,
-    height: window.innerHeight,
-    offsetLeft: 0,
-    offsetTop: 0,
-    pageLeft: 0,
-    pageTop: 0,
-    scale: 1,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-  },
-})
+  // VOverlay(VDialog など)が位置の計算で `visualViewport` を読む。
+  Object.defineProperty(window, 'visualViewport', {
+    configurable: true,
+    value: {
+      width: window.innerWidth,
+      height: window.innerHeight,
+      offsetLeft: 0,
+      offsetTop: 0,
+      pageLeft: 0,
+      pageTop: 0,
+      scale: 1,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    },
+  })
+}
 
 // VDialog などは body にテレポートするので、テストごとに必ず外す。
 enableAutoUnmount(afterEach)

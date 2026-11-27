@@ -1,19 +1,16 @@
+// @vitest-environment node
 // 依存ルール R1〜R17(F 6 章)と、それを表す eslint.config.js のゾーンの回帰テスト。
 // `npm run lint` は実ファイルしか検査しないので、規則を変えたときに、違反が止まらなくなることをここで検出する。
 // 各行は「ファイルの場所(ゾーンが決まる)・コード・期待する違反」。違反を期待しない行は、例外として許される書き方。
 import { readdirSync } from 'node:fs'
 import { join, relative } from 'node:path'
-import { cwd } from 'node:process'
 
-import { ESLint } from 'eslint'
 import { beforeAll, describe, expect, it, vi } from 'vitest'
+
+import { eslint, WEB_DIR } from './eslintInstance'
 
 // ESLint の初回の読み込み(config・パーサー)に数秒かかる。
 vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 })
-
-// Vitest は apps/web で実行する(npm run test)。jsdom 環境では import.meta.url が http: になるので使えない。
-const WEB_DIR = cwd()
-const eslint = new ESLint({ cwd: WEB_DIR })
 
 type Violation = {
   rule: string
@@ -760,6 +757,73 @@ const SAMPLES: Sample[] = [
     path: 'src/admin/lib/sample.ts',
     code: `import { type X } from 'vue'\nexport type Y = X\n`,
     violation: violates('型の import', '@typescript-eslint/no-import-type-side-effects', 'import'),
+  },
+  // ── src/ は Node の API(process・Buffer)を使わない(tsconfig.app.json は Node の型を持たない)
+  {
+    title: 'src の lib が process を使う',
+    path: 'src/admin/lib/sample.ts',
+    code: `export const mode = process.env.NODE_ENV\n`,
+    violation: violates('Node API', GLOBALS, 'process'),
+  },
+  {
+    title: 'src の features の .vue が Buffer を使う',
+    path: 'src/admin/features/jobs/pages/SampleJobPage.vue',
+    code: vueFile(`const bytes = Buffer.from('a')\nvoid bytes`),
+    violation: violates('Node API', GLOBALS, 'Buffer'),
+  },
+  {
+    title: 'main.ts が process を使う',
+    path: 'src/main.ts',
+    code: `export const mode = process.env.NODE_ENV\n`,
+    violation: violates('Node API', GLOBALS, 'process'),
+  },
+  {
+    title: 'テストは process を使ってよい(許される)',
+    path: 'src/admin/lib/sample.test.ts',
+    code: `export const dir = process.cwd()\n`,
+  },
+  {
+    title: 'tests/ は process を使ってよい(許される)',
+    path: 'tests/support/sample.ts',
+    code: `export const dir = process.cwd()\n`,
+  },
+  {
+    title: 'vite.config.ts など src 外の設定ファイルは process を使ってよい(許される)',
+    path: 'vite.config.ts',
+    code: `export const target = process.env.LORELEY_DEV_API_TARGET\n`,
+  },
+
+  // ── テストの相対 import: admin/api の中身は禁止(公開口そのものは可)
+  {
+    title: 'テストが admin/api/errors を相対パスで import',
+    path: 'tests/support/sample.ts',
+    code: importing('../../src/admin/api/errors/toApiError'),
+    violation: violates('R2', IMPORT, '相対パス'),
+  },
+  {
+    title: 'テストが admin/api/index を相対パスで import',
+    path: 'tests/support/sample.ts',
+    code: importing('../../src/admin/api/index'),
+    violation: violates('R2', IMPORT, '相対パス'),
+  },
+  {
+    title: 'テストが公開口 admin/api 自身を相対パスで import(許される)',
+    path: 'tests/support/sample.ts',
+    code: importing('../../src/admin/api'),
+  },
+
+  // ── 未所属: ts 以外の拡張子も対象(scss・css・画像などは対象外)
+  {
+    title: '未所属の .mts',
+    path: 'src/admin/foo/sample.mts',
+    code: `export const a = 1\n`,
+    violation: violates('未所属', SYNTAX, 'ゾーン'),
+  },
+  {
+    title: '未所属の .js',
+    path: 'src/admin/lib/sample.js',
+    code: `export const a = 1\n`,
+    violation: violates('未所属', SYNTAX, 'ゾーン'),
   },
 ]
 

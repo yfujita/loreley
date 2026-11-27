@@ -210,6 +210,16 @@ function buildRules(zone) {
           },
         ]),
     {
+      name: 'process',
+      message:
+        'src/ はブラウザで動く。Node の API(process)は使いません(型は vite/client だけ。tsconfig.app.json)。',
+    },
+    {
+      name: 'Buffer',
+      message:
+        'src/ はブラウザで動く。Node の API(Buffer)は使いません(型は vite/client だけ。tsconfig.app.json)。',
+    },
+    {
       name: 'localStorage',
       message: '依存ルール(R14): ユーザー設定を持たないので、localStorage は使いません。',
     },
@@ -285,9 +295,11 @@ function buildTestRules() {
               '依存ルール(R2): テストでも生成コードなど admin/api/ の中身を直接 import しません。型は @/admin/api(公開口)から。',
           },
           {
-            // `../../src/admin/api/generated/…` のような相対パスでの回避も止める。admin/api の中の `./generated` は対象外。
-            regex: '(?:^|/)admin/api/generated(?:/|$)',
-            message: '依存ルール(R2): テストでも生成コードを相対パスで直接 import しません。',
+            // `../../src/admin/api/errors/…` や `…/generated/…` のような相対パスでの回避も止める(公開口 `…/admin/api` 自身は可)。
+            // admin/api の中の `./generated` などは、`admin/api` を含まないので対象外。
+            regex: '(?:^|/)admin/api/.',
+            message:
+              '依存ルール(R2): テストでも admin/api/ の中身を相対パスで直接 import しません。公開口 @/admin/api から。',
           },
           {
             group: ['@hey-api/*'],
@@ -441,15 +453,16 @@ const sourceZones = [
   }),
 
   // ── 層 4: admin/dialogs(R9)・admin/shell(R10)
-  // 設計 1.2 の「主な入力」と R9・R10 に合わせて絞っている(dialogs は queries(書き込み)・components・api・lib、
-  // shell は composables・queries/meta・lib)。必要になったら、設計と照らして足す。
+  // 設計 1.2 の「主な入力」と R9・R10 に合わせて絞っている(dialogs は queries(書き込み)・components・api・lib・composables、
+  // shell は composables・queries/meta・lib と api の型)。R9・R10 が禁止を明記せず、層の向き(F 2.2)でも許されるものは許す。
   ...vuetifyVueOnly('admin-dialogs', 'src/admin/dialogs', {
-    allow: ['dialogs', 'api', 'components', 'lib', ...SHARED_MODULES],
+    allow: ['dialogs', 'api', 'components', 'composables', 'lib', ...SHARED_MODULES],
     // R9: queries は mutations だけ。
     allowSubpaths: { queries: ['mutations'] },
   }),
   ...vuetifyVueOnly('admin-shell', 'src/admin/shell', {
     allow: ['shell', 'composables', 'lib', ...SHARED_MODULES],
+    allowTypeOnly: ['api'],
     // R10: queries は meta だけ。
     allowSubpaths: { queries: ['meta'] },
   }),
@@ -472,7 +485,8 @@ const sourceZones = [
   // ── 層 6: admin/router(R11: features のページ・templates(404)・lib だけ。queries・shell・app は import しない)
   // vuetify は R13 の列挙に無いので、.vue も含めて import しない(404 ページは shared/ui の部品を使う)。
   sourceZone('admin-router', ['src/admin/router/**/*.{ts,vue}'], {
-    allow: ['router', 'templates', 'lib', ...ALL_FEATURES, ...SHARED_MODULES],
+    // composables は、ガードのタイトル更新などで使う(FMOD-U-10)。R11 が禁止していない。
+    allow: ['router', 'templates', 'composables', 'lib', ...ALL_FEATURES, ...SHARED_MODULES],
   }),
 
   // ── 層 7: admin/app(R4: vue-query は setupQuery.ts だけ。R13: vuetify・createVuetify は setupVuetify.ts だけ)
@@ -501,7 +515,7 @@ const sourceZones = [
 // 意図的な例外: テスト・生成コード・型宣言(.d.ts)。
 const unclassifiedZone = {
   name: 'loreley/zone/unclassified',
-  files: ['src/**/*.{ts,vue}'],
+  files: ['src/**/*.{ts,tsx,mts,cts,js,mjs,cjs,vue}'],
   ignores: [
     ...sourceZones.flatMap((zone) => zone.files),
     ...TEST_FILES,
