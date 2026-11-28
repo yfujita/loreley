@@ -1,0 +1,16 @@
+<script setup lang="ts">
+// J1 のスタブ(フェーズ 3)。route・テンプレート・見出し・フォーカスを確認するための最小のページで、
+// 画面のフェーズで本実装に差し替える。
+import { useRouteTitle } from '@/admin/composables/useRouteTitle'
+import { READY_VIEW_STATE } from '@/admin/lib/viewState'
+import ListPage from '@/admin/templates/ListPage.vue'
+
+const title = useRouteTitle()
+const viewState = READY_VIEW_STATE
+</script>
+
+<template>
+  <ListPage :title="title" :view-state="viewState" testid-prefix="j1">
+    <p class="pa-4 ma-0">J1(画面は後続のフェーズで実装します)</p>
+  </ListPage>
+</template>

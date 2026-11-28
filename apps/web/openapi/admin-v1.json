@@ -1,0 +1,4062 @@
+{
+  "components": {
+    "schemas": {
+      "CancelJobResponse": {
+        "description": "EP-07 の応答(B 4.2)。200 は `cancelled`(実行待ちを取り消した)、202 は `running`\n(実行中への取消要求の受付だけ。完了は EP-10 の `status` で確認する)。",
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          }
+        },
+        "required": [
+          "job_id",
+          "status"
+        ],
+        "title": "CancelJobResponse",
+        "type": "object"
+      },
+      "ClusterResponse": {
+        "properties": {
+          "cluster": {
+            "$ref": "#/components/schemas/ClusterSummary"
+          },
+          "fetched_at": {
+            "title": "Fetched At",
+            "type": "string"
+          },
+          "indices": {
+            "items": {
+              "$ref": "#/components/schemas/IndexEntry"
+            },
+            "title": "Indices",
+            "type": "array"
+          },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/NodeEntry"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
+          "shards": {
+            "items": {
+              "$ref": "#/components/schemas/ShardEntry"
+            },
+            "title": "Shards",
+            "type": "array"
+          },
+          "total_indices": {
+            "title": "Total Indices",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "fetched_at",
+          "cluster",
+          "nodes",
+          "indices",
+          "shards",
+          "truncated",
+          "total_indices"
+        ],
+        "title": "ClusterResponse",
+        "type": "object"
+      },
+      "ClusterSummary": {
+        "properties": {
+          "active_shards": {
+            "title": "Active Shards",
+            "type": "integer"
+          },
+          "initializing_shards": {
+            "title": "Initializing Shards",
+            "type": "integer"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "node_count": {
+            "title": "Node Count",
+            "type": "integer"
+          },
+          "relocating_shards": {
+            "title": "Relocating Shards",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "unassigned_shards": {
+            "title": "Unassigned Shards",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "status",
+          "node_count",
+          "active_shards",
+          "relocating_shards",
+          "initializing_shards",
+          "unassigned_shards"
+        ],
+        "title": "ClusterSummary",
+        "type": "object"
+      },
+      "ComponentId": {
+        "description": "EP-13 の `components[].id`。宣言の順が、応答の固定の順(B 8.1)。\n\n`web` は compose のサービスではなく、`api` が配信する Web UI の表示名。",
+        "enum": [
+          "crawler",
+          "indexer",
+          "opensearch",
+          "api",
+          "web",
+          "opensearch-dashboards",
+          "embedding",
+          "llm"
+        ],
+        "title": "ComponentId",
+        "type": "string"
+      },
+      "ComponentState": {
+        "description": "EP-13 の `components[].state`(B 8.1)。`not_configured` は任意コンポーネントだけ。",
+        "enum": [
+          "normal",
+          "abnormal",
+          "undetermined",
+          "not_configured"
+        ],
+        "title": "ComponentState",
+        "type": "string"
+      },
+      "ComponentStatus": {
+        "properties": {
+          "checked_at": {
+            "title": "Checked At",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/ComponentId"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "connection_refused",
+                  "name_not_resolved",
+                  "unexpected_status",
+                  "missing",
+                  "timeout",
+                  "connection_error"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "state": {
+            "$ref": "#/components/schemas/ComponentState"
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "reason",
+          "checked_at"
+        ],
+        "title": "ComponentStatus",
+        "type": "object"
+      },
+      "DashboardResponse": {
+        "description": "固定の順(`ComponentId` の宣言順)で常に 8 件。\n\n各コンポーネントの失敗は `components[].state` で表すので、`unavailable` もエラー応答もない。",
+        "properties": {
+          "checked_at": {
+            "title": "Checked At",
+            "type": "string"
+          },
+          "components": {
+            "items": {
+              "$ref": "#/components/schemas/ComponentStatus"
+            },
+            "title": "Components",
+            "type": "array"
+          }
+        },
+        "required": [
+          "checked_at",
+          "components"
+        ],
+        "title": "DashboardResponse",
+        "type": "object"
+      },
+      "Deletion": {
+        "description": "`crawl` ジョブの削除の状況。`source_delete` ジョブでは、応答の `deletion` 自体が `null`。",
+        "properties": {
+          "confirmation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeletionConfirmation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeletionCurrent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current_state": {
+            "$ref": "#/components/schemas/DeletionCurrentState"
+          },
+          "fetched_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fetched At"
+          },
+          "settings": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeletionSettings"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "summary": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DeletionSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "summary",
+          "confirmation",
+          "current",
+          "current_state",
+          "fetched_at",
+          "settings"
+        ],
+        "title": "Deletion",
+        "type": "object"
+      },
+      "DeletionConfirmation": {
+        "description": "`deletion.confirmation`(B 5.2)。確認に入っていないジョブは `null`。",
+        "enum": [
+          "confirmed",
+          "unconfirmed",
+          "unknown"
+        ],
+        "title": "DeletionConfirmation",
+        "type": "string"
+      },
+      "DeletionCurrent": {
+        "properties": {
+          "deleted_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted Count"
+          },
+          "denominator": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Denominator"
+          },
+          "ended_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ended At"
+          },
+          "forced": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forced"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "reason_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason Detail"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "target_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Count"
+          }
+        },
+        "required": [
+          "status",
+          "reason",
+          "reason_detail",
+          "forced",
+          "target_count",
+          "denominator",
+          "deleted_count",
+          "ended_at"
+        ],
+        "title": "DeletionCurrent",
+        "type": "object"
+      },
+      "DeletionCurrentState": {
+        "description": "`deletion.current_state`(B 5.2)。",
+        "enum": [
+          "available",
+          "not_found",
+          "unavailable"
+        ],
+        "title": "DeletionCurrentState",
+        "type": "string"
+      },
+      "DeletionSettings": {
+        "properties": {
+          "min_delete_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Delete Count"
+          },
+          "ratio_threshold_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratio Threshold Percent"
+          },
+          "ttl_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl Seconds"
+          }
+        },
+        "required": [
+          "ttl_seconds",
+          "ratio_threshold_percent",
+          "min_delete_count"
+        ],
+        "title": "DeletionSettings",
+        "type": "object"
+      },
+      "DeletionSummary": {
+        "properties": {
+          "deleted_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted Count"
+          },
+          "deletion_started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deletion Started At"
+          },
+          "denominator": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Denominator"
+          },
+          "e_missing": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "E Missing"
+          },
+          "enumerated_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enumerated Count"
+          },
+          "finish_received_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finish Received At"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "forced": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Forced"
+          },
+          "n_seen": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "N Seen"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          },
+          "target_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Count"
+          }
+        },
+        "required": [
+          "status",
+          "reason",
+          "forced",
+          "target_count",
+          "denominator",
+          "deleted_count",
+          "enumerated_count",
+          "n_seen",
+          "e_missing",
+          "finish_received_at",
+          "deletion_started_at",
+          "finished_at",
+          "observed_at"
+        ],
+        "title": "DeletionSummary",
+        "type": "object"
+      },
+      "DocumentExistence": {
+        "description": "`skipped` タブの行の `existence`(B 6.1)。検索インデックスにあるかどうか。",
+        "enum": [
+          "existing",
+          "new",
+          "unknown"
+        ],
+        "title": "DocumentExistence",
+        "type": "string"
+      },
+      "DocumentListResponse": {
+        "description": "EP-11。最上位の `unavailable` は、行に属さない項目(`tab_counts.<タブ>` など)だけ。",
+        "properties": {
+          "document_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Count"
+          },
+          "items": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SkippedDocument"
+                },
+                {
+                  "$ref": "#/components/schemas/ExtractFailedDocument"
+                },
+                {
+                  "$ref": "#/components/schemas/OversizeDocument"
+                },
+                {
+                  "$ref": "#/components/schemas/SummaryPendingDocument"
+                }
+              ]
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "items_per_page": {
+            "title": "Items Per Page",
+            "type": "integer"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "tab": {
+            "$ref": "#/components/schemas/DocumentTab"
+          },
+          "tab_counts": {
+            "$ref": "#/components/schemas/TabCounts"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "unavailable": {
+            "$ref": "#/components/schemas/Unavailable"
+          },
+          "window_limit": {
+            "title": "Window Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "items_per_page",
+          "window_limit",
+          "unavailable",
+          "tab",
+          "tab_counts",
+          "document_count"
+        ],
+        "title": "DocumentListResponse",
+        "type": "object"
+      },
+      "DocumentTab": {
+        "description": "EP-11 の `tab`(B 6.1)。値は、件数の対象(`CountTarget`)の名前と同じ。",
+        "enum": [
+          "skipped",
+          "extract_failed",
+          "oversize",
+          "summary_pending"
+        ],
+        "title": "DocumentTab",
+        "type": "string"
+      },
+      "ErrorBody": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "details": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ErrorDetails"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "retryable": {
+            "title": "Retryable",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "code",
+          "message",
+          "retryable"
+        ],
+        "title": "ErrorBody",
+        "type": "object"
+      },
+      "ErrorDetails": {
+        "additionalProperties": true,
+        "description": "`details`。code によって持つキーが違う(どれも任意)。",
+        "properties": {
+          "crawler_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Crawler Message"
+          },
+          "errors": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/FieldError"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Errors"
+          },
+          "existing_job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExistingJob"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lock_state": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LockState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "options_applied": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Options Applied"
+          },
+          "outcome_unknown": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Outcome Unknown"
+          },
+          "requested": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RequestedOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "title": "ErrorDetails",
+        "type": "object"
+      },
+      "ErrorResponse": {
+        "description": "エラー応答の共通スキーマ(A 5.2)。",
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorBody"
+          }
+        },
+        "required": [
+          "error"
+        ],
+        "title": "ErrorResponse",
+        "type": "object"
+      },
+      "ExistingJob": {
+        "description": "ロック文書が指すジョブ(`lock.job`、409 の `details.existing_job`)。\n\nジョブ記録がない(孤児ロック)・値が読めないときは `null`。",
+        "properties": {
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "job_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lease_expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Expires At"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trigger": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobTrigger"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "job_id",
+          "job_type",
+          "status",
+          "trigger",
+          "lease_expires_at"
+        ],
+        "title": "ExistingJob",
+        "type": "object"
+      },
+      "ExtractFailedDocument": {
+        "properties": {
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "last_seen_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Seen At"
+          },
+          "mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mime Type"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "source_updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Updated At"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "unavailable": {
+            "$ref": "#/components/schemas/Unavailable"
+          }
+        },
+        "required": [
+          "document_id",
+          "title",
+          "external_id",
+          "mime_type",
+          "size",
+          "source_updated_at",
+          "last_seen_at",
+          "unavailable"
+        ],
+        "title": "ExtractFailedDocument",
+        "type": "object"
+      },
+      "FieldError": {
+        "description": "`details.errors[]` の 1 件。値は載せない(A 5.2)。",
+        "properties": {
+          "detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
+          },
+          "field": {
+            "title": "Field",
+            "type": "string"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/Reason"
+          }
+        },
+        "required": [
+          "field",
+          "reason"
+        ],
+        "title": "FieldError",
+        "type": "object"
+      },
+      "IndexEntry": {
+        "properties": {
+          "document_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Count"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Status"
+          }
+        },
+        "required": [
+          "name",
+          "status",
+          "document_count"
+        ],
+        "title": "IndexEntry",
+        "type": "object"
+      },
+      "IndexSummary": {
+        "properties": {
+          "document_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Count"
+          }
+        },
+        "required": [
+          "document_count"
+        ],
+        "title": "IndexSummary",
+        "type": "object"
+      },
+      "JobAccepted": {
+        "description": "受け付けたジョブ(EP-05・06 の 202)。",
+        "properties": {
+          "force_delete": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Force Delete"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "job_type": {
+            "$ref": "#/components/schemas/JobType"
+          },
+          "queued_at": {
+            "title": "Queued At",
+            "type": "string"
+          },
+          "rewrite_mode": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rewrite Mode"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/JobStatus"
+          },
+          "trigger": {
+            "$ref": "#/components/schemas/JobTrigger"
+          }
+        },
+        "required": [
+          "job_id",
+          "job_type",
+          "source_id",
+          "status",
+          "trigger",
+          "force_delete",
+          "rewrite_mode",
+          "queued_at"
+        ],
+        "title": "JobAccepted",
+        "type": "object"
+      },
+      "JobBrief": {
+        "description": "ジョブの要約(EP-01・02・09・10)。自身は `unavailable` を持たない(外側の行が持つ)。",
+        "properties": {
+          "cancellable": {
+            "title": "Cancellable",
+            "type": "boolean"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "force_delete": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Force Delete"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "job_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "queued_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queued At"
+          },
+          "rewrite_mode": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rewrite Mode"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "stalled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stalled"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trigger": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobTrigger"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "job_id",
+          "source_id",
+          "job_type",
+          "trigger",
+          "status",
+          "force_delete",
+          "rewrite_mode",
+          "queued_at",
+          "started_at",
+          "finished_at",
+          "failure_reason",
+          "stalled",
+          "cancellable"
+        ],
+        "title": "JobBrief",
+        "type": "object"
+      },
+      "JobDetailResponse": {
+        "description": "EP-10。`JobBrief` の項目すべてに、詳細の項目を足す。",
+        "properties": {
+          "cancel_after_finish_notice": {
+            "title": "Cancel After Finish Notice",
+            "type": "boolean"
+          },
+          "cancellable": {
+            "title": "Cancellable",
+            "type": "boolean"
+          },
+          "deletion": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Deletion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "failure_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Detail"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "force_delete": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Force Delete"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "job_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "latest_for_source": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest For Source"
+          },
+          "lease_expires_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lease Expires At"
+          },
+          "queued_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queued At"
+          },
+          "registration": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Registration"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rerun_blocked_reason": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RerunBlockedReason"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rerunnable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rerunnable"
+          },
+          "rewrite_mode": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rewrite Mode"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "stalled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stalled"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trigger": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobTrigger"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unavailable": {
+            "$ref": "#/components/schemas/Unavailable"
+          },
+          "warnings": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "job_id",
+          "source_id",
+          "job_type",
+          "trigger",
+          "status",
+          "force_delete",
+          "rewrite_mode",
+          "queued_at",
+          "started_at",
+          "finished_at",
+          "failure_reason",
+          "stalled",
+          "cancellable",
+          "failure_detail",
+          "lease_expires_at",
+          "latest_for_source",
+          "rerunnable",
+          "rerun_blocked_reason",
+          "cancel_after_finish_notice",
+          "warnings",
+          "registration",
+          "deletion",
+          "unavailable"
+        ],
+        "title": "JobDetailResponse",
+        "type": "object"
+      },
+      "JobListItem": {
+        "description": "EP-09 の `items[]` の 1 行。`unavailable` は、この行の失敗(キーは `stalled`)。",
+        "properties": {
+          "cancellable": {
+            "title": "Cancellable",
+            "type": "boolean"
+          },
+          "failure_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failure Reason"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "force_delete": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Force Delete"
+          },
+          "job_id": {
+            "title": "Job Id",
+            "type": "string"
+          },
+          "job_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "queued_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Queued At"
+          },
+          "rewrite_mode": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rewrite Mode"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "stalled": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stalled"
+          },
+          "started_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Started At"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "trigger": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobTrigger"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unavailable": {
+            "$ref": "#/components/schemas/Unavailable"
+          }
+        },
+        "required": [
+          "job_id",
+          "source_id",
+          "job_type",
+          "trigger",
+          "status",
+          "force_delete",
+          "rewrite_mode",
+          "queued_at",
+          "started_at",
+          "finished_at",
+          "failure_reason",
+          "stalled",
+          "cancellable",
+          "unavailable"
+        ],
+        "title": "JobListItem",
+        "type": "object"
+      },
+      "JobListResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/JobListItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "items_per_page": {
+            "title": "Items Per Page",
+            "type": "integer"
+          },
+          "page": {
+            "title": "Page",
+            "type": "integer"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          },
+          "unavailable": {
+            "$ref": "#/components/schemas/Unavailable"
+          },
+          "window_limit": {
+            "title": "Window Limit",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "items_per_page",
+          "window_limit",
+          "unavailable"
+        ],
+        "title": "JobListResponse",
+        "type": "object"
+      },
+      "JobStatus": {
+        "description": "保存上のジョブの状態(B 2.11)。リース切れの実行中も `running`(`stalled` は別の項目)。",
+        "enum": [
+          "queued",
+          "running",
+          "succeeded",
+          "partially_succeeded",
+          "failed",
+          "cancelled"
+        ],
+        "title": "JobStatus",
+        "type": "string"
+      },
+      "JobTrigger": {
+        "enum": [
+          "manual",
+          "schedule"
+        ],
+        "title": "JobTrigger",
+        "type": "string"
+      },
+      "JobType": {
+        "description": "`JobBrief.job_type`(B 2.11)。この 2 値以外の保存値は読めない値(`null`。C 5.4)。",
+        "enum": [
+          "crawl",
+          "source_delete"
+        ],
+        "title": "JobType",
+        "type": "string"
+      },
+      "Lock": {
+        "properties": {
+          "acquired_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acquired At"
+          },
+          "job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExistingJob"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "state": {
+            "$ref": "#/components/schemas/LockState"
+          }
+        },
+        "required": [
+          "state",
+          "job",
+          "acquired_at"
+        ],
+        "title": "Lock",
+        "type": "object"
+      },
+      "LockState": {
+        "description": "`lock_state`(B 2.9)。",
+        "enum": [
+          "none",
+          "held_crawl",
+          "held_delete",
+          "lease_expired",
+          "orphan",
+          "just_acquired",
+          "unknown"
+        ],
+        "title": "LockState",
+        "type": "string"
+      },
+      "MetaResponse": {
+        "description": "`api` の設定(環境変数)に由来する情報。未設定は `null`。",
+        "properties": {
+          "cron_timezone": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cron Timezone"
+          },
+          "dashboards_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dashboards Url"
+          }
+        },
+        "required": [
+          "cron_timezone",
+          "dashboards_url"
+        ],
+        "title": "MetaResponse",
+        "type": "object"
+      },
+      "NodeEntry": {
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "NodeEntry",
+        "type": "object"
+      },
+      "OversizeDetector": {
+        "description": "原本サイズ超過の記録の `detected_by`(B 6.1)。",
+        "enum": [
+          "crawler",
+          "indexer"
+        ],
+        "title": "OversizeDetector",
+        "type": "string"
+      },
+      "OversizeDocument": {
+        "properties": {
+          "detected_by": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OversizeDetector"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "first_detected_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Detected At"
+          },
+          "last_detected_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Detected At"
+          },
+          "last_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Job Id"
+          },
+          "size": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Size"
+          },
+          "unavailable": {
+            "$ref": "#/components/schemas/Unavailable"
+          }
+        },
+        "required": [
+          "document_id",
+          "external_id",
+          "detected_by",
+          "size",
+          "first_detected_at",
+          "last_detected_at",
+          "last_job_id",
+          "unavailable"
+        ],
+        "title": "OversizeDocument",
+        "type": "object"
+      },
+      "Reason": {
+        "description": "`details.errors[].reason`。A 5.2 の共通の値に、Admin 固有の `config_invalid` を加える。\n\n`exclusive`・`config_invalid` は、pydantic の検証エラーの `type` からは作れない(Admin API 自身の\n検証と、Crawler の違反の写像が明示的に付ける)ので、`common/http/handlers.py` の対応表には\n足さない(AAM-U-3)。",
+        "enum": [
+          "required",
+          "type",
+          "format",
+          "range",
+          "exclusive",
+          "unknown_field",
+          "unsupported",
+          "config_invalid"
+        ],
+        "title": "Reason",
+        "type": "string"
+      },
+      "RegisterSourceBody": {
+        "additionalProperties": false,
+        "description": "EP-03 の本文。",
+        "properties": {
+          "connector_config": {
+            "additionalProperties": true,
+            "title": "Connector Config",
+            "type": "object"
+          },
+          "connector_type": {
+            "title": "Connector Type",
+            "type": "string"
+          },
+          "min_delete_count": {
+            "title": "Min Delete Count",
+            "type": "integer"
+          },
+          "ratio_threshold_percent": {
+            "title": "Ratio Threshold Percent",
+            "type": "number"
+          },
+          "schedule_cron": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Schedule Cron"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "ttl_days": {
+            "title": "Ttl Days",
+            "type": "integer"
+          },
+          "ttl_seconds": {
+            "title": "Ttl Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "connector_config",
+          "ratio_threshold_percent",
+          "min_delete_count",
+          "source_id",
+          "connector_type"
+        ],
+        "title": "RegisterSourceBody",
+        "type": "object"
+      },
+      "Registration": {
+        "description": "登録の集計。保存値が読めない件数・`partial` は `null`。",
+        "properties": {
+          "created_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created Count"
+          },
+          "enumerated_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enumerated Count"
+          },
+          "error_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Count"
+          },
+          "invalid_id_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Invalid Id Count"
+          },
+          "oversize_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oversize Count"
+          },
+          "partial": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Partial"
+          },
+          "phase": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RegistrationPhase"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "skipped_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skipped Count"
+          },
+          "unchanged_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unchanged Count"
+          },
+          "updated_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated Count"
+          }
+        },
+        "required": [
+          "enumerated_count",
+          "created_count",
+          "updated_count",
+          "unchanged_count",
+          "skipped_count",
+          "oversize_count",
+          "error_count",
+          "invalid_id_count",
+          "partial",
+          "phase"
+        ],
+        "title": "Registration",
+        "type": "object"
+      },
+      "RegistrationPhase": {
+        "description": "`registration.phase`(B 5.2)。",
+        "enum": [
+          "final",
+          "in_progress",
+          "incomplete"
+        ],
+        "title": "RegistrationPhase",
+        "type": "string"
+      },
+      "ReleaseLockResponse": {
+        "description": "EP-08 の 200(B 4.3)。",
+        "properties": {
+          "failed_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Failed Job Id"
+          },
+          "released": {
+            "title": "Released",
+            "type": "boolean"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "released",
+          "failed_job_id"
+        ],
+        "title": "ReleaseLockResponse",
+        "type": "object"
+      },
+      "RequestedOptions": {
+        "description": "409 `lock_held`(EP-06)の `details.requested`: 受け取った指定(B 2.7)。",
+        "properties": {
+          "force_delete": {
+            "title": "Force Delete",
+            "type": "boolean"
+          },
+          "rewrite_mode": {
+            "title": "Rewrite Mode",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "force_delete",
+          "rewrite_mode"
+        ],
+        "title": "RequestedOptions",
+        "type": "object"
+      },
+      "RerunBlockedReason": {
+        "description": "`rerun_blocked_reason`(B 2.9。`source_missing` は案 AAPI-P-41)。",
+        "enum": [
+          "not_crawl",
+          "not_failed",
+          "stalled",
+          "superseded",
+          "source_deleting",
+          "source_missing"
+        ],
+        "title": "RerunBlockedReason",
+        "type": "string"
+      },
+      "ShardEntry": {
+        "properties": {
+          "index": {
+            "title": "Index",
+            "type": "string"
+          },
+          "node": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Node"
+          },
+          "role": {
+            "title": "Role",
+            "type": "string"
+          },
+          "shard": {
+            "title": "Shard",
+            "type": "integer"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "index",
+          "shard",
+          "role",
+          "state",
+          "node"
+        ],
+        "title": "ShardEntry",
+        "type": "object"
+      },
+      "SkipStage": {
+        "description": "スキップ記録の `stage`(B 6.1)。この 2 値以外の保存値は読めない値(`null`)。",
+        "enum": [
+          "fetch",
+          "index"
+        ],
+        "title": "SkipStage",
+        "type": "string"
+      },
+      "SkippedDocument": {
+        "properties": {
+          "attempts": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Attempts"
+          },
+          "consecutive_skips": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Consecutive Skips"
+          },
+          "document_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Id"
+          },
+          "existence": {
+            "$ref": "#/components/schemas/DocumentExistence"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "first_skipped_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First Skipped At"
+          },
+          "last_job_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Job Id"
+          },
+          "last_skipped_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Skipped At"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "stage": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SkipStage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unavailable": {
+            "$ref": "#/components/schemas/Unavailable"
+          }
+        },
+        "required": [
+          "document_id",
+          "external_id",
+          "stage",
+          "reason",
+          "attempts",
+          "consecutive_skips",
+          "first_skipped_at",
+          "last_skipped_at",
+          "last_job_id",
+          "existence",
+          "unavailable"
+        ],
+        "title": "SkippedDocument",
+        "type": "object"
+      },
+      "SourceDetailResponse": {
+        "description": "EP-02。`StoredSourceSettings` の項目すべてに、ロック・直近のジョブ・登録文書数を足す。",
+        "properties": {
+          "connector_config": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connector Config"
+          },
+          "connector_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connector Type"
+          },
+          "delete_job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "index": {
+            "$ref": "#/components/schemas/IndexSummary"
+          },
+          "last_completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Completed At"
+          },
+          "last_crawl": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lock": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Lock"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "min_delete_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Delete Count"
+          },
+          "ratio_threshold_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratio Threshold Percent"
+          },
+          "schedule_cron": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule Cron"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ttl_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl Days"
+          },
+          "ttl_seconds": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl Seconds"
+          },
+          "unavailable": {
+            "$ref": "#/components/schemas/Unavailable"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "source_id",
+          "connector_type",
+          "connector_config",
+          "ttl_seconds",
+          "ttl_days",
+          "ratio_threshold_percent",
+          "min_delete_count",
+          "schedule_cron",
+          "status",
+          "updated_at",
+          "lock",
+          "last_crawl",
+          "last_completed_at",
+          "delete_job",
+          "index",
+          "unavailable"
+        ],
+        "title": "SourceDetailResponse",
+        "type": "object"
+      },
+      "SourceListItem": {
+        "description": "EP-01 の `items[]` の 1 行。`unavailable` は、この行の失敗(キーは行の中の相対パス)。",
+        "properties": {
+          "connector_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Connector Type"
+          },
+          "delete_job": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "document_count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Count"
+          },
+          "last_completed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last Completed At"
+          },
+          "last_crawl": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/JobBrief"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "schedule_cron": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule Cron"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "status": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceStatus"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "unavailable": {
+            "$ref": "#/components/schemas/Unavailable"
+          }
+        },
+        "required": [
+          "source_id",
+          "connector_type",
+          "schedule_cron",
+          "status",
+          "last_crawl",
+          "last_completed_at",
+          "delete_job",
+          "document_count",
+          "unavailable"
+        ],
+        "title": "SourceListItem",
+        "type": "object"
+      },
+      "SourceListResponse": {
+        "description": "EP-01。全件を返す。最上位の `unavailable` は常に `{}`(行に属さない項目がない)。",
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/SourceListItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "unavailable": {
+            "$ref": "#/components/schemas/Unavailable"
+          }
+        },
+        "required": [
+          "items",
+          "unavailable"
+        ],
+        "title": "SourceListResponse",
+        "type": "object"
+      },
+      "SourceSettings": {
+        "description": "登録・更新が返すデータソースの設定(EP-03・04。B 2.11)。\n\nCrawler が返した保存内容を確かめてから作る(読めなければ 502 で、この型にならない)ので、\n`null` を許すのは `ttl_days`(日で割り切れないとき)と `schedule_cron`(手動のみ)だけ。",
+        "properties": {
+          "connector_config": {
+            "additionalProperties": true,
+            "title": "Connector Config",
+            "type": "object"
+          },
+          "connector_type": {
+            "title": "Connector Type",
+            "type": "string"
+          },
+          "min_delete_count": {
+            "title": "Min Delete Count",
+            "type": "integer"
+          },
+          "ratio_threshold_percent": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              }
+            ],
+            "title": "Ratio Threshold Percent"
+          },
+          "schedule_cron": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schedule Cron"
+          },
+          "source_id": {
+            "title": "Source Id",
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/SourceStatus"
+          },
+          "ttl_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ttl Days"
+          },
+          "ttl_seconds": {
+            "title": "Ttl Seconds",
+            "type": "integer"
+          },
+          "updated_at": {
+            "title": "Updated At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "source_id",
+          "connector_type",
+          "connector_config",
+          "ttl_seconds",
+          "ttl_days",
+          "ratio_threshold_percent",
+          "min_delete_count",
+          "schedule_cron",
+          "status",
+          "updated_at"
+        ],
+        "title": "SourceSettings",
+        "type": "object"
+      },
+      "SourceStatus": {
+        "description": "データソース設定の `status`(B 2.11)。",
+        "enum": [
+          "active",
+          "deleting"
+        ],
+        "title": "SourceStatus",
+        "type": "string"
+      },
+      "StartCrawlBody": {
+        "additionalProperties": false,
+        "description": "EP-06 の本文。本文なし・`{}` は、どちらも既定の `false`(B 4.1)。",
+        "properties": {
+          "force_delete": {
+            "default": false,
+            "title": "Force Delete",
+            "type": "boolean"
+          },
+          "rewrite_mode": {
+            "default": false,
+            "title": "Rewrite Mode",
+            "type": "boolean"
+          }
+        },
+        "title": "StartCrawlBody",
+        "type": "object"
+      },
+      "SummaryPendingDocument": {
+        "properties": {
+          "document_id": {
+            "title": "Document Id",
+            "type": "string"
+          },
+          "external_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "External Id"
+          },
+          "indexed_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indexed At"
+          },
+          "mime_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Mime Type"
+          },
+          "source_updated_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Updated At"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "unavailable": {
+            "$ref": "#/components/schemas/Unavailable"
+          }
+        },
+        "required": [
+          "document_id",
+          "title",
+          "external_id",
+          "mime_type",
+          "source_updated_at",
+          "indexed_at",
+          "unavailable"
+        ],
+        "title": "SummaryPendingDocument",
+        "type": "object"
+      },
+      "TabCounts": {
+        "description": "各タブの総件数。取得できなかったタブは `null`(最上位の `unavailable.tab_counts.<タブ>`)。",
+        "properties": {
+          "extract_failed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Extract Failed"
+          },
+          "oversize": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Oversize"
+          },
+          "skipped": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Skipped"
+          },
+          "summary_pending": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Summary Pending"
+          }
+        },
+        "required": [
+          "skipped",
+          "extract_failed",
+          "oversize",
+          "summary_pending"
+        ],
+        "title": "TabCounts",
+        "type": "object"
+      },
+      "Unavailable": {
+        "additionalProperties": {
+          "$ref": "#/components/schemas/UnavailableReason"
+        },
+        "type": "object"
+      },
+      "UnavailableReason": {
+        "description": "`unavailable` の値(取得できなかった項目の理由。B 2.2)。",
+        "enum": [
+          "store_unavailable",
+          "search_index_unavailable",
+          "timeout",
+          "malformed"
+        ],
+        "title": "UnavailableReason",
+        "type": "string"
+      },
+      "UpdateSourceBody": {
+        "additionalProperties": false,
+        "description": "EP-04 の本文。EP-03 の本文から `source_id`・`connector_type` を除いたもの(全置換)。\n\nここで検証するのは形(型・必須・未知の項目)だけ。`ttl_days` と `ttl_seconds` の排他・必須と、\n値の範囲・桁は、換算と一緒に `services` が検証する(B 2.4。範囲の違反は、形の違反がないときに\nすべて返す)。`connector_config` の中身と `schedule_cron` の書式は検証しない(Crawler に任せる)。",
+        "properties": {
+          "connector_config": {
+            "additionalProperties": true,
+            "title": "Connector Config",
+            "type": "object"
+          },
+          "min_delete_count": {
+            "title": "Min Delete Count",
+            "type": "integer"
+          },
+          "ratio_threshold_percent": {
+            "title": "Ratio Threshold Percent",
+            "type": "number"
+          },
+          "schedule_cron": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Schedule Cron"
+          },
+          "ttl_days": {
+            "title": "Ttl Days",
+            "type": "integer"
+          },
+          "ttl_seconds": {
+            "title": "Ttl Seconds",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "connector_config",
+          "ratio_threshold_percent",
+          "min_delete_count"
+        ],
+        "title": "UpdateSourceBody",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Loreley Admin API",
+    "version": "v1"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/dashboard": {
+      "get": {
+        "operationId": "get_dashboard",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request. error.code: invalid_request"
+          }
+        },
+        "summary": "Get Dashboard",
+        "tags": [
+          "dashboard"
+        ]
+      }
+    },
+    "/jobs": {
+      "get": {
+        "operationId": "list_jobs",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "items_per_page",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "enum": [
+                25,
+                50,
+                100
+              ],
+              "title": "Items Per Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "-queued_at",
+              "title": "Sort",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "source_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "enum": [
+                "active",
+                "queued",
+                "running",
+                "succeeded",
+                "partially_succeeded",
+                "failed",
+                "cancelled"
+              ],
+              "title": "Status",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request. error.code: invalid_request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable. error.code: unavailable"
+          }
+        },
+        "summary": "List Jobs",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/jobs/{job_id}": {
+      "get": {
+        "operationId": "get_job",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request. error.code: invalid_request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found. error.code: job_not_found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable. error.code: unavailable"
+          }
+        },
+        "summary": "Get Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/jobs/{job_id}/cancel": {
+      "post": {
+        "operationId": "cancel_job",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "title": "Job Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelJobResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelJobResponse"
+                }
+              }
+            },
+            "description": "Cancellation requested"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request. error.code: invalid_request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found. error.code: job_not_found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict. error.code: job_not_cancellable, job_already_finished"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway. error.code: crawler_error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable. error.code: crawler_unavailable, crawler_unreachable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout. error.code: crawler_response_lost"
+          }
+        },
+        "summary": "Cancel Job",
+        "tags": [
+          "jobs"
+        ]
+      }
+    },
+    "/meta": {
+      "get": {
+        "operationId": "get_meta",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetaResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request. error.code: invalid_request"
+          }
+        },
+        "summary": "Get Meta",
+        "tags": [
+          "meta"
+        ]
+      }
+    },
+    "/opensearch/cluster": {
+      "get": {
+        "operationId": "get_cluster",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClusterResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request. error.code: invalid_request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable. error.code: unavailable"
+          }
+        },
+        "summary": "Get Cluster",
+        "tags": [
+          "opensearch"
+        ]
+      }
+    },
+    "/sources": {
+      "get": {
+        "operationId": "list_sources",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request. error.code: invalid_request"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable. error.code: unavailable"
+          }
+        },
+        "summary": "List Sources",
+        "tags": [
+          "sources"
+        ]
+      },
+      "post": {
+        "operationId": "register_source",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterSourceBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSettings"
+                }
+              }
+            },
+            "description": "Already registered (same content)"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request. error.code: invalid_request, config_invalid"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict. error.code: source_already_exists"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway. error.code: crawler_error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable. error.code: crawler_unavailable, crawler_unreachable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout. error.code: crawler_response_lost"
+          }
+        },
+        "summary": "Register Source",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
+    "/sources/{source_id}": {
+      "get": {
+        "operationId": "get_source",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request. error.code: invalid_request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found. error.code: source_config_not_found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable. error.code: unavailable"
+          }
+        },
+        "summary": "Get Source",
+        "tags": [
+          "sources"
+        ]
+      },
+      "put": {
+        "operationId": "update_source",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSourceBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceSettings"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request. error.code: invalid_request, config_invalid"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found. error.code: source_config_not_found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict. error.code: source_deleting"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway. error.code: crawler_error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable. error.code: crawler_unavailable, crawler_unreachable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout. error.code: crawler_response_lost"
+          }
+        },
+        "summary": "Update Source",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
+    "/sources/{source_id}/crawl-jobs": {
+      "post": {
+        "operationId": "start_crawl",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartCrawlBody"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request. error.code: invalid_request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found. error.code: source_config_not_found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict. error.code: source_deleting, maintenance_enabled, lock_held"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway. error.code: crawler_error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable. error.code: crawler_unavailable, crawler_unreachable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout. error.code: crawler_response_lost"
+          }
+        },
+        "summary": "Start Crawl",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
+    "/sources/{source_id}/delete-jobs": {
+      "post": {
+        "operationId": "start_source_delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobAccepted"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request. error.code: invalid_request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found. error.code: source_config_not_found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict. error.code: maintenance_enabled, lock_held"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway. error.code: crawler_error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable. error.code: crawler_unavailable, crawler_unreachable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout. error.code: crawler_response_lost"
+          }
+        },
+        "summary": "Start Source Delete",
+        "tags": [
+          "sources"
+        ]
+      }
+    },
+    "/sources/{source_id}/documents": {
+      "get": {
+        "operationId": "list_documents",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tab",
+            "required": true,
+            "schema": {
+              "enum": [
+                "skipped",
+                "extract_failed",
+                "oversize",
+                "summary_pending"
+              ],
+              "title": "Tab",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "minimum": 1,
+              "title": "Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "items_per_page",
+            "required": false,
+            "schema": {
+              "default": 25,
+              "enum": [
+                25,
+                50,
+                100
+              ],
+              "title": "Items Per Page",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sort"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DocumentListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request. error.code: invalid_request"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found. error.code: source_config_not_found"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable. error.code: unavailable"
+          }
+        },
+        "summary": "List Documents",
+        "tags": [
+          "documents"
+        ]
+      }
+    },
+    "/sources/{source_id}/lock": {
+      "delete": {
+        "operationId": "release_lock",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "source_id",
+            "required": true,
+            "schema": {
+              "title": "Source Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseLockResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request. error.code: invalid_request"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict. error.code: lock_in_use"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Gateway. error.code: crawler_error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable. error.code: crawler_unavailable, crawler_unreachable"
+          },
+          "504": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Gateway Timeout. error.code: crawler_response_lost"
+          }
+        },
+        "summary": "Release Lock",
+        "tags": [
+          "sources"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "/api/admin/v1"
+    }
+  ]
+}

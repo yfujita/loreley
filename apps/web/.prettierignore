@@ -1,0 +1,8 @@
+# 生成コードは手で編集せず、4 スペース・クォート混在のため整形しない(E 11.1)
+src/admin/api/generated/
+# Admin API が書き出す形(indent=2・sort_keys)が正。gen:api:check が再生成との一致を検査する
+openapi/admin-v1.json
+# ビルド・テストの出力
+dist/
+test-results/
+playwright-report/

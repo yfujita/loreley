@@ -1,0 +1,249 @@
+/*
+ * アプリ共通の CSS(DS 2.2・2.6・3.4・8)。`vuetify/styles` の後に読み込む。
+ * Vuetify のスタイルは `@layer` に入っているので、ここ(レイヤーなし)の規則が常に勝つ。
+ * 値の正本は DS 2 章。色は `rgb(var(--v-theme-*))`(Vuetify が theme から生成する変数)で書く。
+ */
+
+:root {
+  /* Vuetify の見出し系クラスが Roboto を既定にするため、本文フォントの変数を明示する(DS 2.2。外部フォントを使わない) */
+  --v-font-body:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN',
+    'Yu Gothic UI', 'Meiryo UI', 'Noto Sans JP', sans-serif;
+  --v-font-heading: var(--v-font-body);
+  /* DS 2.1 の「その他」の色(theme の色名にはしない): スナックバー(ink)上のリンク、入力のプレースホルダー */
+  --color-ink-link: #9cc9ee;
+  --color-placeholder: #66727e;
+  /* 識別子・cron 式・パス専用の等幅(DS 2.2。ラベルや装飾には使わない) */
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
+}
+
+html {
+  font-size: 16px;
+}
+
+.v-application {
+  font-size: 0.875rem;
+  line-height: 1.5714;
+  letter-spacing: normal;
+}
+
+/* 本文中のリンク。Vuetify の部品(`v-list-item`・`v-tab` など、class が `v-` で始まる単語を持つ `<a>`。`nav-link`・`dev-link` のような独自 class は除外しない)の色は上書きしない
+   (レイヤーなしの規則は、`@layer` 内の Vuetify の規則より常に強いため、範囲を絞る) */
+:where(a:not([class^='v-']):not([class*=' v-'])) {
+  color: rgb(var(--v-theme-primary));
+}
+
+/* ===== タイポグラフィ(DS 2.2。役割名のクラス) ===== */
+.text-page-title {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+  letter-spacing: normal;
+}
+.text-section-title {
+  font-size: 1rem;
+  line-height: 1.5rem;
+  font-weight: 600;
+  letter-spacing: normal;
+}
+.text-body {
+  font-size: 0.875rem;
+  line-height: 1.375rem;
+  font-weight: 400;
+}
+.text-body-strong {
+  font-size: 0.875rem;
+  line-height: 1.375rem;
+  font-weight: 600;
+}
+.text-caption-sm {
+  font-size: 0.75rem;
+  line-height: 1.125rem;
+  font-weight: 400;
+  letter-spacing: normal;
+}
+.text-id {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  font-weight: 400;
+  letter-spacing: normal;
+  overflow-wrap: anywhere;
+}
+.text-stat-value {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.text-tile-name {
+  font-family: var(--font-mono);
+  font-size: 0.9375rem;
+  line-height: 1.5rem;
+  font-weight: 600;
+}
+/* 数値・日時は等幅数字。表では右揃え(DS 2.2) */
+.num {
+  font-variant-numeric: tabular-nums;
+}
+.text-on-surface-variant {
+  color: rgb(var(--v-theme-on-surface-variant));
+}
+
+/* 視覚的に隠す(読み上げ・フォーカスには残る) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* ===== フォーカス(DS 2.6)。Vuetify 既定の重ね(不透明度 0.12)は見えにくいので、リングを足す ===== */
+:focus-visible {
+  outline: 2px solid rgb(var(--v-theme-focus));
+  outline-offset: 2px;
+}
+/* 入力欄は枠が primary に変わるので、リングは 1px 離す */
+.v-field--focused {
+  outline: 2px solid rgb(var(--v-theme-focus));
+  outline-offset: 1px;
+}
+.v-field input:focus-visible,
+.v-field textarea:focus-visible,
+.v-field select:focus-visible {
+  outline: none;
+}
+
+/* スイッチ・チェックボックス・ラジオ(`VSelectionControl`): ネイティブの `<input>` は `opacity: 0` で、上の `:focus-visible` の
+   リングが描かれない。Vuetify の既定は入力部の円(`::before`)を不透明度 0.12 で重ねるだけで、見えにくい(DS 2.6)ので、
+   その重ねを消し、見えている部品(スイッチはトラック、チェックボックス・ラジオはボックス)の周囲に 2px のリングを描く。
+   フォーカスの判定は Vuetify が付ける `v-selection-control--focus-visible`(キーボード操作のときだけ)に従う。 */
+.v-selection-control--focus-visible .v-selection-control__input::before {
+  opacity: 0;
+}
+.v-selection-control--focus-visible .v-selection-control__input > .v-icon {
+  outline: 2px solid rgb(var(--v-theme-focus));
+  outline-offset: 0;
+  border-radius: 4px;
+}
+.v-radio .v-selection-control--focus-visible .v-selection-control__input > .v-icon {
+  border-radius: 50%;
+}
+.v-selection-control--focus-visible .v-switch__track {
+  outline: 2px solid rgb(var(--v-theme-focus));
+  outline-offset: 2px;
+}
+
+/* ===== ボタン(DS 4.2) ===== */
+.v-btn {
+  font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
+}
+/* 高さ(DS 2.3): 通常 36px(Vuetify の既定どおり)、小型 32px(既定は 28px)。幅 600px 未満は、ボタン・入力欄とも 44px */
+.v-btn.v-btn--size-small {
+  --v-btn-height: 32px;
+}
+.v-btn.v-btn--icon.v-btn--size-small {
+  width: 32px;
+  height: 32px;
+}
+@media (max-width: 599px) {
+  .v-btn.v-btn--size-default,
+  .v-btn.v-btn--size-small {
+    --v-btn-height: 44px;
+  }
+  .v-btn.v-btn--icon {
+    width: 44px !important;
+    height: 44px !important;
+  }
+  .v-field {
+    --v-input-control-height: 44px;
+  }
+}
+
+/* outlined: 白地・枠 line-strong(白との比 4.27:1。3:1 以上)・文字は本文色 */
+.v-btn.v-btn--variant-outlined {
+  border-color: rgb(var(--v-theme-line-strong));
+  color: rgb(var(--v-theme-on-surface));
+  background: rgb(var(--v-theme-surface));
+}
+/* 無効: 面 rgba(26,37,48,.12)・文字 rgba(26,37,48,.46)(DS 2.1) */
+.v-btn.v-btn--disabled {
+  background: rgba(var(--v-border-color), 0.12) !important;
+  color: rgba(var(--v-theme-on-surface), 0.46) !important;
+  border-color: transparent;
+  opacity: 1;
+}
+.v-btn.v-btn--variant-text.v-btn--disabled {
+  background: transparent !important;
+}
+/* `aria-disabled="true"` のボタン(押しても何も起きないが、フォーカスは失わない。O1 のページ送り・「条件を解除」)。見た目は無効と同じ */
+.v-btn[aria-disabled='true'] {
+  background: rgba(var(--v-border-color), 0.12) !important;
+  color: rgba(var(--v-theme-on-surface), 0.46) !important;
+  border-color: transparent;
+  cursor: not-allowed;
+}
+.v-btn.v-btn--variant-text[aria-disabled='true'] {
+  background: transparent !important;
+}
+
+/* ===== 入力欄(DS 4.6) ===== */
+/* 入力の文字は本文と同じ 14px、左右の余白は 12px(DS のモックの入力欄。Vuetify の既定は 16px・16px) */
+.v-field {
+  font-size: 0.875rem;
+  --v-field-padding-start: 12px;
+  --v-field-padding-end: 12px;
+}
+/* 枠は line-strong(情報を持つ線。白との比 4.27:1)。フォーカス・エラー時は Vuetify の色に任せる */
+.v-field--variant-outlined:not(.v-field--focused):not(.v-field--error) .v-field__outline {
+  color: rgb(var(--v-theme-line-strong));
+  --v-field-border-opacity: 1;
+}
+.v-field input::placeholder,
+.v-field textarea::placeholder {
+  color: var(--color-placeholder);
+  opacity: 1;
+}
+
+/* ===== 動き(DS 2.6)。使うのはスケルトンの光沢と再取得中の進行バーだけ ===== */
+.skeleton-line {
+  display: block;
+  height: 14px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    rgb(var(--v-theme-surface-variant)) 25%,
+    rgb(var(--v-theme-background)) 40%,
+    rgb(var(--v-theme-surface-variant)) 60%
+  );
+  background-size: 300% 100%;
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: 0 0;
+  }
+}
+@keyframes progress-slide {
+  from {
+    left: -35%;
+  }
+  to {
+    left: 100%;
+  }
+}
+/* スケルトンの光沢は止める。進行バー(`.top-progress__bar`)は、詳細度の高い scoped CSS が定義するので、
+   reduced-motion の上書きも TopProgress.vue の中に置く(ここに置くと、scoped の規則に負けて止まらない) */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-line {
+    animation: none;
+  }
+}

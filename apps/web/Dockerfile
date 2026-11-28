@@ -32,8 +32,10 @@ RUN npm ci
 # ビルドに要るファイルだけを個別にコピーする(`nginx/` の変更でビルドをやり直さないため)。
 # ビルドに要るファイルが増えたとき(`public/` など)は、ここに足す。
 # `npm run build` は `vue-tsc`(型検査)→ `vite build`。成果物は `dist/`(`index.html` が直下)。
-COPY index.html vite.config.ts tsconfig.json tsconfig.app.json tsconfig.node.json ./
+# 型検査(`vue-tsc`)は `tests/` と各設定ファイル(tsconfig の include)も対象にするので、これらも要る。
+COPY index.html vite.config.ts openapi-ts.config.ts playwright.config.ts tsconfig.json tsconfig.app.json tsconfig.test.json tsconfig.node.json ./
 COPY src ./src
+COPY tests ./tests
 RUN npm run build
 
 

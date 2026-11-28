@@ -1,0 +1,29 @@
+import { defineConfig, devices } from '@playwright/test'
+
+import { E2E_BASE_URL, E2E_PORT } from './tests/support/e2eServer'
+
+// E2E 専用のポート(tests/support/e2eServer.ts)。(設計 E 10.2 は 5173・reuseExistingServer: !CI。
+// 起動中の dev サーバーを使うと、転送先が実環境のまま モックの漏れが実 API に届くため、専用ポート・再利用なしに変えた。)
+
+export default defineConfig({
+  testDir: 'tests/e2e',
+  // dev サーバーを、テストの前に温める(冷えた状態で複数のワーカーが同時に読み込むと、最初のテストが時間切れになることがある)。
+  // webServer の起動後に実行される。
+  globalSetup: './tests/e2e/globalSetup.ts',
+  fullyParallel: true,
+  forbidOnly: Boolean(process.env.CI),
+  use: {
+    // 末尾のスラッシュが要る。遷移は先頭にスラッシュのない相対パス(`goto('sources')`)で書く。
+    baseURL: E2E_BASE_URL,
+    timezoneId: 'Asia/Tokyo',
+    trace: 'retain-on-failure',
+  },
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  webServer: {
+    command: `npm run dev -- --port ${E2E_PORT} --strictPort`,
+    url: E2E_BASE_URL,
+    reuseExistingServer: false,
+    // 実環境に届かない転送先。モックの漏れた /api/ 要求が、実際の API に届かず失敗する(多重防御)。
+    env: { LORELEY_DEV_API_TARGET: 'http://127.0.0.1:1' },
+  },
+})

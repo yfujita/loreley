@@ -1,10 +1,12 @@
 # ビルドコンテキスト(apps/web)から除くもの。Dockerfile は package.json・package-lock.json・
-# .npmrc・index.html・vite.config.ts・tsconfig*.json・src・nginx だけを COPY するが、
+# .npmrc・index.html・vite.config.ts・openapi-ts.config.ts・playwright.config.ts・tsconfig*.json・src・tests・nginx だけを COPY するが、
 # コンテキストの転送を小さくし、手元のファイルが誤ってイメージに入らないようにする。
 
 # 手元の依存・ビルド成果物(イメージ内で `npm ci`・`npm run build` で作り直す。OS が違いうる)
 node_modules/
 dist/
+test-results/
+playwright-report/
 *.tsbuildinfo
 vite.config.ts.timestamp-*
 

@@ -3,6 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- ブラウザが /favicon.ico を要求しない(Nginx は定義したパス以外を 404 にする)よう、同じ波のマーク(サイドバーのロゴ)をインラインで置く。外部要求なし -->
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 24 24%22%3E%3Crect x=%221%22 y=%221%22 width=%2222%22 height=%2222%22 rx=%225%22 fill=%22%231D5B87%22/%3E%3Cpath d=%22M4.5 14c2-3.2 4-3.2 5.5 0s3.5 3.2 5.5 0 2.5-2.5 3.5-2.5%22 stroke=%22%23fff%22 fill=%22none%22 stroke-width=%222%22 stroke-linecap=%22round%22 stroke-linejoin=%22round%22/%3E%3Cpath d=%22M7 8.5h3%22 stroke=%22%23fff%22 stroke-width=%222%22 stroke-linecap=%22round%22/%3E%3C/svg%3E"
+    />
     <title>Loreley Admin</title>
   </head>
   <body>

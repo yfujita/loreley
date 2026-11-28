@@ -1,0 +1,34 @@
+/*
+ * データテーブルの見た目(DS 4.3)。`AdminDataTable`・`AdminDataTableServer` が共有する。
+ * 外枠はカード側が持つ(表そのものに枠を付けない)。見出し行: surface-variant 面・12px / 600・on-surface-variant・高さ 40px。
+ * 行: 高さ 48px 以上・区切りは境界線のみ・縞模様なし・ホバーは primary の 5%。
+ */
+.admin-data-table {
+  background: transparent;
+}
+.admin-data-table .v-data-table__th {
+  background: rgb(var(--v-theme-surface-variant)) !important;
+  color: rgb(var(--v-theme-on-surface-variant));
+  font-size: 0.75rem;
+  font-weight: 600;
+  height: 40px;
+  letter-spacing: normal;
+}
+.admin-data-table .v-data-table__td {
+  font-size: 0.875rem;
+  line-height: 1.375rem;
+  min-height: 48px;
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+.admin-data-table tbody tr:hover > td {
+  background: rgba(var(--v-theme-primary), 0.05);
+}
+.admin-data-table .v-data-table-footer {
+  font-size: 0.75rem;
+  padding: 8px 16px;
+}
+/* 並べ替えの列見出しはボタン。キーボードで Enter(Space)で操作する(DS 4.3) */
+.admin-data-table .v-data-table__th--sortable {
+  cursor: pointer;
+}
